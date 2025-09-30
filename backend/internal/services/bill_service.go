@@ -407,3 +407,36 @@ func (s *BillService) calculateWeights(users []models.User, groups []models.Grou
 
 	return weights
 }
+
+// DeleteBill deletes a bill and all associated data
+func (s *BillService) DeleteBill(ctx context.Context, billID primitive.ObjectID) error {
+	// Delete all consumptions
+	_, err := s.db.Collection("consumptions").DeleteMany(ctx, bson.M{"bill_id": billID})
+	if err != nil {
+		return fmt.Errorf("failed to delete consumptions: %w", err)
+	}
+
+	// Delete all allocations
+	_, err = s.db.Collection("allocations").DeleteMany(ctx, bson.M{"bill_id": billID})
+	if err != nil {
+		return fmt.Errorf("failed to delete allocations: %w", err)
+	}
+
+	// Delete all payments
+	_, err = s.db.Collection("payments").DeleteMany(ctx, bson.M{"bill_id": billID})
+	if err != nil {
+		return fmt.Errorf("failed to delete payments: %w", err)
+	}
+
+	// Delete the bill
+	result, err := s.db.Collection("bills").DeleteOne(ctx, bson.M{"_id": billID})
+	if err != nil {
+		return fmt.Errorf("failed to delete bill: %w", err)
+	}
+
+	if result.DeletedCount == 0 {
+		return errors.New("bill not found")
+	}
+
+	return nil
+}

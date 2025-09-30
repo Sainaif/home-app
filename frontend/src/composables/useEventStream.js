@@ -4,6 +4,7 @@ import { useAuthStore } from '../stores/auth'
 /**
  * Composable for managing SSE (Server-Sent Events) connections
  * Handles authentication, reconnection, and event dispatching
+ * @version 2.0.0 - SSE disabled
  */
 export function useEventStream() {
   const authStore = useAuthStore()
@@ -23,6 +24,10 @@ export function useEventStream() {
    * Connect to SSE stream
    */
   function connect() {
+    // SSE temporarily disabled
+    console.log('[SSE] Connection disabled - SSE endpoint not available')
+    return
+
     if (!authStore.accessToken) {
       error.value = 'No authentication token available'
       return

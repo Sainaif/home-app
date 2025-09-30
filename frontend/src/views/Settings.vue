@@ -4,15 +4,15 @@
 
     <div class="card">
       <h2 class="text-xl font-semibold mb-4">{{ $t('settings.profile') }}</h2>
-      <div class="space-y-4">
+      <form @submit.prevent="updateProfile" class="space-y-4">
         <div>
           <label class="block text-sm font-medium mb-2">{{ $t('settings.name') }}</label>
-          <input v-model="authStore.user.name" disabled class="input bg-gray-700" />
+          <input v-model="profileForm.name" required class="input" />
         </div>
 
         <div>
           <label class="block text-sm font-medium mb-2">{{ $t('settings.email') }}</label>
-          <input v-model="authStore.user.email" disabled class="input bg-gray-700" />
+          <input v-model="profileForm.email" type="email" required class="input" />
         </div>
 
         <div>
@@ -24,7 +24,14 @@
           <label class="block text-sm font-medium mb-2">Grupa</label>
           <input :value="authStore.user.groupName || authStore.user.groupId" disabled class="input bg-gray-700" />
         </div>
-      </div>
+
+        <div v-if="profileError" class="text-red-500 text-sm">{{ profileError }}</div>
+        <div v-if="profileSuccess" class="text-green-500 text-sm">{{ profileSuccess }}</div>
+
+        <button type="submit" :disabled="updatingProfile" class="btn btn-primary">
+          {{ updatingProfile ? 'Zapisywanie...' : 'Zapisz profil' }}
+        </button>
+      </form>
     </div>
 
     <div class="card mt-6">
@@ -291,6 +298,11 @@ import { UserPlus, Users, Edit, Trash, X } from 'lucide-vue-next'
 
 const authStore = useAuthStore()
 
+const profileForm = ref({
+  name: authStore.user?.name || '',
+  email: authStore.user?.email || ''
+})
+
 const passwordForm = ref({
   currentPassword: '',
   newPassword: ''
@@ -299,6 +311,9 @@ const passwordForm = ref({
 const loading = ref(false)
 const error = ref('')
 const success = ref('')
+const updatingProfile = ref(false)
+const profileError = ref('')
+const profileSuccess = ref('')
 
 // Admin state
 const users = ref([])
@@ -341,11 +356,40 @@ const userError = ref('')
 const groupError = ref('')
 
 onMounted(() => {
+  // Initialize profile form with current user data
+  profileForm.value = {
+    name: authStore.user?.name || '',
+    email: authStore.user?.email || ''
+  }
+
   if (authStore.isAdmin) {
     loadUsers()
     loadGroups()
   }
 })
+
+async function updateProfile() {
+  updatingProfile.value = true
+  profileError.value = ''
+  profileSuccess.value = ''
+
+  try {
+    const response = await api.patch(`/users/${authStore.user.id}`, {
+      name: profileForm.value.name,
+      email: profileForm.value.email
+    })
+
+    // Update auth store with new user data
+    authStore.user.name = profileForm.value.name
+    authStore.user.email = profileForm.value.email
+
+    profileSuccess.value = 'Profil zaktualizowany pomyślnie'
+  } catch (err) {
+    profileError.value = err.response?.data?.error || 'Błąd aktualizacji profilu'
+  } finally {
+    updatingProfile.value = false
+  }
+}
 
 async function changePassword() {
   loading.value = true

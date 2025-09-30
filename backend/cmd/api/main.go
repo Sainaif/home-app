@@ -132,11 +132,14 @@ func main() {
 	bills.Post("/:id/allocate", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), billHandler.AllocateBill)
 	bills.Post("/:id/post", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), billHandler.PostBill)
 	bills.Post("/:id/close", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), billHandler.CloseBill)
+	bills.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), billHandler.DeleteBill)
 
 	// Consumption routes
 	consumptions := app.Group("/consumptions")
 	consumptions.Post("/", middleware.AuthMiddleware(cfg), billHandler.CreateConsumption)
 	consumptions.Get("/", middleware.AuthMiddleware(cfg), billHandler.GetConsumptions)
+	consumptions.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), billHandler.DeleteConsumption)
+	consumptions.Post("/:id/mark-invalid", middleware.AuthMiddleware(cfg), billHandler.MarkConsumptionInvalid)
 
 	// Allocation routes
 	allocations := app.Group("/allocations")

@@ -40,10 +40,13 @@
       <div v-else class="space-y-3">
         <div v-for="reading in readings" :key="reading.id" class="flex justify-between items-center p-3 bg-gray-700 rounded">
           <div>
-            <span class="font-medium">{{ reading.meterReading?.toFixed(3) }} jednostek</span>
-            <span class="text-gray-400 text-sm ml-4">{{ formatDateTime(reading.readingDate) }}</span>
+            <span class="font-medium">{{ formatMeterValue(reading.meterValue) }} {{ getUnit(reading.billId) }}</span>
+            <span class="text-gray-400 text-sm ml-4">{{ formatDateTime(reading.recordedAt) }}</span>
+            <span v-if="getBillInfo(reading.billId)" class="text-blue-400 text-sm ml-4">
+              {{ getBillInfo(reading.billId) }}
+            </span>
           </div>
-          <span class="text-sm text-gray-400">{{ reading.userName }}</span>
+          <span class="text-sm text-gray-400">{{ reading.source || 'użytkownik' }}</span>
         </div>
       </div>
     </div>
@@ -55,6 +58,7 @@ import { ref, onMounted } from 'vue'
 import api from '../api/client'
 
 const draftBills = ref([])
+const allBills = ref([])
 const readings = ref([])
 const loading = ref(false)
 const loadingReadings = ref(false)
@@ -71,11 +75,15 @@ onMounted(async () => {
     const billsRes = await api.get('/bills?status=draft')
     draftBills.value = (billsRes.data || []).filter(b => b.type === 'electricity' || b.type === 'gas')
 
+    const allBillsRes = await api.get('/bills')
+    allBills.value = allBillsRes.data || []
+
     const readingsRes = await api.get('/consumptions')
     readings.value = readingsRes.data || []
   } catch (err) {
     console.error('Failed to load data:', err)
     draftBills.value = []
+    allBills.value = []
     readings.value = []
   } finally {
     loadingReadings.value = false
@@ -86,9 +94,10 @@ async function submitReading() {
   loading.value = true
   try {
     await api.post('/consumptions', {
-      bill_id: form.value.billId,
-      meter_reading: parseFloat(form.value.meterReading),
-      reading_date: new Date(form.value.readingDate).toISOString()
+      billId: form.value.billId,
+      meterValue: parseFloat(form.value.meterReading),
+      units: 0, // Units will be calculated by backend
+      recordedAt: new Date(form.value.readingDate).toISOString()
     })
 
     form.value.meterReading = ''
@@ -102,11 +111,38 @@ async function submitReading() {
   }
 }
 
+function formatMeterValue(value) {
+  if (!value) return '0.000'
+  const numValue = parseFloat(value.$numberDecimal || value || 0)
+  return numValue.toFixed(3)
+}
+
 function formatDate(date) {
+  if (!date) return '-'
   return new Date(date).toLocaleDateString('pl-PL')
 }
 
 function formatDateTime(date) {
+  if (!date) return '-'
   return new Date(date).toLocaleString('pl-PL')
+}
+
+function getUnit(billId) {
+  const bill = allBills.value.find(b => b.id === billId)
+  if (!bill) return 'jednostek'
+
+  if (bill.type === 'electricity') return 'kWh'
+  if (bill.type === 'gas') return 'm³'
+  return 'jednostek'
+}
+
+function getBillInfo(billId) {
+  const bill = allBills.value.find(b => b.id === billId)
+  if (!bill) return ''
+
+  const typeLabel = bill.type === 'electricity' ? 'Prąd' :
+                    bill.type === 'gas' ? 'Gaz' : bill.type
+  const dateRange = `${formatDate(bill.periodStart)} - ${formatDate(bill.periodEnd)}`
+  return `${typeLabel}: ${dateRange}`
 }
 </script>

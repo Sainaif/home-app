@@ -167,12 +167,23 @@ func (h *BillHandler) CloseBill(c *fiber.Ctx) error {
 
 // CreateConsumption records a consumption reading
 func (h *BillHandler) CreateConsumption(c *fiber.Ctx) error {
+	// Get user ID from context
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
+	}
+
 	var req services.CreateConsumptionRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid request body",
 		})
 	}
+
+	// Set user ID from authenticated user
+	req.UserID = userID
 
 	// Determine source based on user role
 	role, _ := middleware.GetUserRole(c)
@@ -240,4 +251,68 @@ func (h *BillHandler) GetAllocations(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(allocations)
+}
+
+// DeleteBill deletes a bill (ADMIN only)
+func (h *BillHandler) DeleteBill(c *fiber.Ctx) error {
+	id := c.Params("id")
+	billID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid bill ID",
+		})
+	}
+
+	if err := h.billService.DeleteBill(c.Context(), billID); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{"message": "Bill deleted successfully"})
+}
+
+// DeleteConsumption deletes a consumption/reading (ADMIN only)
+func (h *BillHandler) DeleteConsumption(c *fiber.Ctx) error {
+	id := c.Params("id")
+	consumptionID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid consumption ID",
+		})
+	}
+
+	if err := h.consumptionService.DeleteConsumption(c.Context(), consumptionID); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{"message": "Consumption deleted successfully"})
+}
+
+// MarkConsumptionInvalid marks a consumption as invalid (user can mark their own)
+func (h *BillHandler) MarkConsumptionInvalid(c *fiber.Ctx) error {
+	id := c.Params("id")
+	consumptionID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid consumption ID",
+		})
+	}
+
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
+	}
+
+	if err := h.consumptionService.MarkConsumptionInvalid(c.Context(), consumptionID, userID); err != nil {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{"message": "Consumption marked as invalid"})
 }

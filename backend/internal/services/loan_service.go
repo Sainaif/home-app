@@ -43,9 +43,11 @@ type Balance struct {
 }
 
 type PairwiseBalance struct {
-	From   primitive.ObjectID `json:"from"`
-	To     primitive.ObjectID `json:"to"`
-	Amount float64            `json:"amount"`
+	FromUserId   primitive.ObjectID   `json:"fromUserId"`
+	ToUserId     primitive.ObjectID   `json:"toUserId"`
+	FromUserName string               `json:"fromUserName"`
+	ToUserName   string               `json:"toUserName"`
+	NetAmount    primitive.Decimal128 `json:"netAmount"`
 }
 
 // CreateLoan creates a new loan
@@ -215,22 +217,40 @@ func (s *LoanService) GetBalances(ctx context.Context) ([]PairwiseBalance, error
 		}
 	}
 
+	// Get all users for name lookup
+	usersCursor, err := s.db.Collection("users").Find(ctx, bson.M{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch users: %w", err)
+	}
+	defer usersCursor.Close(ctx)
+
+	var users []models.User
+	if err := usersCursor.All(ctx, &users); err != nil {
+		return nil, fmt.Errorf("failed to decode users: %w", err)
+	}
+
+	userMap := make(map[primitive.ObjectID]string)
+	for _, user := range users {
+		userMap[user.ID] = user.Name
+	}
+
 	// Convert to pairwise balances
 	result := []PairwiseBalance{}
 	for key, amount := range balances {
-		var from, to primitive.ObjectID
-		fmt.Sscanf(key, "%s-%s", &from, &to)
-
 		// Parse the IDs properly
 		parts := parseBalanceKey(key)
 		if len(parts) == 2 {
 			fromID, _ := primitive.ObjectIDFromHex(parts[0])
 			toID, _ := primitive.ObjectIDFromHex(parts[1])
 
+			amountDec, _ := utils.DecimalFromFloat(amount)
+
 			result = append(result, PairwiseBalance{
-				From:   fromID,
-				To:     toID,
-				Amount: utils.RoundPLN(amount),
+				FromUserId:   fromID,
+				ToUserId:     toID,
+				FromUserName: userMap[fromID],
+				ToUserName:   userMap[toID],
+				NetAmount:    amountDec,
 			})
 		}
 	}
@@ -238,8 +258,14 @@ func (s *LoanService) GetBalances(ctx context.Context) ([]PairwiseBalance, error
 	return result, nil
 }
 
-// GetLoans retrieves all loans
-func (s *LoanService) GetLoans(ctx context.Context) ([]models.Loan, error) {
+type LoanWithNames struct {
+	models.Loan
+	FromUserName string `json:"fromUserName"`
+	ToUserName   string `json:"toUserName"`
+}
+
+// GetLoans retrieves all loans with user names
+func (s *LoanService) GetLoans(ctx context.Context) ([]LoanWithNames, error) {
 	cursor, err := s.db.Collection("loans").Find(ctx, bson.M{})
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
@@ -251,31 +277,52 @@ func (s *LoanService) GetLoans(ctx context.Context) ([]models.Loan, error) {
 		return nil, fmt.Errorf("failed to decode loans: %w", err)
 	}
 
-	return loans, nil
+	// Get all users for name lookup
+	usersCursor, err := s.db.Collection("users").Find(ctx, bson.M{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch users: %w", err)
+	}
+	defer usersCursor.Close(ctx)
+
+	var users []models.User
+	if err := usersCursor.All(ctx, &users); err != nil {
+		return nil, fmt.Errorf("failed to decode users: %w", err)
+	}
+
+	userMap := make(map[primitive.ObjectID]string)
+	for _, user := range users {
+		userMap[user.ID] = user.Name
+	}
+
+	// Enrich with user names
+	result := make([]LoanWithNames, len(loans))
+	for i, loan := range loans {
+		result[i] = LoanWithNames{
+			Loan:         loan,
+			FromUserName: userMap[loan.LenderID],
+			ToUserName:   userMap[loan.BorrowerID],
+		}
+	}
+
+	return result, nil
 }
 
-// GetUserBalance calculates balance for a specific user
-func (s *LoanService) GetUserBalance(ctx context.Context, userID primitive.ObjectID) (*Balance, error) {
+// GetUserBalance calculates balance for a specific user - returns pairwise balances
+func (s *LoanService) GetUserBalance(ctx context.Context, userID primitive.ObjectID) ([]PairwiseBalance, error) {
 	balances, err := s.GetBalances(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	balance := &Balance{
-		UserID: userID,
-		Owed:   0,
-		Owing:  0,
-	}
-
+	// Filter balances for this user
+	result := []PairwiseBalance{}
 	for _, b := range balances {
-		if b.From == userID {
-			balance.Owed += b.Amount
-		} else if b.To == userID {
-			balance.Owing += b.Amount
+		if b.FromUserId == userID || b.ToUserId == userID {
+			result = append(result, b)
 		}
 	}
 
-	return balance, nil
+	return result, nil
 }
 
 // Helper functions

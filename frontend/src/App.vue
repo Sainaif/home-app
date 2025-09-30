@@ -1,4 +1,6 @@
 <template>
+  <UpdateBanner :show="hasNewVersion || isUpdating" :isUpdating="isUpdating" />
+
   <div class="min-h-screen">
     <nav v-if="authStore.isAuthenticated" class="glass sticky top-0 z-50 backdrop-blur-xl border-b border-gray-700/50">
       <div class="max-w-7xl mx-auto px-4">
@@ -56,10 +58,21 @@
 <script setup>
 import { useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
+import { useVersionCheck } from './composables/useVersionCheck'
+import { watch } from 'vue'
+import UpdateBanner from './components/UpdateBanner.vue'
 import { Home, LayoutDashboard, Receipt, Gauge, Wallet, CheckSquare, TrendingUp, Settings, LogOut } from 'lucide-vue-next'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const { hasNewVersion, isUpdating, reloadApp } = useVersionCheck()
+
+// Auto-reload when new version detected
+watch(hasNewVersion, (newVal) => {
+  if (newVal) {
+    reloadApp()
+  }
+})
 
 function handleLogout() {
   authStore.logout()

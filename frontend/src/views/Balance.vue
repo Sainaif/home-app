@@ -30,6 +30,70 @@
       </div>
     </div>
 
+    <!-- Add Loan/Payment Forms (Admin Only) -->
+    <div v-if="authStore.isAdmin" class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+      <div class="card">
+        <h2 class="text-xl font-semibold mb-4">Dodaj pożyczkę</h2>
+        <form @submit.prevent="createLoan" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium mb-2">Pożyczkodawca</label>
+            <select v-model="loanForm.lenderId" required class="input">
+              <option value="">Wybierz użytkownika</option>
+              <option v-for="user in users" :key="user.id" :value="user.id">{{ user.name }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-2">Pożyczkobiorca</label>
+            <select v-model="loanForm.borrowerId" required class="input">
+              <option value="">Wybierz użytkownika</option>
+              <option v-for="user in users" :key="user.id" :value="user.id">{{ user.name }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-2">Kwota (PLN)</label>
+            <input v-model.number="loanForm.amount" type="number" step="0.01" required class="input" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-2">Notatka (opcjonalnie)</label>
+            <input v-model="loanForm.note" type="text" class="input" />
+          </div>
+          <button type="submit" :disabled="creatingLoan" class="btn btn-primary w-full">
+            {{ creatingLoan ? 'Dodawanie...' : 'Dodaj pożyczkę' }}
+          </button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2 class="text-xl font-semibold mb-4">Dodaj spłatę</h2>
+        <form @submit.prevent="createPayment" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium mb-2">Pożyczka</label>
+            <select v-model="paymentForm.loanId" required class="input">
+              <option value="">Wybierz pożyczkę</option>
+              <option v-for="loan in openLoans" :key="loan.id" :value="loan.id">
+                {{ getLoanDescription(loan) }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-2">Kwota (PLN)</label>
+            <input v-model.number="paymentForm.amount" type="number" step="0.01" required class="input" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-2">Data spłaty</label>
+            <input v-model="paymentForm.paidAt" type="datetime-local" required class="input" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-2">Notatka (opcjonalnie)</label>
+            <input v-model="paymentForm.note" type="text" class="input" />
+          </div>
+          <button type="submit" :disabled="creatingPayment" class="btn btn-primary w-full">
+            {{ creatingPayment ? 'Dodawanie...' : 'Dodaj spłatę' }}
+          </button>
+        </form>
+      </div>
+    </div>
+
     <div class="card mt-6">
       <h2 class="text-xl font-semibold mb-4">Historia pożyczek</h2>
       <div v-if="loading" class="text-center py-8">{{ $t('common.loading') }}</div>
@@ -61,6 +125,7 @@
 </template>
 
 <script setup>
+// @version 2.0.0 - Fixed array filter checks
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../api/client'
@@ -68,26 +133,55 @@ import api from '../api/client'
 const authStore = useAuthStore()
 const balances = ref([])
 const loans = ref([])
+const users = ref([])
 const loading = ref(false)
+const creatingLoan = ref(false)
+const creatingPayment = ref(false)
+
+const loanForm = ref({
+  lenderId: '',
+  borrowerId: '',
+  amount: '',
+  note: ''
+})
+
+const paymentForm = ref({
+  loanId: '',
+  amount: '',
+  paidAt: new Date().toISOString().slice(0, 16),
+  note: ''
+})
 
 const youOwe = computed(() =>
-  balances.value.filter(b => b.fromUserId === authStore.user?.id)
+  Array.isArray(balances.value) ? balances.value.filter(b => b.fromUserId === authStore.user?.id) : []
 )
 
 const owesYou = computed(() =>
-  balances.value.filter(b => b.toUserId === authStore.user?.id)
+  Array.isArray(balances.value) ? balances.value.filter(b => b.toUserId === authStore.user?.id) : []
+)
+
+const openLoans = computed(() =>
+  Array.isArray(loans.value) ? loans.value.filter(l => l.status === 'open') : []
 )
 
 onMounted(async () => {
   loading.value = true
   try {
-    const [balancesRes, loansRes] = await Promise.all([
+    const requests = [
       api.get('/loans/balances/me'),
       api.get('/loans')
-    ])
+    ]
 
-    balances.value = balancesRes.data || []
-    loans.value = loansRes.data || []
+    if (authStore.isAdmin) {
+      requests.push(api.get('/users'))
+    }
+
+    const responses = await Promise.all(requests)
+    balances.value = responses[0].data || []
+    loans.value = responses[1].data || []
+    if (authStore.isAdmin) {
+      users.value = responses[2].data || []
+    }
   } catch (err) {
     console.error('Failed to load balance data:', err)
     balances.value = []
@@ -96,6 +190,74 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+async function createLoan() {
+  creatingLoan.value = true
+  try {
+    await api.post('/loans', {
+      lenderId: loanForm.value.lenderId,
+      borrowerId: loanForm.value.borrowerId,
+      amountPLN: loanForm.value.amount,
+      note: loanForm.value.note || undefined
+    })
+
+    // Reset form
+    loanForm.value = { lenderId: '', borrowerId: '', amount: '', note: '' }
+
+    // Reload data
+    const [balancesRes, loansRes] = await Promise.all([
+      api.get('/loans/balances/me'),
+      api.get('/loans')
+    ])
+    balances.value = balancesRes.data || []
+    loans.value = loansRes.data || []
+  } catch (err) {
+    console.error('Failed to create loan:', err)
+    alert('Błąd tworzenia pożyczki: ' + (err.response?.data?.error || err.message))
+  } finally {
+    creatingLoan.value = false
+  }
+}
+
+async function createPayment() {
+  creatingPayment.value = true
+  try {
+    await api.post('/loan-payments', {
+      loanId: paymentForm.value.loanId,
+      amountPLN: paymentForm.value.amount,
+      paidAt: new Date(paymentForm.value.paidAt).toISOString(),
+      note: paymentForm.value.note || undefined
+    })
+
+    // Reset form
+    paymentForm.value = {
+      loanId: '',
+      amount: '',
+      paidAt: new Date().toISOString().slice(0, 16),
+      note: ''
+    }
+
+    // Reload data
+    const [balancesRes, loansRes] = await Promise.all([
+      api.get('/loans/balances/me'),
+      api.get('/loans')
+    ])
+    balances.value = balancesRes.data || []
+    loans.value = loansRes.data || []
+  } catch (err) {
+    console.error('Failed to create payment:', err)
+    alert('Błąd tworzenia spłaty: ' + (err.response?.data?.error || err.message))
+  } finally {
+    creatingPayment.value = false
+  }
+}
+
+function getLoanDescription(loan) {
+  const lender = users.value.find(u => u.id === loan.lenderId)
+  const borrower = users.value.find(u => u.id === loan.borrowerId)
+  const amount = formatMoney(loan.amountPLN)
+  return `${lender?.name || '?'} → ${borrower?.name || '?'} (${amount} PLN)`
+}
 
 function formatMoney(decimal128) {
   return parseFloat(decimal128.$numberDecimal || 0).toFixed(2)

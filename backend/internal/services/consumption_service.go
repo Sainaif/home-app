@@ -171,3 +171,46 @@ func (s *ConsumptionService) GetUserAllocations(ctx context.Context, userID prim
 
 	return allocations, nil
 }
+// DeleteConsumption deletes a consumption/reading
+func (s *ConsumptionService) DeleteConsumption(ctx context.Context, consumptionID primitive.ObjectID) error {
+	result, err := s.db.Collection("consumptions").DeleteOne(ctx, bson.M{"_id": consumptionID})
+	if err != nil {
+		return fmt.Errorf("failed to delete consumption: %w", err)
+	}
+
+	if result.DeletedCount == 0 {
+		return errors.New("consumption not found")
+	}
+
+	return nil
+}
+
+// MarkConsumptionInvalid marks a consumption as invalid (user must own it)
+func (s *ConsumptionService) MarkConsumptionInvalid(ctx context.Context, consumptionID, userID primitive.ObjectID) error {
+	// Find the consumption and verify ownership
+	var consumption models.Consumption
+	err := s.db.Collection("consumptions").FindOne(ctx, bson.M{"_id": consumptionID}).Decode(&consumption)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return errors.New("consumption not found")
+		}
+		return fmt.Errorf("database error: %w", err)
+	}
+
+	// Verify user owns this consumption
+	if consumption.UserID != userID {
+		return errors.New("you can only mark your own readings as invalid")
+	}
+
+	// Update source to indicate it's invalid
+	_, err = s.db.Collection("consumptions").UpdateOne(
+		ctx,
+		bson.M{"_id": consumptionID},
+		bson.M{"$set": bson.M{"source": "invalid"}},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to mark consumption as invalid: %w", err)
+	}
+
+	return nil
+}
