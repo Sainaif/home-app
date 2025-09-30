@@ -1,0 +1,59 @@
+services:
+  api:
+    image: ghcr.io/sainaif/holy-home-api:latest
+    # Uncomment to run as specific user (replace 1000:1000 with your UID:GID)
+    # user: "1000:1000"
+    environment:
+      - APP_PORT=3000
+      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_DB=holyhome
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - APP_DOMAIN=${APP_DOMAIN:-serwerholythighble.pl}
+      - APP_BASE_URL=${APP_BASE_URL:-https://holy-home.serwerholythighble.pl}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "16162:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+
+  frontend:
+    image: ghcr.io/sainaif/holy-home-frontend:latest
+    # Uncomment to run as specific user (replace 1000:1000 with your UID:GID)
+    # user: "1000:1000"
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "16161:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+
+  mongo:
+    image: mongo:8.0
+    # Uncomment to run as specific user (replace 1000:1000 with your UID:GID)
+    # Note: You may need to fix ownership of mongo_data volume first
+    # user: "1000:1000"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mongo_data:

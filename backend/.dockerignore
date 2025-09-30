@@ -1,0 +1,10 @@
+# Binaries
+api
+*.exe
+
+# Test files
+*_test.go
+
+# Temporary files
+*.tmp
+*.swp
