@@ -57,6 +57,10 @@
             <label class="block text-sm font-medium mb-2">Notatka (opcjonalnie)</label>
             <input v-model="loanForm.note" type="text" class="input" />
           </div>
+          <div>
+            <label class="block text-sm font-medium mb-2">Termin spłaty (opcjonalnie)</label>
+            <input v-model="loanForm.dueDate" type="date" class="input" />
+          </div>
           <button type="submit" :disabled="creatingLoan" class="btn btn-primary w-full">
             {{ creatingLoan ? 'Dodawanie...' : 'Dodaj pożyczkę' }}
           </button>
@@ -104,7 +108,8 @@
             <tr class="text-left">
               <th class="pb-3">Od</th>
               <th class="pb-3">Do</th>
-              <th class="pb-3">{{ $t('balance.amount') }}</th>
+              <th class="pb-3">Kwota</th>
+              <th class="pb-3">Opis</th>
               <th class="pb-3">Status</th>
               <th class="pb-3">Data</th>
             </tr>
@@ -114,6 +119,7 @@
               <td class="py-3">{{ loan.fromUserName }}</td>
               <td class="py-3">{{ loan.toUserName }}</td>
               <td class="py-3">{{ formatMoney(loan.amountPLN) }} PLN</td>
+              <td class="py-3 text-gray-400">{{ loan.note || '-' }}</td>
               <td class="py-3">{{ loan.status }}</td>
               <td class="py-3">{{ formatDate(loan.createdAt) }}</td>
             </tr>
@@ -142,7 +148,8 @@ const loanForm = ref({
   lenderId: '',
   borrowerId: '',
   amount: '',
-  note: ''
+  note: '',
+  dueDate: ''
 })
 
 const paymentForm = ref({
@@ -198,11 +205,12 @@ async function createLoan() {
       lenderId: loanForm.value.lenderId,
       borrowerId: loanForm.value.borrowerId,
       amountPLN: loanForm.value.amount,
-      note: loanForm.value.note || undefined
+      note: loanForm.value.note || undefined,
+      dueDate: loanForm.value.dueDate ? new Date(loanForm.value.dueDate).toISOString() : undefined
     })
 
     // Reset form
-    loanForm.value = { lenderId: '', borrowerId: '', amount: '', note: '' }
+    loanForm.value = { lenderId: '', borrowerId: '', amount: '', note: '', dueDate: '' }
 
     // Reload data
     const [balancesRes, loansRes] = await Promise.all([
@@ -260,7 +268,9 @@ function getLoanDescription(loan) {
 }
 
 function formatMoney(decimal128) {
-  return parseFloat(decimal128.$numberDecimal || 0).toFixed(2)
+  if (!decimal128) return '0.00'
+  if (typeof decimal128 === 'number') return decimal128.toFixed(2)
+  return parseFloat(decimal128.$numberDecimal || decimal128 || 0).toFixed(2)
 }
 
 function formatDate(date) {

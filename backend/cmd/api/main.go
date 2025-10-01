@@ -165,12 +165,16 @@ func main() {
 	chores.Post("/assign", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), choreHandler.AssignChore)
 	chores.Post("/swap", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), choreHandler.SwapChoreAssignment)
 	chores.Post("/:id/rotate", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), choreHandler.RotateChore)
+	chores.Post("/:id/auto-assign", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), choreHandler.AutoAssignChore)
 
 	// Chore assignment routes
 	choreAssignments := app.Group("/chore-assignments")
 	choreAssignments.Get("/", middleware.AuthMiddleware(cfg), choreHandler.GetChoreAssignments)
 	choreAssignments.Get("/me", middleware.AuthMiddleware(cfg), choreHandler.GetMyChoreAssignments)
 	choreAssignments.Patch("/:id", middleware.AuthMiddleware(cfg), choreHandler.UpdateChoreAssignment)
+
+	// Chore leaderboard
+	app.Get("/chores/leaderboard", middleware.AuthMiddleware(cfg), choreHandler.GetUserLeaderboard)
 
 	// Prediction routes
 	predictions := app.Group("/predictions")

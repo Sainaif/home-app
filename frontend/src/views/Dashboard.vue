@@ -1,13 +1,18 @@
 <template>
   <div>
     <div class="mb-8">
-      <h1 class="text-4xl font-bold gradient-text mb-2">{{ $t('dashboard.welcome', { name: authStore.user?.name }) }}</h1>
-      <p class="text-gray-400">Przegląd Twojego gospodarstwa domowego</p>
+      <div v-if="route.params.userId" class="mb-4">
+        <button @click="router.push('/')" class="btn btn-secondary">← Powrót do mojego dashboardu</button>
+      </div>
+      <h1 class="text-4xl font-bold gradient-text mb-2">
+        {{ route.params.userId ? `Dashboard użytkownika: ${viewingUser?.name || 'Ładowanie...'}` : $t('dashboard.welcome', { name: authStore.user?.name }) }}
+      </h1>
+      <p class="text-gray-400">Przegląd {{ route.params.userId ? 'użytkownika' : 'Twojego' }} gospodarstwa domowego</p>
     </div>
 
     <!-- Stats Overview -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-      <div class="stat-card">
+      <div class="stat-card cursor-pointer hover:scale-105 transition-transform" @click="router.push('/bills')">
         <div class="flex items-center justify-between">
           <div>
             <p class="text-gray-400 text-sm mb-1">Rachunki tego miesiąca</p>
@@ -19,7 +24,7 @@
         </div>
       </div>
 
-      <div class="stat-card">
+      <div class="stat-card cursor-pointer hover:scale-105 transition-transform" @click="router.push('/chores')">
         <div class="flex items-center justify-between">
           <div>
             <p class="text-gray-400 text-sm mb-1">Oczekujące obowiązki</p>
@@ -31,7 +36,7 @@
         </div>
       </div>
 
-      <div class="stat-card">
+      <div class="stat-card cursor-pointer hover:scale-105 transition-transform" @click="router.push('/balance')">
         <div class="flex items-center justify-between">
           <div>
             <p class="text-gray-400 text-sm mb-1">Twój bilans</p>
@@ -41,6 +46,40 @@
             <Wallet class="w-6 h-6 text-green-400" />
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Pending Bills to Pay -->
+    <div v-if="pendingAllocations.length > 0" class="card mb-6">
+      <div class="card-header">
+        <h2 class="card-title">Rachunki do zapłaty</h2>
+        <div class="text-yellow-400 font-bold">{{ totalPendingAmount.toFixed(2) }} PLN</div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead class="border-b border-gray-700">
+            <tr class="text-left">
+              <th class="pb-3">Rachunek</th>
+              <th class="pb-3">Okres</th>
+              <th class="pb-3">Twoje zużycie</th>
+              <th class="pb-3">Do zapłaty</th>
+              <th class="pb-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in pendingAllocations" :key="item.allocation.id" class="border-b border-gray-700">
+              <td class="py-3">{{ getBillType(item.bill) }}</td>
+              <td class="py-3">{{ formatDateRange(item.bill.periodStart, item.bill.periodEnd) }}</td>
+              <td class="py-3">{{ formatUnits(item.allocation.units) }} {{ getUnit(item.bill.type) }}</td>
+              <td class="py-3 font-bold text-yellow-400">{{ formatMoney(item.allocation.amountPLN) }} PLN</td>
+              <td class="py-3">
+                <button @click="viewBill(item.bill.id)" class="text-blue-400 hover:text-blue-300 text-sm">
+                  Szczegóły →
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -62,7 +101,8 @@
         </div>
         <div v-else class="space-y-3">
           <div v-for="bill in bills.slice(0, 5)" :key="bill.id"
-               class="flex items-center justify-between p-3 rounded-xl bg-gray-700/30 hover:bg-gray-700/50 transition-colors">
+               @click="viewBill(bill.id)"
+               class="flex items-center justify-between p-3 rounded-xl bg-gray-700/30 hover:bg-gray-700/50 transition-colors cursor-pointer">
             <div class="flex items-center gap-3">
               <div class="w-10 h-10 rounded-lg bg-purple-600/20 flex items-center justify-center">
                 <Zap v-if="bill.type === 'electricity'" class="w-5 h-5 text-yellow-400" />
@@ -72,7 +112,7 @@
               </div>
               <div>
                 <p class="font-medium">{{ $t(`bills.${bill.type}`) }}</p>
-                <p class="text-xs text-gray-400">{{ formatDate(bill.periodStart) }}</p>
+                <p class="text-xs text-gray-400">{{ formatDateRange(bill.periodStart, bill.periodEnd) }}</p>
               </div>
             </div>
             <span class="font-bold text-purple-400">{{ formatMoney(bill.totalAmountPLN) }} PLN</span>
@@ -101,7 +141,8 @@
         </div>
         <div v-else class="space-y-3">
           <div v-for="chore in chores.slice(0, 5)" :key="chore.id"
-               class="flex items-center justify-between p-3 rounded-xl bg-gray-700/30 hover:bg-gray-700/50 transition-colors">
+               @click="router.push('/chores')"
+               class="flex items-center justify-between p-3 rounded-xl bg-gray-700/30 hover:bg-gray-700/50 transition-colors cursor-pointer">
             <div class="flex items-center gap-3">
               <div class="w-10 h-10 rounded-lg bg-pink-600/20 flex items-center justify-center">
                 <ClipboardList class="w-5 h-5 text-pink-400" />
@@ -137,7 +178,8 @@
         </div>
         <div v-else class="space-y-3">
           <div v-for="bal in balances.slice(0, 5)" :key="`${bal.fromUserId}-${bal.toUserId}`"
-               class="flex items-center justify-between p-3 rounded-xl bg-gray-700/30 hover:bg-gray-700/50 transition-colors">
+               @click="router.push('/balance')"
+               class="flex items-center justify-between p-3 rounded-xl bg-gray-700/30 hover:bg-gray-700/50 transition-colors cursor-pointer">
             <div class="flex items-center gap-3">
               <div class="w-10 h-10 rounded-lg bg-red-600/20 flex items-center justify-center">
                 <TrendingDown class="w-5 h-5 text-red-400" />
@@ -161,7 +203,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useEventStream } from '../composables/useEventStream'
 import api from '../api/client'
@@ -170,60 +213,113 @@ import {
   ArrowRight, FileX, CheckCircle, ClipboardList, BadgeCheck, TrendingDown
 } from 'lucide-vue-next'
 
+const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 const bills = ref([])
 const chores = ref([])
 const balances = ref([])
+const pendingAllocations = ref([])
 const loading = ref(false)
+const viewingUser = ref(null)
+
+// Determine which user's dashboard to show
+const targetUserId = computed(() => route.params.userId || authStore.user?.id)
 
 // Setup SSE for real-time updates
 const { connect, on } = useEventStream()
 
 const totalBalance = computed(() => {
+  const userId = targetUserId.value
   const total = balances.value.reduce((sum, bal) => {
-    const amount = parseFloat(bal.netAmount.$numberDecimal || 0)
-    return sum - amount
+    const amount = parseFloat(bal.netAmount.$numberDecimal || bal.netAmount || 0)
+
+    // If you're the fromUser, you owe (negative)
+    if (bal.fromUserId === userId) {
+      return sum - amount
+    }
+    // If you're the toUser, someone owes you (positive)
+    if (bal.toUserId === userId) {
+      return sum + amount
+    }
+    return sum
   }, 0)
-  return total.toFixed(2)
+
+  const formatted = total.toFixed(2)
+  return total >= 0 ? `+${formatted}` : formatted
+})
+
+const totalPendingAmount = computed(() => {
+  return pendingAllocations.value.reduce((sum, item) => {
+    const amount = parseFloat(item.allocation.amountPLN.$numberDecimal || item.allocation.amountPLN || 0)
+    return sum + amount
+  }, 0)
 })
 
 onMounted(async () => {
+  // Load user info if viewing another user's dashboard
+  if (route.params.userId) {
+    try {
+      const userRes = await api.get(`/users/${route.params.userId}`)
+      viewingUser.value = userRes.data
+    } catch (err) {
+      console.error('Failed to load user:', err)
+    }
+  }
+
   // Load initial data
   await loadDashboardData()
 
-  // Connect to SSE stream
-  connect()
+  // Connect to SSE stream (only for own dashboard)
+  if (!route.params.userId) {
+    connect()
 
-  // Listen for relevant events
-  on('bill.created', () => {
-    console.log('[Dashboard] Bill created, refreshing...')
-    loadBills()
-  })
+    // Listen for relevant events
+    on('bill.created', () => {
+      console.log('[Dashboard] Bill created, refreshing...')
+      loadBills()
+    })
 
-  on('chore.updated', () => {
-    console.log('[Dashboard] Chore updated, refreshing...')
-    loadChores()
-  })
+    on('chore.updated', () => {
+      console.log('[Dashboard] Chore updated, refreshing...')
+      loadChores()
+    })
 
-  on('payment.created', () => {
-    console.log('[Dashboard] Payment created, refreshing...')
-    loadBalances()
-  })
+    on('payment.created', () => {
+      console.log('[Dashboard] Payment created, refreshing...')
+      loadBalances()
+    })
+  }
+})
+
+// Watch for userId changes
+watch(targetUserId, () => {
+  loadDashboardData()
 })
 
 async function loadDashboardData() {
   loading.value = true
   try {
+    const userId = targetUserId.value
+    const isViewingOther = route.params.userId
+
     const [billsRes, choresRes, balanceRes] = await Promise.all([
       api.get('/bills'),
-      api.get('/chore-assignments/me?status=pending'),
-      api.get('/loans/balances/me')
+      isViewingOther
+        ? api.get(`/chore-assignments?userId=${userId}&status=pending`)
+        : api.get('/chore-assignments/me?status=pending'),
+      isViewingOther
+        ? api.get(`/loans/balances/user/${userId}`)
+        : api.get('/loans/balances/me')
     ])
 
     bills.value = billsRes.data || []
     chores.value = choresRes.data || []
     // Balance API may return object with balances array or just array
     balances.value = Array.isArray(balanceRes.data) ? balanceRes.data : (balanceRes.data?.balances || [])
+
+    // Load pending allocations (posted bills user hasn't paid yet)
+    await loadPendingAllocations()
   } catch (err) {
     console.error('Failed to load dashboard data:', err)
     bills.value = []
@@ -231,6 +327,54 @@ async function loadDashboardData() {
     balances.value = []
   } finally {
     loading.value = false
+  }
+}
+
+async function loadPendingAllocations() {
+  try {
+    const userId = targetUserId.value
+
+    // Get user's groupId if viewing another user
+    let userGroupId = authStore.user?.groupId
+    if (route.params.userId && viewingUser.value) {
+      userGroupId = viewingUser.value.groupId
+    }
+
+    // Get all posted bills
+    const billsRes = await api.get('/bills?status=posted')
+    const postedBills = billsRes.data || []
+
+    // For each posted bill, get user's allocations
+    const allocationsPromises = postedBills.map(async (bill) => {
+      try {
+        const allocRes = await api.get(`/allocations?billId=${bill.id}`)
+        const allocations = allocRes.data || []
+
+        // Find user's allocation (either direct user or through group)
+        const userAllocation = allocations.find(a => {
+          if (a.subjectType === 'user' && a.subjectId === userId) {
+            return true
+          }
+          if (a.subjectType === 'group' && userGroupId && a.subjectId === userGroupId) {
+            return true
+          }
+          return false
+        })
+
+        if (userAllocation) {
+          return { bill, allocation: userAllocation }
+        }
+      } catch (err) {
+        console.error(`Failed to load allocations for bill ${bill.id}:`, err)
+      }
+      return null
+    })
+
+    const results = await Promise.all(allocationsPromises)
+    pendingAllocations.value = results.filter(r => r !== null)
+  } catch (err) {
+    console.error('Failed to load pending allocations:', err)
+    pendingAllocations.value = []
   }
 }
 
@@ -263,10 +407,38 @@ async function loadBalances() {
 }
 
 function formatMoney(decimal128) {
-  return parseFloat(decimal128.$numberDecimal || 0).toFixed(2)
+  return parseFloat(decimal128.$numberDecimal || decimal128 || 0).toFixed(2)
 }
 
 function formatDate(date) {
   return new Date(date).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' })
+}
+
+function formatDateRange(start, end) {
+  const startDate = new Date(start).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' })
+  const endDate = new Date(end).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' })
+  return `${startDate} - ${endDate}`
+}
+
+function formatUnits(decimal128) {
+  return parseFloat(decimal128.$numberDecimal || decimal128 || 0).toFixed(3)
+}
+
+function getBillType(bill) {
+  if (bill.type === 'electricity') return 'Prąd'
+  if (bill.type === 'gas') return 'Gaz'
+  if (bill.type === 'internet') return 'Internet'
+  if (bill.type === 'inne' && bill.customType) return bill.customType
+  return bill.type
+}
+
+function getUnit(type) {
+  if (type === 'electricity') return 'kWh'
+  if (type === 'gas') return 'm³'
+  return 'jednostek'
+}
+
+function viewBill(billId) {
+  router.push(`/bills/${billId}`)
 }
 </script>

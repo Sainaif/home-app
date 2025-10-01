@@ -133,7 +133,7 @@
                 <span class="font-bold text-purple-400">{{ formatMoney(bill.totalAmountPLN) }} PLN</span>
               </td>
               <td>
-                <span class="text-gray-300">{{ bill.totalUnits ? formatUnits(bill.totalUnits) : '-' }}</span>
+                <span class="text-gray-300">{{ bill.totalUnits ? formatUnits(bill.totalUnits) + ' ' + getUnit(bill.type) : '-' }}</span>
               </td>
               <td>
                 <span :class="`badge badge-${bill.status}`">
@@ -157,6 +157,11 @@
                     <Check class="w-3 h-3" />
                     {{ $t('bills.close') }}
                   </button>
+                  <button @click="deleteBill(bill.id)"
+                          class="btn btn-sm bg-red-600/20 hover:bg-red-600/30 text-red-400 flex items-center gap-1">
+                    <Trash2 class="w-3 h-3" />
+                    Usuń
+                  </button>
                 </div>
               </td>
             </tr>
@@ -173,7 +178,7 @@ import { useAuthStore } from '../stores/auth'
 import api from '../api/client'
 import {
   Plus, FileX, Zap, Flame, Wifi, Users, Calendar,
-  PieChart, Send, Check, X, AlertCircle
+  PieChart, Send, Check, X, AlertCircle, Trash2
 } from 'lucide-vue-next'
 
 const authStore = useAuthStore()
@@ -268,19 +273,51 @@ async function closeBill(billId) {
   }
 }
 
-function allocateBill(billId) {
-  console.log('Allocate bill:', billId)
+async function allocateBill(billId) {
+  try {
+    await api.post(`/bills/${billId}/allocate`)
+    await loadBills()
+    alert('Rachunek zaalokowany pomyślnie')
+  } catch (err) {
+    console.error('Failed to allocate bill:', err)
+    alert('Błąd podczas alokacji: ' + (err.response?.data?.error || err.message))
+  }
+}
+
+async function deleteBill(billId) {
+  if (!confirm('Czy na pewno chcesz usunąć ten rachunek? To usunie również wszystkie powiązane odczyty.')) {
+    return
+  }
+
+  try {
+    await api.delete(`/bills/${billId}`)
+    await loadBills()
+    alert('Rachunek usunięty')
+  } catch (err) {
+    console.error('Failed to delete bill:', err)
+    alert('Błąd podczas usuwania: ' + (err.response?.data?.error || err.message))
+  }
 }
 
 function formatMoney(decimal128) {
-  return parseFloat(decimal128.$numberDecimal || 0).toFixed(2)
+  if (!decimal128) return '0.00'
+  if (typeof decimal128 === 'number') return decimal128.toFixed(2)
+  return parseFloat(decimal128.$numberDecimal || decimal128 || 0).toFixed(2)
 }
 
 function formatUnits(decimal128) {
-  return parseFloat(decimal128.$numberDecimal || 0).toFixed(3)
+  if (!decimal128) return '0.000'
+  if (typeof decimal128 === 'number') return decimal128.toFixed(3)
+  return parseFloat(decimal128.$numberDecimal || decimal128 || 0).toFixed(3)
 }
 
 function formatDate(date) {
   return new Date(date).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function getUnit(type) {
+  if (type === 'electricity') return 'kWh'
+  if (type === 'gas') return 'm³'
+  return ''
 }
 </script>

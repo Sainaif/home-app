@@ -98,6 +98,11 @@
                   </span>
                 </td>
                 <td class="py-3">
+                  <button @click="viewUserDashboard(user.id)" class="text-blue-400 hover:text-blue-300 text-sm mr-2">
+                    Dashboard
+                  </button>
+                </td>
+                <td class="py-3">
                   <button
                     @click="editUser(user)"
                     class="btn btn-sm btn-outline mr-2"
@@ -292,10 +297,12 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../api/client'
 import { UserPlus, Users, Edit, Trash, X } from 'lucide-vue-next'
 
+const router = useRouter()
 const authStore = useAuthStore()
 
 const profileForm = ref({
@@ -503,6 +510,10 @@ async function toggleUserStatus(user) {
   } catch (err) {
     console.error('Failed to toggle user status:', err)
   }
+}
+
+function viewUserDashboard(userId) {
+  router.push(`/dashboard/${userId}`)
 }
 
 function editGroup(group) {

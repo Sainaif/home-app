@@ -27,6 +27,7 @@ type CreateLoanRequest struct {
 	BorrowerID primitive.ObjectID `json:"borrowerId"`
 	AmountPLN  float64            `json:"amountPLN"`
 	Note       *string            `json:"note,omitempty"`
+	DueDate    *time.Time         `json:"dueDate,omitempty"`
 }
 
 type CreateLoanPaymentRequest struct {
@@ -82,6 +83,8 @@ func (s *LoanService) CreateLoan(ctx context.Context, req CreateLoanRequest) (*m
 		LenderID:   req.LenderID,
 		BorrowerID: req.BorrowerID,
 		AmountPLN:  amountDec,
+		Note:       req.Note,
+		DueDate:    req.DueDate,
 		Status:     "open",
 		CreatedAt:  time.Now(),
 	}

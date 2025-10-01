@@ -15,9 +15,21 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/dashboard/:userId',
+    name: 'UserDashboard',
+    component: () => import('../views/Dashboard.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true }
+  },
+  {
     path: '/bills',
     name: 'Bills',
     component: () => import('../views/Bills.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/bills/:id',
+    name: 'BillDetail',
+    component: () => import('../views/BillDetail.vue'),
     meta: { requiresAuth: true }
   },
   {
@@ -63,6 +75,8 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next('/login')
   } else if (to.path === '/login' && authStore.isAuthenticated) {
+    next('/')
+  } else if (to.meta.requiresAdmin && !authStore.isAdmin) {
     next('/')
   } else {
     next()

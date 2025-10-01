@@ -230,3 +230,44 @@ func (h *ChoreHandler) RotateChore(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusCreated).JSON(assignment)
 }
+// AutoAssignChore automatically assigns a chore to user with least workload (ADMIN only)
+func (h *ChoreHandler) AutoAssignChore(c *fiber.Ctx) error {
+	id := c.Params("id")
+	choreID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid chore ID",
+		})
+	}
+
+	var req struct {
+		DueDate time.Time `json:"dueDate"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	assignment, err := h.choreService.AutoAssignChore(c.Context(), choreID, req.DueDate)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(assignment)
+}
+
+// GetUserLeaderboard retrieves user leaderboard based on points
+func (h *ChoreHandler) GetUserLeaderboard(c *fiber.Ctx) error {
+	leaderboard, err := h.choreService.GetUserLeaderboard(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(leaderboard)
+}

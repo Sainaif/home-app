@@ -38,12 +38,12 @@
       <div v-if="loadingReadings" class="text-center py-8">{{ $t('common.loading') }}</div>
       <div v-else-if="readings.length === 0" class="text-center py-8 text-gray-400">Brak odczytów</div>
       <div v-else class="space-y-3">
-        <div v-for="reading in readings" :key="reading.id" class="flex justify-between items-center p-3 bg-gray-700 rounded">
+        <div v-for="reading in readings" :key="reading.id" class="flex justify-between items-center p-3 bg-gray-700 rounded hover:bg-gray-600 cursor-pointer transition-colors" @click="viewBill(reading.billId)">
           <div>
             <span class="font-medium">{{ formatMeterValue(reading.meterValue) }} {{ getUnit(reading.billId) }}</span>
             <span class="text-gray-400 text-sm ml-4">{{ formatDateTime(reading.recordedAt) }}</span>
             <span v-if="getBillInfo(reading.billId)" class="text-blue-400 text-sm ml-4">
-              {{ getBillInfo(reading.billId) }}
+              {{ getBillInfo(reading.billId) }} →
             </span>
           </div>
           <span class="text-sm text-gray-400">{{ reading.source || 'użytkownik' }}</span>
@@ -55,7 +55,10 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import api from '../api/client'
+
+const router = useRouter()
 
 const draftBills = ref([])
 const allBills = ref([])
@@ -72,7 +75,8 @@ const form = ref({
 onMounted(async () => {
   loadingReadings.value = true
   try {
-    const billsRes = await api.get('/bills?status=draft')
+    // Load only posted bills for readings (zamieszczone)
+    const billsRes = await api.get('/bills?status=posted')
     draftBills.value = (billsRes.data || []).filter(b => b.type === 'electricity' || b.type === 'gas')
 
     const allBillsRes = await api.get('/bills')
@@ -144,5 +148,9 @@ function getBillInfo(billId) {
                     bill.type === 'gas' ? 'Gaz' : bill.type
   const dateRange = `${formatDate(bill.periodStart)} - ${formatDate(bill.periodEnd)}`
   return `${typeLabel}: ${dateRange}`
+}
+
+function viewBill(billId) {
+  router.push(`/bills/${billId}`)
 }
 </script>

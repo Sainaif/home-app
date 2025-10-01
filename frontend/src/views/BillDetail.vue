@@ -1,0 +1,254 @@
+<template>
+  <div>
+    <div class="flex items-center mb-6">
+      <button @click="$router.back()" class="btn btn-secondary mr-4">← Powrót</button>
+      <h1 class="text-3xl font-bold">Szczegóły rachunku</h1>
+    </div>
+
+    <div v-if="loading" class="text-center py-8">Ładowanie...</div>
+    <div v-else-if="!bill" class="text-center py-8 text-red-400">Nie znaleziono rachunku</div>
+    <div v-else>
+      <!-- Bill Info Card -->
+      <div class="card mb-6">
+        <h2 class="text-xl font-semibold mb-4">Informacje o rachunku</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <span class="text-gray-400">Typ:</span>
+            <span class="ml-2 font-medium">{{ getBillType(bill) }}</span>
+          </div>
+          <div>
+            <span class="text-gray-400">Status:</span>
+            <span class="ml-2 font-medium">{{ bill.status }}</span>
+          </div>
+          <div>
+            <span class="text-gray-400">Okres:</span>
+            <span class="ml-2 font-medium">{{ formatDate(bill.periodStart) }} - {{ formatDate(bill.periodEnd) }}</span>
+          </div>
+          <div>
+            <span class="text-gray-400">Całkowita kwota:</span>
+            <span class="ml-2 font-medium">{{ formatMoney(bill.totalAmountPLN) }} PLN</span>
+          </div>
+          <div v-if="bill.totalUnits">
+            <span class="text-gray-400">Całkowite zużycie:</span>
+            <span class="ml-2 font-medium">{{ formatMeterValue(bill.totalUnits) }} {{ getUnit(bill.type) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Readings Card -->
+      <div class="card mb-6">
+        <h2 class="text-xl font-semibold mb-4">Odczyty liczników</h2>
+        <div v-if="loadingReadings" class="text-center py-4">Ładowanie odczytów...</div>
+        <div v-else-if="readings.length === 0" class="text-center py-4 text-gray-400">Brak odczytów</div>
+        <div v-else class="overflow-x-auto">
+          <table class="w-full">
+            <thead class="border-b border-gray-700">
+              <tr class="text-left">
+                <th class="pb-3">Użytkownik</th>
+                <th class="pb-3">Odczyt</th>
+                <th class="pb-3">Zużycie</th>
+                <th class="pb-3">Data</th>
+                <th class="pb-3">Źródło</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="reading in readings" :key="reading.id" class="border-b border-gray-700">
+                <td class="py-3">{{ getUserName(reading.userId) }}</td>
+                <td class="py-3">{{ formatMeterValue(reading.meterValue) }} {{ getUnit(bill.type) }}</td>
+                <td class="py-3">{{ formatMeterValue(reading.units) }} {{ getUnit(bill.type) }}</td>
+                <td class="py-3">{{ formatDateTime(reading.recordedAt) }}</td>
+                <td class="py-3">
+                  <span :class="reading.source === 'invalid' ? 'text-red-400' : 'text-gray-400'">
+                    {{ reading.source || 'user' }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Allocations Card -->
+      <div class="card mb-6">
+        <h2 class="text-xl font-semibold mb-4">Podział kosztów</h2>
+        <div v-if="loadingAllocations" class="text-center py-4">Ładowanie podziału...</div>
+        <div v-else-if="allocations.length === 0" class="text-center py-4 text-gray-400">
+          Rachunek jeszcze nie został podzielony
+        </div>
+        <div v-else>
+          <!-- Summary -->
+          <div class="mb-4 p-4 bg-gray-700 rounded">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <span class="text-gray-400">Suma odczytów:</span>
+                <span class="ml-2 font-medium">{{ totalUserUnits.toFixed(3) }} {{ getUnit(bill.type) }}</span>
+              </div>
+              <div>
+                <span class="text-gray-400">Część wspólna:</span>
+                <span class="ml-2 font-medium">{{ sharedPortion.toFixed(3) }} {{ getUnit(bill.type) }}</span>
+                <span class="text-gray-400 text-sm ml-2">({{ sharedPortionPercent.toFixed(1) }}%)</span>
+              </div>
+              <div>
+                <span class="text-gray-400">Koszt części wspólnej:</span>
+                <span class="ml-2 font-medium">{{ sharedCost.toFixed(2) }} PLN</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Per-user breakdown -->
+          <div class="overflow-x-auto">
+            <table class="w-full">
+              <thead class="border-b border-gray-700">
+                <tr class="text-left">
+                  <th class="pb-3">Użytkownik/Grupa</th>
+                  <th class="pb-3">Zużycie</th>
+                  <th class="pb-3">Kwota</th>
+                  <th class="pb-3">Metoda</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="allocation in allocations" :key="allocation.id" class="border-b border-gray-700">
+                  <td class="py-3">{{ getSubjectName(allocation) }}</td>
+                  <td class="py-3">{{ formatMeterValue(allocation.units) }} {{ getUnit(bill.type) }}</td>
+                  <td class="py-3 font-medium">{{ formatMoney(allocation.amountPLN) }} PLN</td>
+                  <td class="py-3 text-gray-400">{{ allocation.method }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import api from '../api/client'
+
+const route = useRoute()
+const billId = route.params.id
+
+const bill = ref(null)
+const readings = ref([])
+const allocations = ref([])
+const users = ref([])
+const groups = ref([])
+const loading = ref(false)
+const loadingReadings = ref(false)
+const loadingAllocations = ref(false)
+
+const totalUserUnits = computed(() => {
+  if (!bill.value?.totalUnits) return 0
+  const total = parseFloat(bill.value.totalUnits.$numberDecimal || bill.value.totalUnits || 0)
+  const userSum = readings.value
+    .filter(r => r.source !== 'invalid')
+    .reduce((sum, r) => sum + parseFloat(r.units.$numberDecimal || r.units || 0), 0)
+  return userSum
+})
+
+const sharedPortion = computed(() => {
+  if (!bill.value?.totalUnits) return 0
+  const total = parseFloat(bill.value.totalUnits.$numberDecimal || bill.value.totalUnits || 0)
+  return Math.max(0, total - totalUserUnits.value)
+})
+
+const sharedPortionPercent = computed(() => {
+  if (!bill.value?.totalUnits) return 0
+  const total = parseFloat(bill.value.totalUnits.$numberDecimal || bill.value.totalUnits || 0)
+  if (total === 0) return 0
+  return (sharedPortion.value / total) * 100
+})
+
+const sharedCost = computed(() => {
+  if (!bill.value?.totalAmountPLN || !bill.value?.totalUnits) return 0
+  const totalAmount = parseFloat(bill.value.totalAmountPLN.$numberDecimal || bill.value.totalAmountPLN || 0)
+  const totalUnits = parseFloat(bill.value.totalUnits.$numberDecimal || bill.value.totalUnits || 0)
+  if (totalUnits === 0) return 0
+  const pricePerUnit = totalAmount / totalUnits
+  return sharedPortion.value * pricePerUnit
+})
+
+onMounted(async () => {
+  loading.value = true
+  try {
+    const [billRes, usersRes, groupsRes] = await Promise.all([
+      api.get(`/bills/${billId}`),
+      api.get('/users'),
+      api.get('/groups')
+    ])
+    bill.value = billRes.data
+    users.value = usersRes.data || []
+    groups.value = groupsRes.data || []
+
+    // Load readings
+    loadingReadings.value = true
+    const readingsRes = await api.get(`/consumptions?billId=${billId}`)
+    readings.value = readingsRes.data || []
+    loadingReadings.value = false
+
+    // Load allocations
+    loadingAllocations.value = true
+    const allocationsRes = await api.get(`/allocations?billId=${billId}`)
+    allocations.value = allocationsRes.data || []
+    loadingAllocations.value = false
+  } catch (err) {
+    console.error('Failed to load bill details:', err)
+    bill.value = null
+  } finally {
+    loading.value = false
+  }
+})
+
+function getBillType(b) {
+  if (b.type === 'electricity') return 'Prąd'
+  if (b.type === 'gas') return 'Gaz'
+  if (b.type === 'internet') return 'Internet'
+  if (b.type === 'inne' && b.customType) return b.customType
+  return b.type
+}
+
+function getUnit(type) {
+  if (type === 'electricity') return 'kWh'
+  if (type === 'gas') return 'm³'
+  return 'jednostek'
+}
+
+function getUserName(userId) {
+  const user = users.value.find(u => u.id === userId)
+  return user?.name || 'Nieznany'
+}
+
+function getSubjectName(allocation) {
+  if (allocation.subjectType === 'user') {
+    const user = users.value.find(u => u.id === allocation.subjectId)
+    return user?.name || 'Nieznany użytkownik'
+  } else if (allocation.subjectType === 'group') {
+    const group = groups.value.find(g => g.id === allocation.subjectId)
+    return group?.name || 'Nieznana grupa'
+  }
+  return 'Nieznany'
+}
+
+function formatMoney(decimal128) {
+  if (!decimal128) return '0.00'
+  return parseFloat(decimal128.$numberDecimal || decimal128 || 0).toFixed(2)
+}
+
+function formatMeterValue(value) {
+  if (!value) return '0.000'
+  const numValue = parseFloat(value.$numberDecimal || value || 0)
+  return numValue.toFixed(3)
+}
+
+function formatDate(date) {
+  if (!date) return '-'
+  return new Date(date).toLocaleDateString('pl-PL')
+}
+
+function formatDateTime(date) {
+  if (!date) return '-'
+  return new Date(date).toLocaleString('pl-PL')
+}
+</script>

@@ -80,6 +80,8 @@ type Loan struct {
 	LenderID   primitive.ObjectID   `bson:"lender_id" json:"lenderId"`
 	BorrowerID primitive.ObjectID   `bson:"borrower_id" json:"borrowerId"`
 	AmountPLN  primitive.Decimal128 `bson:"amount_pln" json:"amountPLN"`
+	Note       *string              `bson:"note,omitempty" json:"note,omitempty"`
+	DueDate    *time.Time           `bson:"due_date,omitempty" json:"dueDate,omitempty"`
 	Status     string               `bson:"status" json:"status"` // open, partial, settled
 	CreatedAt  time.Time            `bson:"created_at" json:"createdAt"`
 }
@@ -95,9 +97,18 @@ type LoanPayment struct {
 
 // Chore represents a household task
 type Chore struct {
-	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Name      string             `bson:"name" json:"name"`
-	CreatedAt time.Time          `bson:"created_at" json:"createdAt"`
+	ID                 primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	Name               string             `bson:"name" json:"name"`
+	Description        *string            `bson:"description,omitempty" json:"description,omitempty"`
+	Frequency          string             `bson:"frequency" json:"frequency"` // daily, weekly, monthly, custom, irregular
+	CustomInterval     *int               `bson:"custom_interval,omitempty" json:"customInterval,omitempty"` // days for custom frequency
+	Difficulty         int                `bson:"difficulty" json:"difficulty"` // 1-5 scale
+	Priority           int                `bson:"priority" json:"priority"` // 1-5 scale
+	AssignmentMode     string             `bson:"assignment_mode" json:"assignmentMode"` // manual, round_robin, random
+	NotificationsEnabled bool             `bson:"notifications_enabled" json:"notificationsEnabled"`
+	ReminderHours      *int               `bson:"reminder_hours,omitempty" json:"reminderHours,omitempty"` // hours before due
+	IsActive           bool               `bson:"is_active" json:"isActive"`
+	CreatedAt          time.Time          `bson:"created_at" json:"createdAt"`
 }
 
 // ChoreAssignment represents a chore assigned to a user
@@ -106,8 +117,21 @@ type ChoreAssignment struct {
 	ChoreID        primitive.ObjectID  `bson:"chore_id" json:"choreId"`
 	AssigneeUserID primitive.ObjectID  `bson:"assignee_user_id" json:"assigneeUserId"`
 	DueDate        time.Time           `bson:"due_date" json:"dueDate"`
-	Status         string              `bson:"status" json:"status"` // pending, done
+	Status         string              `bson:"status" json:"status"` // pending, in_progress, done, overdue
 	CompletedAt    *time.Time          `bson:"completed_at,omitempty" json:"completedAt,omitempty"`
+	Points         int                 `bson:"points" json:"points"` // points earned for completion
+	IsOnTime       bool                `bson:"is_on_time" json:"isOnTime"` // completed before due date
+}
+
+// ChoreSettings represents global chore system settings
+type ChoreSettings struct {
+	ID                     primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	DefaultAssignmentMode  string             `bson:"default_assignment_mode" json:"defaultAssignmentMode"` // round_robin, random, manual
+	GlobalNotifications    bool               `bson:"global_notifications" json:"globalNotifications"`
+	DefaultReminderHours   int                `bson:"default_reminder_hours" json:"defaultReminderHours"`
+	PointsEnabled          bool               `bson:"points_enabled" json:"pointsEnabled"`
+	PointsMultiplier       float64            `bson:"points_multiplier" json:"pointsMultiplier"` // base points = difficulty * multiplier
+	UpdatedAt              time.Time          `bson:"updated_at" json:"updatedAt"`
 }
 
 // Notification represents an in-app notification
