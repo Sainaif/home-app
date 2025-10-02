@@ -33,12 +33,36 @@
       </form>
     </div>
 
+    <!-- Filters -->
+    <div class="card mb-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-sm font-medium mb-2">Rachunek</label>
+          <select v-model="filters.billId" class="input">
+            <option value="">Wszystkie rachunki</option>
+            <option v-for="bill in allBills" :key="bill.id" :value="bill.id">
+              {{ $t(`bills.${bill.type}`) }} - {{ formatDate(bill.periodStart) }}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-2">Sortuj</label>
+          <select v-model="filters.sortBy" class="input">
+            <option value="date-desc">Data (najnowsze)</option>
+            <option value="date-asc">Data (najstarsze)</option>
+            <option value="value-desc">Wartość (malejąco)</option>
+            <option value="value-asc">Wartość (rosnąco)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
     <div class="card">
       <h2 class="text-xl font-semibold mb-4">Ostatnie odczyty</h2>
       <div v-if="loadingReadings" class="text-center py-8">{{ $t('common.loading') }}</div>
-      <div v-else-if="readings.length === 0" class="text-center py-8 text-gray-400">Brak odczytów</div>
+      <div v-else-if="filteredReadings.length === 0" class="text-center py-8 text-gray-400">Brak odczytów</div>
       <div v-else class="space-y-3">
-        <div v-for="reading in readings" :key="reading.id" class="flex justify-between items-center p-3 bg-gray-700 rounded hover:bg-gray-600 cursor-pointer transition-colors" @click="viewBill(reading.billId)">
+        <div v-for="reading in filteredReadings" :key="reading.id" class="flex justify-between items-center p-3 bg-gray-700 rounded hover:bg-gray-600 cursor-pointer transition-colors" @click="viewBill(reading.billId)">
           <div>
             <span class="font-medium">{{ formatMeterValue(reading.meterValue) }} {{ getUnit(reading.billId) }}</span>
             <span class="text-gray-400 text-sm ml-4">{{ formatDateTime(reading.recordedAt) }}</span>
@@ -54,7 +78,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../api/client'
 
@@ -65,6 +89,38 @@ const allBills = ref([])
 const readings = ref([])
 const loading = ref(false)
 const loadingReadings = ref(false)
+
+const filters = ref({
+  billId: '',
+  sortBy: 'date-desc'
+})
+
+const filteredReadings = computed(() => {
+  let result = [...readings.value]
+
+  // Filter by bill
+  if (filters.value.billId) {
+    result = result.filter(r => r.billId === filters.value.billId)
+  }
+
+  // Sort
+  result.sort((a, b) => {
+    switch (filters.value.sortBy) {
+      case 'date-desc':
+        return new Date(b.recordedAt) - new Date(a.recordedAt)
+      case 'date-asc':
+        return new Date(a.recordedAt) - new Date(b.recordedAt)
+      case 'value-desc':
+        return b.meterValue - a.meterValue
+      case 'value-asc':
+        return a.meterValue - b.meterValue
+      default:
+        return 0
+    }
+  })
+
+  return result
+})
 
 const form = ref({
   billId: '',

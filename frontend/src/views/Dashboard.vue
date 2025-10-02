@@ -40,10 +40,10 @@
         <div class="flex items-center justify-between">
           <div>
             <p class="text-gray-400 text-sm mb-1">Twój bilans</p>
-            <p class="text-3xl font-bold text-green-400">{{ totalBalance }} PLN</p>
+            <p class="text-3xl font-bold" :class="totalBalanceNumber < 0 ? 'text-red-400' : 'text-green-400'">{{ totalBalance }} PLN</p>
           </div>
-          <div class="w-12 h-12 rounded-xl bg-green-600/20 flex items-center justify-center">
-            <Wallet class="w-6 h-6 text-green-400" />
+          <div class="w-12 h-12 rounded-xl" :class="totalBalanceNumber < 0 ? 'bg-red-600/20' : 'bg-green-600/20'">
+            <Wallet class="w-6 h-6" :class="totalBalanceNumber < 0 ? 'text-red-400' : 'text-green-400'" />
           </div>
         </div>
       </div>
@@ -229,9 +229,9 @@ const targetUserId = computed(() => route.params.userId || authStore.user?.id)
 // Setup SSE for real-time updates
 const { connect, on } = useEventStream()
 
-const totalBalance = computed(() => {
+const totalBalanceNumber = computed(() => {
   const userId = targetUserId.value
-  const total = balances.value.reduce((sum, bal) => {
+  return balances.value.reduce((sum, bal) => {
     const amount = parseFloat(bal.netAmount.$numberDecimal || bal.netAmount || 0)
 
     // If you're the fromUser, you owe (negative)
@@ -244,7 +244,10 @@ const totalBalance = computed(() => {
     }
     return sum
   }, 0)
+})
 
+const totalBalance = computed(() => {
+  const total = totalBalanceNumber.value
   const formatted = total.toFixed(2)
   return total >= 0 ? `+${formatted}` : formatted
 })
@@ -303,6 +306,16 @@ async function loadDashboardData() {
     const userId = targetUserId.value
     const isViewingOther = route.params.userId
 
+    // First, load chore definitions and users for enrichment
+    const [allChoresRes, usersRes] = await Promise.all([
+      api.get('/chores'),
+      api.get('/users')
+    ])
+
+    const allChoresData = allChoresRes.data || []
+    const usersData = usersRes.data || []
+
+    // Then load dashboard data
     const [billsRes, choresRes, balanceRes] = await Promise.all([
       api.get('/bills'),
       isViewingOther
@@ -314,7 +327,21 @@ async function loadDashboardData() {
     ])
 
     bills.value = billsRes.data || []
-    chores.value = choresRes.data || []
+    const choreAssignments = choresRes.data || []
+
+    // Enrich chore assignments with chore and user details
+    for (let assignment of choreAssignments) {
+      const chore = allChoresData.find(c => c.id === assignment.choreId)
+      if (chore) {
+        assignment.choreName = chore.name
+      }
+      const user = usersData.find(u => u.id === assignment.assigneeUserId)
+      if (user) {
+        assignment.userName = user.name
+      }
+    }
+
+    chores.value = choreAssignments
     // Balance API may return object with balances array or just array
     balances.value = Array.isArray(balanceRes.data) ? balanceRes.data : (balanceRes.data?.balances || [])
 

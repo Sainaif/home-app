@@ -57,10 +57,20 @@ func main() {
 	// Global Middleware
 	app.Use(recover.New())
 	app.Use(middleware.RequestIDMiddleware())
+
+	// Add cache control middleware to prevent browser caching of API responses
+	app.Use(func(c *fiber.Ctx) error {
+		c.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		c.Set("Pragma", "no-cache")
+		c.Set("Expires", "0")
+		return c.Next()
+	})
+
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: "*",
 		AllowMethods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization, Idempotency-Key, X-Request-ID",
+		ExposeHeaders: "Cache-Control, Pragma, Expires",
 	}))
 
 	if cfg.Logging.Format == "json" {
@@ -86,25 +96,37 @@ func main() {
 	consumptionService := services.NewConsumptionService(db.Database)
 	loanService := services.NewLoanService(db.Database)
 	choreService := services.NewChoreService(db.Database)
-	predictionService := services.NewPredictionService(db.Database, cfg)
+	supplyService := services.NewSupplyService(db.Database)
 	eventService := services.NewEventService()
 	exportService := services.NewExportService(db.Database)
+	backupService := services.NewBackupService(db.Database)
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(authService)
 	userHandler := handlers.NewUserHandler(userService)
 	groupHandler := handlers.NewGroupHandler(groupService)
 	billHandler := handlers.NewBillHandler(billService, consumptionService)
-	loanHandler := handlers.NewLoanHandler(loanService)
+	loanHandler := handlers.NewLoanHandler(loanService, eventService)
 	choreHandler := handlers.NewChoreHandler(choreService)
-	predictionHandler := handlers.NewPredictionHandler(predictionService)
-	// eventHandler := handlers.NewEventHandler(eventService) // Disabled due to crashes
+	supplyHandler := handlers.NewSupplyHandler(supplyService)
+	backupHandler := handlers.NewBackupHandler(backupService)
+	eventHandler := handlers.NewEventHandler(eventService)
 	exportHandler := handlers.NewExportHandler(exportService)
 
 	// Authentication routes
 	auth := app.Group("/auth")
 	auth.Post("/login", middleware.RateLimitMiddleware(5, 15*time.Minute), authHandler.Login)
 	auth.Post("/refresh", middleware.RateLimitMiddleware(10, 15*time.Minute), authHandler.Refresh)
+	auth.Post("/enable-2fa", middleware.AuthMiddleware(cfg), authHandler.Enable2FA)
+	auth.Post("/disable-2fa", middleware.AuthMiddleware(cfg), authHandler.Disable2FA)
+
+	// Passkey routes
+	auth.Post("/passkey/register/begin", middleware.AuthMiddleware(cfg), authHandler.BeginPasskeyRegistration)
+	auth.Post("/passkey/register/finish", middleware.AuthMiddleware(cfg), authHandler.FinishPasskeyRegistration)
+	auth.Post("/passkey/login/begin", authHandler.BeginPasskeyLogin)
+	auth.Post("/passkey/login/finish", authHandler.FinishPasskeyLogin)
+	auth.Get("/passkeys", middleware.AuthMiddleware(cfg), authHandler.ListPasskeys)
+	auth.Delete("/passkeys", middleware.AuthMiddleware(cfg), authHandler.DeletePasskey)
 
 	// User routes
 	users := app.Group("/users")
@@ -113,6 +135,7 @@ func main() {
 	users.Get("/me", middleware.AuthMiddleware(cfg), userHandler.GetMe)
 	users.Get("/:id", middleware.AuthMiddleware(cfg), userHandler.GetUser)
 	users.Patch("/:id", middleware.AuthMiddleware(cfg), userHandler.UpdateUser)
+	users.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), userHandler.DeleteUser)
 	users.Post("/change-password", middleware.AuthMiddleware(cfg), userHandler.ChangePassword)
 	users.Post("/:id/force-password-change", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), userHandler.ForcePasswordChange)
 
@@ -132,6 +155,7 @@ func main() {
 	bills.Post("/:id/allocate", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), billHandler.AllocateBill)
 	bills.Post("/:id/post", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), billHandler.PostBill)
 	bills.Post("/:id/close", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), billHandler.CloseBill)
+	bills.Post("/:id/reopen", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), billHandler.ReopenBill)
 	bills.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), billHandler.DeleteBill)
 
 	// Consumption routes
@@ -152,6 +176,7 @@ func main() {
 	loans.Get("/balances", middleware.AuthMiddleware(cfg), loanHandler.GetBalances)
 	loans.Get("/balances/me", middleware.AuthMiddleware(cfg), loanHandler.GetMyBalance)
 	loans.Get("/balances/user/:id", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), loanHandler.GetUserBalance)
+	loans.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), loanHandler.DeleteLoan)
 
 	// Loan payment routes
 	loanPayments := app.Group("/loan-payments")
@@ -176,27 +201,44 @@ func main() {
 	// Chore leaderboard
 	app.Get("/chores/leaderboard", middleware.AuthMiddleware(cfg), choreHandler.GetUserLeaderboard)
 
-	// Prediction routes
-	predictions := app.Group("/predictions")
-	predictions.Post("/recompute", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), predictionHandler.RecomputePrediction)
-	predictions.Get("/", middleware.AuthMiddleware(cfg), predictionHandler.GetPredictions)
+	// Supply routes
+	supplies := app.Group("/supplies")
 
-	// Events/SSE route - temporarily disabled due to crashes
-	// events := app.Group("/events")
-	// events.Get("/stream", middleware.AuthMiddleware(cfg), eventHandler.StreamEvents)
+	// Settings
+	supplies.Get("/settings", middleware.AuthMiddleware(cfg), supplyHandler.GetSettings)
+	supplies.Patch("/settings", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), supplyHandler.UpdateSettings)
+	supplies.Post("/settings/adjust", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), supplyHandler.AdjustBudget)
+
+	// Items
+	supplies.Get("/items", middleware.AuthMiddleware(cfg), supplyHandler.GetItems)
+	supplies.Post("/items", middleware.AuthMiddleware(cfg), supplyHandler.CreateItem)
+	supplies.Patch("/items/:id", middleware.AuthMiddleware(cfg), supplyHandler.UpdateItem)
+	supplies.Post("/items/:id/bought", middleware.AuthMiddleware(cfg), supplyHandler.MarkAsBought)
+	supplies.Delete("/items/:id", middleware.AuthMiddleware(cfg), supplyHandler.DeleteItem)
+
+	// Contributions
+	supplies.Get("/contributions", middleware.AuthMiddleware(cfg), supplyHandler.GetContributions)
+	supplies.Post("/contributions", middleware.AuthMiddleware(cfg), supplyHandler.CreateContribution)
+
+	// Stats
+	supplies.Get("/stats", middleware.AuthMiddleware(cfg), supplyHandler.GetStats)
+
+	// Events/SSE route
+	events := app.Group("/events")
+	events.Get("/stream", middleware.AuthMiddleware(cfg), eventHandler.StreamEvents)
 
 	// Export routes
 	exports := app.Group("/exports")
 	exports.Get("/bills", middleware.AuthMiddleware(cfg), exportHandler.ExportBills)
 	exports.Get("/bills/:id/allocations", middleware.AuthMiddleware(cfg), exportHandler.ExportAllocations)
+
+	// Backup routes (ADMIN ONLY - DANGEROUS)
+	backup := app.Group("/backup")
+	backup.Get("/export", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), backupHandler.ExportBackup)
+	backup.Post("/import", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), backupHandler.ImportBackup)
 	exports.Get("/balances", middleware.AuthMiddleware(cfg), exportHandler.ExportBalances)
 	exports.Get("/chores", middleware.AuthMiddleware(cfg), exportHandler.ExportChores)
 	exports.Get("/consumptions", middleware.AuthMiddleware(cfg), exportHandler.ExportConsumptions)
-
-	// Start nightly prediction job
-	stopCron := startNightlyPredictionJob(predictionService, eventService)
-	defer stopCron()
-	log.Println("Nightly prediction job scheduled for 02:00 Europe/Warsaw")
 
 	// Start server
 	addr := fmt.Sprintf("%s:%s", cfg.App.Host, cfg.App.Port)
@@ -232,80 +274,4 @@ func customErrorHandler(c *fiber.Ctx, err error) error {
 	return c.Status(code).JSON(fiber.Map{
 		"error": message,
 	})
-}
-
-// startNightlyPredictionJob starts a goroutine that runs predictions daily at 02:00
-func startNightlyPredictionJob(predictionService *services.PredictionService, eventService *services.EventService) func() {
-	stopChan := make(chan bool)
-
-	go func() {
-		// Load Warsaw timezone
-		location, err := time.LoadLocation("Europe/Warsaw")
-		if err != nil {
-			log.Printf("Failed to load timezone: %v, using UTC", err)
-			location = time.UTC
-		}
-
-		for {
-			now := time.Now().In(location)
-
-			// Calculate next 02:00
-			next := time.Date(now.Year(), now.Month(), now.Day(), 2, 0, 0, 0, location)
-			if now.After(next) {
-				// If we're past 02:00 today, schedule for tomorrow
-				next = next.Add(24 * time.Hour)
-			}
-
-			duration := next.Sub(now)
-			log.Printf("Next prediction job scheduled for: %s (in %v)", next.Format(time.RFC3339), duration)
-
-			select {
-			case <-time.After(duration):
-				// Run the prediction job
-				log.Println("Starting nightly prediction job...")
-				runPredictionJob(predictionService, eventService)
-				log.Println("Nightly prediction job completed")
-
-			case <-stopChan:
-				log.Println("Stopping nightly prediction job")
-				return
-			}
-		}
-	}()
-
-	// Return stop function
-	return func() {
-		close(stopChan)
-	}
-}
-
-// runPredictionJob executes predictions for all targets
-func runPredictionJob(predictionService *services.PredictionService, eventService *services.EventService) {
-	ctx := context.Background()
-	targets := []string{"electricity", "gas", "shared_budget"}
-	horizon := 3 // 3 months default
-
-	for _, target := range targets {
-		log.Printf("Computing prediction for target: %s", target)
-
-		req := services.RecomputeRequest{
-			Target:  target,
-			Horizon: horizon,
-		}
-
-		prediction, err := predictionService.RecomputePrediction(ctx, req)
-		if err != nil {
-			log.Printf("Failed to compute prediction for %s: %v", target, err)
-			continue
-		}
-
-		// Broadcast SSE event
-		eventService.Broadcast(services.EventPredictionUpdated, map[string]interface{}{
-			"target":       target,
-			"predictionId": prediction.ID.Hex(),
-			"createdAt":    prediction.CreatedAt,
-		})
-
-		log.Printf("Successfully computed prediction for %s (ID: %s)", target, prediction.ID.Hex())
-	}
 }

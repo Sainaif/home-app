@@ -1,8 +1,19 @@
 <template>
   <div>
-    <div class="flex items-center mb-6">
-      <button @click="$router.back()" class="btn btn-secondary mr-4">← Powrót</button>
-      <h1 class="text-3xl font-bold">Szczegóły rachunku</h1>
+    <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center">
+        <button @click="$router.back()" class="btn btn-secondary mr-4">← Powrót</button>
+        <h1 class="text-3xl font-bold">Szczegóły rachunku</h1>
+      </div>
+      <!-- Reopen button for admins -->
+      <button
+        v-if="authStore.isAdmin && bill && (bill.status === 'posted' || bill.status === 'closed')"
+        @click="showReopenModal = true"
+        class="btn btn-outline flex items-center gap-2"
+      >
+        <RotateCcw class="w-4 h-4" />
+        Ponownie otwórz
+      </button>
     </div>
 
     <div v-if="loading" class="text-center py-8">Ładowanie...</div>
@@ -32,6 +43,63 @@
             <span class="text-gray-400">Całkowite zużycie:</span>
             <span class="ml-2 font-medium">{{ formatMeterValue(bill.totalUnits) }} {{ getUnit(bill.type) }}</span>
           </div>
+          <div v-if="bill.reopenedAt">
+            <span class="text-gray-400">Ponownie otwarty:</span>
+            <span class="ml-2 font-medium">{{ formatDateTime(bill.reopenedAt) }}</span>
+          </div>
+          <div v-if="bill.reopenReason" class="md:col-span-2">
+            <span class="text-gray-400">Powód ponownego otwarcia:</span>
+            <span class="ml-2 font-medium">{{ bill.reopenReason }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reopen Modal -->
+      <div v-if="showReopenModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" @click.self="showReopenModal = false">
+        <div class="card max-w-md w-full mx-4">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold gradient-text">Ponownie otwórz rachunek</h2>
+            <button @click="showReopenModal = false" class="text-gray-400 hover:text-white">
+              <X class="w-6 h-6" />
+            </button>
+          </div>
+
+          <form @submit.prevent="reopenBill" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium mb-2">Status docelowy</label>
+              <select v-model="reopenData.targetStatus" required class="input">
+                <option value="draft">Szkic (draft)</option>
+                <option value="posted" v-if="bill.status === 'closed'">Zamieszczony (posted)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium mb-2">Powód ponownego otwarcia *</label>
+              <textarea
+                v-model="reopenData.reason"
+                required
+                class="input"
+                rows="3"
+                placeholder="Np. Poprawka odczytu, błąd w alokacji..."
+              ></textarea>
+            </div>
+
+            <div v-if="reopenError" class="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+              <AlertCircle class="w-4 h-4" />
+              {{ reopenError }}
+            </div>
+
+            <div class="flex gap-3">
+              <button type="submit" :disabled="reopening" class="btn btn-primary flex-1 flex items-center justify-center gap-2">
+                <div v-if="reopening" class="loading-spinner"></div>
+                <RotateCcw v-else class="w-5 h-5" />
+                {{ reopening ? 'Otwieranie...' : 'Ponownie otwórz' }}
+              </button>
+              <button type="button" @click="showReopenModal = false" class="btn btn-outline">
+                Anuluj
+              </button>
+            </div>
+          </form>
         </div>
       </div>
 
@@ -124,10 +192,14 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+import { RotateCcw, X, AlertCircle } from 'lucide-vue-next'
 import api from '../api/client'
 
 const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
 const billId = route.params.id
 
 const bill = ref(null)
@@ -138,6 +210,15 @@ const groups = ref([])
 const loading = ref(false)
 const loadingReadings = ref(false)
 const loadingAllocations = ref(false)
+
+// Reopen state
+const showReopenModal = ref(false)
+const reopening = ref(false)
+const reopenError = ref(null)
+const reopenData = ref({
+  targetStatus: 'draft',
+  reason: ''
+})
 
 const totalUserUnits = computed(() => {
   if (!bill.value?.totalUnits) return 0
@@ -250,5 +331,31 @@ function formatDate(date) {
 function formatDateTime(date) {
   if (!date) return '-'
   return new Date(date).toLocaleString('pl-PL')
+}
+
+async function reopenBill() {
+  reopening.value = true
+  reopenError.value = null
+
+  try {
+    await api.post(`/bills/${billId}/reopen`, reopenData.value)
+
+    // Refresh bill data
+    const billRes = await api.get(`/bills/${billId}`)
+    bill.value = billRes.data
+
+    // Reload allocations as they may have been cleared
+    loadingAllocations.value = true
+    const allocationsRes = await api.get(`/allocations?billId=${billId}`)
+    allocations.value = allocationsRes.data || []
+    loadingAllocations.value = false
+
+    showReopenModal.value = false
+    reopenData.value = { targetStatus: 'draft', reason: '' }
+  } catch (err) {
+    reopenError.value = err.response?.data?.error || 'Nie udało się ponownie otworzyć rachunku'
+  } finally {
+    reopening.value = false
+  }
 }
 </script>

@@ -51,7 +51,7 @@ type PairwiseBalance struct {
 	NetAmount    primitive.Decimal128 `json:"netAmount"`
 }
 
-// CreateLoan creates a new loan
+// CreateLoan creates a new loan with automatic debt offsetting
 func (s *LoanService) CreateLoan(ctx context.Context, req CreateLoanRequest) (*models.Loan, error) {
 	if req.LenderID == req.BorrowerID {
 		return nil, errors.New("lender and borrower cannot be the same user")
@@ -73,28 +73,143 @@ func (s *LoanService) CreateLoan(ctx context.Context, req CreateLoanRequest) (*m
 		}
 	}
 
-	amountDec, err := utils.DecimalFromFloat(req.AmountPLN)
+	// Check for reverse debt (borrower owes lender)
+	// Find open/partial loans where new borrower is the lender and new lender is the borrower
+	cursor, err := s.db.Collection("loans").Find(ctx, bson.M{
+		"lender_id":   req.BorrowerID,
+		"borrower_id": req.LenderID,
+		"status":      bson.M{"$in": []string{"open", "partial"}},
+	})
 	if err != nil {
-		return nil, fmt.Errorf("invalid amount: %w", err)
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var reverseLoans []models.Loan
+	if err := cursor.All(ctx, &reverseLoans); err != nil {
+		return nil, fmt.Errorf("failed to decode reverse loans: %w", err)
 	}
 
-	loan := models.Loan{
+	// If there are reverse debts, offset them
+	remainingAmount := req.AmountPLN
+	for _, reverseLoan := range reverseLoans {
+		if remainingAmount <= 0 {
+			break
+		}
+
+		// Calculate how much is remaining on the reverse loan
+		reverseLoanAmount, _ := utils.DecimalToFloat(reverseLoan.AmountPLN)
+		totalPaid, err := s.getTotalPaidForLoan(ctx, reverseLoan.ID)
+		if err != nil {
+			return nil, err
+		}
+		reverseRemaining := reverseLoanAmount - totalPaid
+
+		if reverseRemaining <= 0 {
+			continue
+		}
+
+		// Offset amount is the minimum of remaining on both sides
+		offsetAmount := remainingAmount
+		if reverseRemaining < offsetAmount {
+			offsetAmount = reverseRemaining
+		}
+
+		// Create a payment to offset the reverse loan
+		offsetAmountDec, _ := utils.DecimalFromFloat(offsetAmount)
+		payment := models.LoanPayment{
+			ID:        primitive.NewObjectID(),
+			LoanID:    reverseLoan.ID,
+			AmountPLN: offsetAmountDec,
+			PaidAt:    time.Now(),
+			Note:      getStringPtr("Automatyczne rozliczenie długów"),
+		}
+
+		_, err = s.db.Collection("loan_payments").InsertOne(ctx, payment)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create offset payment: %w", err)
+		}
+
+		// Update reverse loan status
+		newTotalPaid := totalPaid + offsetAmount
+		var newStatus string
+		if newTotalPaid >= reverseLoanAmount {
+			newStatus = "settled"
+		} else {
+			newStatus = "partial"
+		}
+
+		_, err = s.db.Collection("loans").UpdateOne(
+			ctx,
+			bson.M{"_id": reverseLoan.ID},
+			bson.M{"$set": bson.M{"status": newStatus}},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update reverse loan status: %w", err)
+		}
+
+		remainingAmount -= offsetAmount
+	}
+
+	// If there's still remaining amount, create the new loan
+	if remainingAmount > 0 {
+		amountDec, err := utils.DecimalFromFloat(remainingAmount)
+		if err != nil {
+			return nil, fmt.Errorf("invalid amount: %w", err)
+		}
+
+		loan := models.Loan{
+			ID:         primitive.NewObjectID(),
+			LenderID:   req.LenderID,
+			BorrowerID: req.BorrowerID,
+			AmountPLN:  amountDec,
+			Note:       req.Note,
+			DueDate:    req.DueDate,
+			Status:     "open",
+			CreatedAt:  time.Now(),
+		}
+
+		_, err = s.db.Collection("loans").InsertOne(ctx, loan)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create loan: %w", err)
+		}
+
+		return &loan, nil
+	}
+
+	// All debt was offset, save settled loan to database
+	amountDec, _ := utils.DecimalFromFloat(req.AmountPLN)
+
+	// Append offset message to user's note if they provided one
+	var settledNote *string
+	if req.Note != nil && *req.Note != "" {
+		combined := *req.Note + " (Całkowicie rozliczone z istniejącymi długami)"
+		settledNote = &combined
+	} else {
+		settledNote = getStringPtr("Całkowicie rozliczone z istniejącymi długami")
+	}
+
+	settledLoan := models.Loan{
 		ID:         primitive.NewObjectID(),
 		LenderID:   req.LenderID,
 		BorrowerID: req.BorrowerID,
 		AmountPLN:  amountDec,
-		Note:       req.Note,
+		Note:       settledNote,
 		DueDate:    req.DueDate,
-		Status:     "open",
+		Status:     "settled",
 		CreatedAt:  time.Now(),
 	}
 
-	_, err = s.db.Collection("loans").InsertOne(ctx, loan)
+	_, err = s.db.Collection("loans").InsertOne(ctx, settledLoan)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create loan: %w", err)
+		return nil, fmt.Errorf("failed to create settled loan: %w", err)
 	}
 
-	return &loan, nil
+	return &settledLoan, nil
+}
+
+func getStringPtr(s string) *string {
+	return &s
 }
 
 // CreateLoanPayment records a loan repayment
@@ -263,8 +378,9 @@ func (s *LoanService) GetBalances(ctx context.Context) ([]PairwiseBalance, error
 
 type LoanWithNames struct {
 	models.Loan
-	FromUserName string `json:"fromUserName"`
-	ToUserName   string `json:"toUserName"`
+	FromUserName string               `json:"fromUserName"`
+	ToUserName   string               `json:"toUserName"`
+	RemainingPLN primitive.Decimal128 `json:"remainingPLN"`
 }
 
 // GetLoans retrieves all loans with user names
@@ -297,13 +413,23 @@ func (s *LoanService) GetLoans(ctx context.Context) ([]LoanWithNames, error) {
 		userMap[user.ID] = user.Name
 	}
 
-	// Enrich with user names
+	// Enrich with user names and remaining amounts
 	result := make([]LoanWithNames, len(loans))
 	for i, loan := range loans {
+		// Calculate remaining amount
+		loanAmount, _ := utils.DecimalToFloat(loan.AmountPLN)
+		totalPaid, err := s.getTotalPaidForLoan(ctx, loan.ID)
+		if err != nil {
+			totalPaid = 0
+		}
+		remaining := loanAmount - totalPaid
+		remainingDec, _ := utils.DecimalFromFloat(remaining)
+
 		result[i] = LoanWithNames{
 			Loan:         loan,
 			FromUserName: userMap[loan.LenderID],
 			ToUserName:   userMap[loan.BorrowerID],
+			RemainingPLN: remainingDec,
 		}
 	}
 
@@ -326,6 +452,33 @@ func (s *LoanService) GetUserBalance(ctx context.Context, userID primitive.Objec
 	}
 
 	return result, nil
+}
+
+// DeleteLoan deletes a loan and all its payments
+func (s *LoanService) DeleteLoan(ctx context.Context, loanID primitive.ObjectID) error {
+	// Check if loan exists
+	var loan models.Loan
+	err := s.db.Collection("loans").FindOne(ctx, bson.M{"_id": loanID}).Decode(&loan)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return errors.New("loan not found")
+		}
+		return fmt.Errorf("database error: %w", err)
+	}
+
+	// Delete all payments for this loan
+	_, err = s.db.Collection("loan_payments").DeleteMany(ctx, bson.M{"loan_id": loanID})
+	if err != nil {
+		return fmt.Errorf("failed to delete loan payments: %w", err)
+	}
+
+	// Delete the loan
+	_, err = s.db.Collection("loans").DeleteOne(ctx, bson.M{"_id": loanID})
+	if err != nil {
+		return fmt.Errorf("failed to delete loan: %w", err)
+	}
+
+	return nil
 }
 
 // Helper functions

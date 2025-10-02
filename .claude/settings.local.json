@@ -40,7 +40,21 @@
       "Bash(sudo lsof:*)",
       "Bash(docker stop:*)",
       "Bash(docker rm:*)",
-      "Bash(docker history:*)"
+      "Bash(docker history:*)",
+      "Bash(go doc:*)",
+      "Bash(chmod:*)",
+      "Bash(./test_sse.sh:*)",
+      "Bash(./test_sse_long.sh:*)",
+      "Bash(timeout:*)",
+      "Bash(go list:*)",
+      "Bash(grep:*)",
+      "Bash(ADMIN_EMAIL=admin@example.pl ./seed_data.sh)",
+      "Bash(./api_test.sh)",
+      "Bash(ADMIN_EMAIL=admin@example.pl ./api_test.sh)",
+      "Bash(env ADMIN_EMAIL=admin@example.pl ./api_test.sh:*)",
+      "Bash(bash -c 'export ADMIN_EMAIL=admin@example.pl && ./api_test.sh')",
+      "Bash(./security_test.sh)",
+      "Bash(docker restart:*)"
     ],
     "deny": [],
     "ask": []

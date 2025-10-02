@@ -8,7 +8,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sainaif/holy-home/internal/middleware"
 	"github.com/sainaif/holy-home/internal/services"
-	"github.com/valyala/fasthttp"
 )
 
 type EventHandler struct {
@@ -29,54 +28,51 @@ func (h *EventHandler) StreamEvents(c *fiber.Ctx) error {
 		})
 	}
 
-	// Set SSE headers
+	// Set SSE headers - CRITICAL for keeping connection alive
 	c.Set("Content-Type", "text/event-stream")
 	c.Set("Cache-Control", "no-cache")
 	c.Set("Connection", "keep-alive")
+	c.Set("Transfer-Encoding", "chunked")
 	c.Set("X-Accel-Buffering", "no") // Disable nginx buffering
 
-	// Subscribe to events
-	eventChan := h.eventService.Subscribe(userID)
-	defer h.eventService.Unsubscribe(userID)
+	// IMPORTANT: SetBodyStreamWriter runs in a goroutine
+	// All resource management must happen INSIDE the callback
+	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		// Subscribe to events INSIDE the stream writer
+		eventChan := h.eventService.Subscribe(userID)
+		defer h.eventService.Unsubscribe(userID)
 
-	// Stream events
-	c.Context().SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
-		// Send initial connection event
+		// Create heartbeat ticker INSIDE the stream writer
+		heartbeat := time.NewTicker(15 * time.Second)
+		defer heartbeat.Stop()
+
+		// Send initial connection message
 		fmt.Fprintf(w, "data: {\"type\":\"connected\",\"timestamp\":\"%s\"}\n\n", time.Now().Format(time.RFC3339))
-		w.Flush()
+		if err := w.Flush(); err != nil {
+			return
+		}
 
-		// Keep connection alive with heartbeat
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
-
+		// Main event loop - this keeps the connection open
 		for {
 			select {
 			case event, ok := <-eventChan:
 				if !ok {
-					// Channel closed
 					return
 				}
 
-				// Send event to client
-				formatted := event.FormatSSE()
-				if _, err := fmt.Fprint(w, formatted); err != nil {
+				fmt.Fprint(w, event.FormatSSE())
+				if err := w.Flush(); err != nil {
 					return
 				}
-				w.Flush()
 
-			case <-ticker.C:
-				// Send heartbeat to keep connection alive
-				if _, err := fmt.Fprintf(w, ": heartbeat\n\n"); err != nil {
+			case <-heartbeat.C:
+				fmt.Fprintf(w, ": heartbeat\n\n")
+				if err := w.Flush(); err != nil {
 					return
 				}
-				w.Flush()
-
-			case <-c.Context().Done():
-				// Client disconnected
-				return
 			}
 		}
-	}))
+	})
 
 	return nil
 }

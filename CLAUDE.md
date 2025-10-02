@@ -4,9 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Holy Home is a self-hosted household management application for tracking shared bills, utilities, loans, chores, and forecasts. It uses a microservices architecture with:
+Holy Home is a self-hosted household management application for tracking shared bills, utilities, loans, and chores. It uses a microservices architecture with:
 - **Backend**: Go 1.25+ with Fiber framework
-- **ML Service**: Python 3.13+ with FastAPI for time-series forecasting
 - **Frontend**: Vue 3 with Vite, Pinia, Vue Router, and Tailwind CSS
 - **Database**: MongoDB 8.0
 
@@ -20,14 +19,6 @@ go run ./cmd/api         # Run locally (requires MongoDB and env vars)
 go build ./cmd/api       # Build binary
 go test ./...            # Run tests
 go fmt ./...             # Format code
-```
-
-### ML Service (Python)
-```bash
-cd ml
-pip install -r requirements.txt                              # Install dependencies
-python -m app.main                                           # Run service
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000   # Run with auto-reload
 ```
 
 ### Frontend (Vue)
@@ -46,7 +37,6 @@ npm run preview          # Preview production build
 cd deploy
 docker-compose up -d                      # Start all services
 docker-compose logs -f api                # View API logs
-docker-compose logs -f ml                 # View ML logs
 docker-compose down                       # Stop services
 docker-compose build && docker-compose up -d  # Rebuild after code changes
 ```
@@ -69,7 +59,7 @@ The Go backend uses Fiber framework with clean architecture principles:
 - **`cmd/api/main.go`**: Application entry point, initializes services and routes
 - **`internal/config/`**: Environment configuration management
 - **`internal/database/`**: MongoDB connection with health checks and indexing
-- **`internal/models/`**: 11 data models (User, Group, Bill, Consumption, Allocation, Payment, Loan, LoanPayment, Chore, ChoreAssignment, Notification, Prediction)
+- **`internal/models/`**: 10 data models (User, Group, Bill, Consumption, Allocation, Payment, Loan, LoanPayment, Chore, ChoreAssignment, Notification)
 - **`internal/handlers/`**: HTTP request handlers for all endpoints
 - **`internal/services/`**: Business logic layer (auth, bills, loans, balance calculations)
 - **`internal/middleware/`**: Auth (JWT), RBAC, request ID tracking, rate limiting
@@ -84,26 +74,13 @@ The Go backend uses Fiber framework with clean architecture principles:
 5. **Electricity Allocation**: Complex cost distribution with personal usage pool + common area pool weighted by group size
 6. **Balance Calculations**: Automatic pairwise debt netting between users
 
-### ML Service Structure (`/ml`)
-
-Python FastAPI service for time-series forecasting:
-
-- **`app/main.py`**: FastAPI application with health check and forecast endpoints
-- **`app/models.py`**: Pydantic request/response models
-- **`app/forecaster.py`**: Forecasting engine with model selection:
-  - SARIMAX for series with ≥24 data points (seasonal=12)
-  - Holt-Winters Exponential Smoothing for 12-23 points
-  - Simple Exponential Smoothing for <12 points
-
-**Forecast Endpoint**: `POST /forecast` accepts historical dates/values and returns predicted units, costs, and confidence intervals.
-
 ### Frontend Structure (`/frontend/src`)
 
 Vue 3 SPA with composition API:
 
 - **`main.js`**: App initialization with Pinia, Router, i18n, axios interceptors
 - **`App.vue`**: Root component with navigation and dark theme (purple/pink)
-- **`router/index.js`**: 8 routes (Login, Dashboard, Bills, Readings, Balance, Chores, Predictions, Settings)
+- **`router/index.js`**: 7 routes (Login, Dashboard, Bills, Readings, Balance, Chores, Settings)
 - **`stores/`**: Pinia stores for auth and application state
 - **`views/`**: Page components
 - **`components/`**: Reusable UI components
@@ -121,7 +98,6 @@ Required environment variables (see `.env.example`):
 - `MONGO_DB=holyhome` - Database name
 - `JWT_SECRET` and `JWT_REFRESH_SECRET` - Must be strong random strings
 - `ADMIN_EMAIL` and `ADMIN_PASSWORD` - Bootstrap admin credentials
-- `ML_BASE_URL=http://ml:8000` - ML service URL
 
 ## API Structure
 
@@ -141,7 +117,7 @@ All API endpoints require JWT bearer token except login. ADMIN role required for
 
 ## Database Collections
 
-MongoDB `holyhome` database with 11 collections:
+MongoDB `holyhome` database with 10 collections:
 - **users**: Email, password hash, role, group reference, TOTP secret
 - **groups**: Name, weight (for cost allocation)
 - **bills**: Type (electricity/gas/internet/inne), custom_type (for "inne"), period, amount, units, status
@@ -152,7 +128,7 @@ MongoDB `holyhome` database with 11 collections:
 - **loan_payments**: Loan reference, repayment amount
 - **chores**: Name, description
 - **chore_assignments**: Chore reference, assignee, due date, status
-- **predictions**: Target type, period, forecasted values, model metadata
+- **notifications**: Channel (app), template, scheduled date, status
 
 ## Key Business Logic
 
@@ -178,9 +154,8 @@ Implementation: `backend/internal/services/loan_service.go`
 
 ## Testing
 
-Health check endpoints:
+Health check endpoint:
 - API: `http://localhost:16162/healthz` (Docker) or `http://localhost:3000/healthz` (local dev)
-- ML: `http://localhost:16163/healthz` (Docker) or `http://localhost:8000/healthz` (local dev)
 
 See [API_EXAMPLES.md](API_EXAMPLES.md) for detailed API usage examples.
 

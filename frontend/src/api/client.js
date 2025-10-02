@@ -6,16 +6,25 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json'
   },
-  timeout: 5000 // 5 second timeout
+  timeout: 10000 // 10 second timeout
 })
 
-// Request interceptor to add auth token
+// Request interceptor to add auth token and cache-busting
 api.interceptors.request.use(
   (config) => {
     const authStore = useAuthStore()
     if (authStore.accessToken) {
       config.headers.Authorization = `Bearer ${authStore.accessToken}`
     }
+
+    // Add cache-busting timestamp to GET requests
+    if (config.method === 'get') {
+      config.params = {
+        ...config.params,
+        _t: Date.now()
+      }
+    }
+
     return config
   },
   (error) => Promise.reject(error)

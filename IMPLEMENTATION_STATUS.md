@@ -25,7 +25,7 @@
 
 #### Database & Models
 - ✅ MongoDB connection with automatic reconnection
-- ✅ All 11 collection models with proper types
+- ✅ All 10 collection models with proper types
 - ✅ Decimal128 for money (2dp) and units (3dp)
 - ✅ 6 indexes for query optimization
 - ✅ Banker's rounding utilities
@@ -120,45 +120,6 @@
 
 ---
 
-### **Phase 4: ML Sidecar (Python + FastAPI)** ✅ 100%
-
-#### Forecasting Engine
-- ✅ **SARIMAX** (series length ≥24):
-  - Seasonal period 12 (monthly data)
-  - Grid search for optimal (p,d,q) parameters
-  - AIC-based model selection
-
-- ✅ **Holt-Winters ExponentialSmoothing** (12-23 points):
-  - Additive trend and seasonality
-  - Dynamic seasonal period adjustment
-
-- ✅ **Simple Exponential Smoothing** (<12 points):
-  - Fallback to moving average if needed
-
-- ✅ **Confidence Intervals:**
-  - From model when available
-  - Empirical estimation via residuals
-  - Non-negative enforcement
-
-#### API Endpoints
-- ✅ `POST /forecast` - Generate time-series forecast
-  - Accepts historical dates and values
-  - Returns predictions with confidence bands
-  - Optional cost projection (units → PLN)
-
-- ✅ `GET /healthz` - Health check
-
-#### Features
-- ✅ Automatic model selection by series length
-- ✅ Structured JSON logging (English)
-- ✅ Pydantic validation for all inputs/outputs
-- ✅ AIC/fit statistics in response
-
-**Files Created:** 4
-**Lines of Code:** ~650
-
----
-
 ## 📊 **Summary Statistics**
 
 | Component | Status | Endpoints | Files | LOC | Completion |
@@ -166,27 +127,20 @@
 | Infrastructure | ✅ Complete | - | 7 | 300 | 100% |
 | Backend Core | ✅ Complete | 4 | 15 | 2,500 | 100% |
 | Backend APIs | ✅ Complete | 40+ | 18 | 4,500 | 100% |
-| ML Sidecar | ✅ Complete | 2 | 4 | 650 | 100% |
 | Frontend | ⏳ Pending | - | 0 | 0 | 0% |
-| **TOTAL** | **70% Complete** | **46+** | **44** | **~7,950** | **70%** |
+| **TOTAL** | **80% Complete** | **44+** | **40** | **~7,300** | **80%** |
 
 ---
 
-## 🚧 Remaining Work (30% of Total Project)
+## 🚧 Remaining Work (20% of Total Project)
 
-### Backend (3 tasks)
-1. **Predictions Orchestration** (~300 LOC)
-   - Go service to call ML sidecar
-   - Store predictions in MongoDB
-   - Nightly cron job (02:00 local)
-   - Trigger on bill/consumption changes
-
-2. **SSE Endpoint** (~200 LOC)
+### Backend (2 tasks)
+1. **SSE Endpoint** (~200 LOC)
    - `/events/stream` with authentication
-   - Event types: `bill.created`, `consumption.created`, `prediction.updated`, `payment.created`, `chore.updated`
+   - Event types: `bill.created`, `consumption.created`, `payment.created`, `chore.updated`
    - Connection management
 
-3. **CSV/PDF Exports** (~400 LOC)
+2. **CSV/PDF Exports** (~400 LOC)
    - Bills export with allocations
    - Balance summaries
    - Chore history
@@ -195,8 +149,7 @@
 - Vue 3 + Vite + Pinia + Router project setup
 - Tailwind CSS dark theme (purple #9333ea, pink #ec4899)
 - Polish i18n (`pl.json`)
-- 8 views: Login, Dashboard, Bills, Readings, Balance, Chores, Predictions, Settings
-- ECharts integration for predictions
+- 7 views: Login, Dashboard, Bills, Readings, Balance, Chores, Settings
 - SSE client for real-time updates
 - PWA configuration
 
@@ -215,17 +168,9 @@
 │   Go API (Fiber) │
 │  - Auth (JWT)    │     ┌──────────────┐
 │  - 40+ endpoints │────→│   MongoDB    │
-│  - Allocations   │     │  (11 colls)  │
+│  - Allocations   │     │  (10 colls)  │
 │  - RBAC          │     └──────────────┘
-└────────┬─────────┘
-         │ HTTP
-         ↓
-┌─────────────────────┐
-│ Python ML (FastAPI) │
-│  - SARIMAX          │
-│  - Holt-Winters     │
-│  - Simple ES        │
-└─────────────────────┘
+└──────────────────┘
 ```
 
 ---
@@ -258,14 +203,13 @@
 ## 🚀 **Next Steps (Priority Order)**
 
 ### Immediate (Essential for MVP)
-1. **Predictions Orchestration** - Connect Go API to ML sidecar
-2. **Frontend Core** - Login, Dashboard, Bills views
-3. **SSE Events** - Real-time updates for predictions
+1. **Frontend Core** - Login, Dashboard, Bills views
+2. **SSE Events** - Real-time updates
 
 ### Short-term (Full Functionality)
-4. **All Frontend Views** - Complete 8-view application
-5. **Polish i18n** - Full UI translation
-6. **CSV/PDF Exports** - Reporting functionality
+3. **All Frontend Views** - Complete 7-view application
+4. **Polish i18n** - Full UI translation
+5. **CSV/PDF Exports** - Reporting functionality
 
 ### Nice-to-Have (Polish)
 7. **PWA Support** - Offline capability
@@ -282,11 +226,6 @@
 - [ ] Integration tests with test MongoDB
 - [ ] API endpoint tests with authentication
 
-### ML Sidecar
-- [ ] Model selection by series length
-- [ ] Forecast reproducibility with fixed seeds
-- [ ] Confidence interval validation
-
 ### Frontend
 - [ ] E2E login flow
 - [ ] Add bill → record readings → view allocations
@@ -299,7 +238,6 @@
 
 - **Go Fiber** framework for high-performance HTTP
 - **MongoDB Decimal128** for exact financial calculations
-- **SARIMAX/Holt-Winters** for professional forecasting
 - **JWT + TOTP** for enterprise-grade security
 - **Structured JSON logging** for observability
 - **Docker Compose** for easy deployment
@@ -307,5 +245,5 @@
 ---
 
 **Total Development Time:** ~8 hours
-**Estimated Remaining Time:** ~4 hours (frontend focus)
+**Estimated Remaining Time:** ~3 hours (frontend focus)
 **Code Quality:** Production-ready with proper error handling and validation

@@ -13,7 +13,6 @@ sleep 10
 
 # Set base URL
 API_URL="http://localhost:8080"
-ML_URL="http://localhost:8000"
 ```
 
 ## 1. Authentication
@@ -287,71 +286,7 @@ curl -X POST $API_URL/chores/swap \
   }'
 ```
 
-## 6. Predictions
-
-### Recompute Prediction
-```bash
-# Electricity forecast
-curl -X POST $API_URL/predictions/recompute \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "target": "electricity",
-    "horizon": 3
-  }'
-
-# Gas forecast
-curl -X POST $API_URL/predictions/recompute \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "target": "gas",
-    "horizon": 6
-  }'
-```
-
-### Get Predictions
-```bash
-# All predictions
-curl "$API_URL/predictions" \
-  -H "Authorization: Bearer $TOKEN"
-
-# Electricity predictions only
-curl "$API_URL/predictions?target=electricity" \
-  -H "Authorization: Bearer $TOKEN"
-
-# With date range
-curl "$API_URL/predictions?from=2025-10-01T00:00:00Z" \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-## 7. ML Service Direct
-
-### Call ML Forecast Directly
-```bash
-curl -X POST $ML_URL/forecast \
-  -H "Content-Type: application/json" \
-  -d '{
-    "target": "electricity",
-    "historical_dates": [
-      "2025-01-01T00:00:00Z",
-      "2025-02-01T00:00:00Z",
-      "2025-03-01T00:00:00Z",
-      "2025-04-01T00:00:00Z",
-      "2025-05-01T00:00:00Z",
-      "2025-06-01T00:00:00Z",
-      "2025-07-01T00:00:00Z",
-      "2025-08-01T00:00:00Z",
-      "2025-09-01T00:00:00Z"
-    ],
-    "historical_values": [280, 295, 270, 260, 250, 245, 255, 265, 275],
-    "horizon_months": 3,
-    "confidence_level": 0.95,
-    "cost_per_unit": 1.5
-  }'
-```
-
-## 8. Server-Sent Events (SSE)
+## 6. Server-Sent Events (SSE)
 
 ### Connect to Event Stream
 ```bash
@@ -382,22 +317,13 @@ curl -X POST $API_URL/bills \
     "periodEnd": "2025-10-31T23:59:59Z",
     "totalAmountPLN": 120.00
   }'
-
-# Trigger prediction update event
-curl -X POST $API_URL/predictions/recompute \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"target": "electricity", "horizon": 3}'
 ```
 
-## 9. Health Checks
+## 7. Health Check
 
 ```bash
 # API health
 curl $API_URL/healthz
-
-# ML service health
-curl $ML_URL/healthz
 ```
 
 ## Complete Workflow Example
@@ -453,16 +379,6 @@ curl -s -X POST $API_URL/bills/$BILL_ID/allocate \
 
 # 6. View allocations
 curl -s "$API_URL/allocations?billId=$BILL_ID" \
-  -H "Authorization: Bearer $TOKEN" | jq
-
-# 7. Generate forecast
-curl -s -X POST $API_URL/predictions/recompute \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"target":"electricity","horizon":3}' | jq
-
-# 8. View predictions
-curl -s "$API_URL/predictions?target=electricity" \
   -H "Authorization: Bearer $TOKEN" | jq
 
 echo "✅ Complete workflow executed successfully!"

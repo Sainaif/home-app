@@ -62,6 +62,22 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('user')
   }
 
+  function setTokens(access, refresh) {
+    accessToken.value = access
+    refreshToken.value = refresh
+
+    localStorage.setItem('accessToken', access)
+    localStorage.setItem('refreshToken', refresh)
+  }
+
+  async function loadUser() {
+    const userResponse = await api.get('/users/me', {
+      headers: { Authorization: `Bearer ${accessToken.value}` }
+    })
+    user.value = userResponse.data
+    localStorage.setItem('user', JSON.stringify(user.value))
+  }
+
   return {
     accessToken,
     refreshToken,
@@ -70,6 +86,8 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     login,
     refresh,
-    logout
+    logout,
+    setTokens,
+    loadUser
   }
 })

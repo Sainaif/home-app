@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"log"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/sainaif/holy-home/internal/middleware"
 	"github.com/sainaif/holy-home/internal/services"
@@ -105,6 +107,15 @@ func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
 		})
 	}
 
+	// Debug logging
+	log.Printf("[DEBUG] UpdateUser request for user %s: Email=%v, Name=%v, Role=%v, GroupID=%v, IsActive=%v",
+		userID.Hex(),
+		req.Email,
+		req.Name,
+		req.Role,
+		req.GroupID,
+		req.IsActive)
+
 	if err := h.userService.UpdateUser(c.Context(), userID, req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
@@ -184,5 +195,40 @@ func (h *UserHandler) ForcePasswordChange(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"message": "User will be required to change password on next login",
+	})
+}
+
+// DeleteUser deletes a user (ADMIN only)
+func (h *UserHandler) DeleteUser(c *fiber.Ctx) error {
+	id := c.Params("id")
+	userID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid user ID",
+		})
+	}
+
+	// Get current user to prevent self-deletion
+	currentUserID, err := middleware.GetUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
+	}
+
+	if currentUserID == userID {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Cannot delete your own account",
+		})
+	}
+
+	if err := h.userService.DeleteUser(c.Context(), userID); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "User deleted successfully",
 	})
 }

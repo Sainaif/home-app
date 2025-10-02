@@ -31,10 +31,6 @@
               <CheckSquare class="w-4 h-4" />
               {{ $t('nav.chores') }}
             </router-link>
-            <router-link to="/predictions" class="nav-link">
-              <TrendingUp class="w-4 h-4" />
-              {{ $t('nav.predictions') }}
-            </router-link>
             <router-link to="/settings" class="nav-link">
               <Settings class="w-4 h-4" />
               {{ $t('nav.settings') }}
@@ -61,7 +57,7 @@ import { useAuthStore } from './stores/auth'
 import { useVersionCheck } from './composables/useVersionCheck'
 import { watch } from 'vue'
 import UpdateBanner from './components/UpdateBanner.vue'
-import { Home, LayoutDashboard, Receipt, Gauge, Wallet, CheckSquare, TrendingUp, Settings, LogOut } from 'lucide-vue-next'
+import { Home, LayoutDashboard, Receipt, Gauge, Wallet, CheckSquare, Settings, LogOut } from 'lucide-vue-next'
 
 const router = useRouter()
 const authStore = useAuthStore()

@@ -1,15 +1,15 @@
 # Holy Home - Household Management Application
 
-Personal, self-hosted household management for shared bills, utilities, loans, chores, and forecasts.
+Personal, self-hosted household management for shared bills, utilities, loans, and chores.
 
 ## Project Status
 
 ### ✅ Completed Components
 
 #### Infrastructure & Configuration
-- [x] Project directory structure (backend/, ml/, frontend/, deploy/)
-- [x] Docker Compose setup with 4 services (API, ML, Frontend, MongoDB)
-- [x] All Dockerfiles (Go API, Python ML, Vue Frontend)
+- [x] Project directory structure (backend/, frontend/, deploy/)
+- [x] Docker Compose setup with 3 services (API, Frontend, MongoDB)
+- [x] All Dockerfiles (Go API, Vue Frontend)
 - [x] Environment configuration (`.env.example`)
 - [x] Git ignore files
 
@@ -17,7 +17,7 @@ Personal, self-hosted household management for shared bills, utilities, loans, c
 - [x] **Core Setup**
   - Go module initialization
   - MongoDB connection with health checks and indexes
-  - All 11 data models (Decimal128 for money/units)
+  - All 10 data models (Decimal128 for money/units)
   - Configuration management
 
 - [x] **Authentication & Security**
@@ -50,21 +50,8 @@ Personal, self-hosted household management for shared bills, utilities, loans, c
 
 #### Backend
 - [ ] Chores API (create, assign, rotate, mark done)
-- [ ] Predictions orchestration (ML sidecar integration)
 - [ ] SSE endpoint for real-time events
 - [ ] CSV/PDF export functionality
-- [ ] Nightly cron job for predictions (02:00 local)
-
-#### ML Sidecar (Python + FastAPI)
-- [ ] FastAPI application structure
-- [ ] SARIMAX model (≥24 points, seasonal=12)
-- [ ] Holt-Winters ExponentialSmoothing (12-23 points)
-- [ ] Simple Exponential Smoothing (<12 points)
-- [ ] Model selection logic by series length
-- [ ] Confidence interval estimation
-- [ ] Cost projection (units → PLN)
-- [ ] Forecast endpoint
-- [ ] Health check endpoint
 
 #### Frontend (Vue 3 + Vite)
 - [ ] Project initialization (Vite, Vue 3, Pinia, Router)
@@ -77,7 +64,6 @@ Personal, self-hosted household management for shared bills, utilities, loans, c
   - Readings input
   - Balance & Loans
   - Chores
-  - Predictions with ECharts
   - Settings (users, groups)
 - [ ] SSE client for real-time updates
 - [ ] Export UI (CSV/PDF downloads)
@@ -88,7 +74,6 @@ Personal, self-hosted household management for shared bills, utilities, loans, c
 ### Prerequisites
 - Docker & Docker Compose
 - Go 1.25+ (for local development)
-- Python 3.13+ (for ML sidecar development)
 - Node.js current (for frontend development)
 
 ### Configuration
@@ -118,7 +103,6 @@ docker-compose up -d
 Services will be available at:
 - API: http://localhost:16162
 - Frontend: http://localhost:16161
-- ML: http://localhost:16163
 - Health check: http://localhost:16162/healthz
 
 ### Local Development
@@ -128,13 +112,6 @@ Services will be available at:
 cd backend
 go mod tidy
 go run ./cmd/api
-```
-
-#### ML Sidecar
-```bash
-cd ml
-pip install -r requirements.txt
-python -m app.main
 ```
 
 #### Frontend
@@ -197,7 +174,6 @@ npm run dev
 - **chores**: Name
 - **chore_assignments**: Chore ID, assignee, due date, status
 - **notifications**: Channel (app), template, scheduled date, status
-- **predictions**: Target, period, horizon, predicted units/amount, model info
 
 ### Money & Units
 - All monetary values use `Decimal128` (2 decimal places, banker's rounding)
@@ -239,11 +215,10 @@ Structured JSON logs (English) with:
 ## Next Steps
 
 1. **Complete Chores API** - Task management and rotation
-2. **Implement ML Sidecar** - Time-series forecasting
-3. **Build Frontend** - Vue 3 application with Polish UI
-4. **Add SSE Events** - Real-time updates for predictions, bills, chores
-5. **Export Features** - CSV and PDF generation
-6. **Testing** - Unit tests for allocation math, integration tests, E2E tests
+2. **Build Frontend** - Vue 3 application with Polish UI
+3. **Add SSE Events** - Real-time updates for bills, chores
+4. **Export Features** - CSV and PDF generation
+5. **Testing** - Unit tests for allocation math, integration tests, E2E tests
 
 ## License
 

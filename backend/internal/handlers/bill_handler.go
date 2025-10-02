@@ -165,6 +165,46 @@ func (h *BillHandler) CloseBill(c *fiber.Ctx) error {
 	})
 }
 
+// ReopenBill reopens a bill to a previous status (ADMIN only)
+func (h *BillHandler) ReopenBill(c *fiber.Ctx) error {
+	id := c.Params("id")
+	billID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid bill ID",
+		})
+	}
+
+	// Get user ID from context
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
+	}
+
+	var req struct {
+		TargetStatus string `json:"targetStatus"`
+		Reason       string `json:"reason"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	if err := h.billService.ReopenBill(c.Context(), billID, userID, req.TargetStatus, req.Reason); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "Bill reopened successfully",
+	})
+}
+
 // CreateConsumption records a consumption reading
 func (h *BillHandler) CreateConsumption(c *fiber.Ctx) error {
 	// Get user ID from context

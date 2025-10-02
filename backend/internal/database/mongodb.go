@@ -90,12 +90,28 @@ func createIndexes(ctx context.Context, db *mongo.Database) error {
 		return fmt.Errorf("failed to create allocations index: %w", err)
 	}
 
-	// predictions.target+period_start
-	_, err = db.Collection("predictions").Indexes().CreateOne(ctx, mongo.IndexModel{
-		Keys: bson.D{{Key: "target", Value: 1}, {Key: "period_start", Value: 1}},
+	// supply_items.status
+	_, err = db.Collection("supply_items").Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "status", Value: 1}},
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create predictions index: %w", err)
+		return fmt.Errorf("failed to create supply_items.status index: %w", err)
+	}
+
+	// supply_items.bought_at (descending for recent purchases)
+	_, err = db.Collection("supply_items").Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "bought_at", Value: -1}},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create supply_items.bought_at index: %w", err)
+	}
+
+	// supply_contributions.user_id+period_start
+	_, err = db.Collection("supply_contributions").Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "period_start", Value: -1}},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create supply_contributions index: %w", err)
 	}
 
 	return nil

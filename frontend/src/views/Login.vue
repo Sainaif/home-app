@@ -48,24 +48,64 @@
           <LogIn v-else class="w-5 h-5" />
           {{ loading ? $t('common.loading') : $t('auth.loginButton') }}
         </button>
+
+        <!-- Passkey Login Option -->
+        <div v-if="passkeySupported" class="relative">
+          <div class="absolute inset-0 flex items-center">
+            <div class="w-full border-t border-gray-700"></div>
+          </div>
+          <div class="relative flex justify-center text-sm">
+            <span class="px-2 bg-gray-800 text-gray-400">lub</span>
+          </div>
+        </div>
+
+        <button
+          v-if="passkeySupported"
+          type="button"
+          @click="handlePasskeyLogin"
+          :disabled="loading"
+          class="btn btn-outline w-full flex items-center justify-center gap-2">
+          <div v-if="loading" class="loading-spinner"></div>
+          <Key v-else class="w-5 h-5" />
+          {{ loading ? 'Logowanie...' : 'Zaloguj się passkey' }}
+        </button>
       </form>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { Home, Mail, Lock, LogIn, AlertCircle } from 'lucide-vue-next'
+import { usePasskey } from '../composables/usePasskey'
+import { Home, Mail, Lock, LogIn, AlertCircle, Key } from 'lucide-vue-next'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const { checkSupport, loginWithConditionalUI } = usePasskey()
 
 const email = ref('')
 const password = ref('')
 const loading = ref(false)
 const error = ref('')
+const passkeySupported = ref(false)
+
+onMounted(async () => {
+  const support = await checkSupport()
+  passkeySupported.value = support.supported
+
+  // Auto-trigger passkey login if user previously used passkey
+  // This provides a one-click experience similar to conditional mediation
+  const hasUsedPasskey = localStorage.getItem('hasUsedPasskey')
+  if (passkeySupported.value && hasUsedPasskey === 'true') {
+    // Small delay to let the page render
+    setTimeout(() => {
+      console.log('[Login] Auto-triggering passkey login for returning user')
+      handlePasskeyLogin()
+    }, 500)
+  }
+})
 
 async function handleLogin() {
   loading.value = true
@@ -76,6 +116,27 @@ async function handleLogin() {
     router.push('/')
   } catch (err) {
     error.value = err.response?.data?.error || 'Błąd logowania'
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handlePasskeyLogin() {
+  loading.value = true
+  error.value = ''
+
+  try {
+    // Use modal UI for manual button click
+    const tokens = await loginWithConditionalUI(null, false)
+
+    // Remember that user has used passkey for auto-login next time
+    localStorage.setItem('hasUsedPasskey', 'true')
+
+    authStore.setTokens(tokens.access, tokens.refresh)
+    await authStore.loadUser()
+    router.push('/')
+  } catch (err) {
+    error.value = err.message || 'Błąd logowania passkey'
   } finally {
     loading.value = false
   }

@@ -9,11 +9,14 @@ export function useChart(chartRef, getOptions) {
   const chartInstance = ref(null)
 
   onMounted(() => {
+    console.log('[useChart] onMounted, chartRef exists:', !!chartRef.value)
     if (chartRef.value) {
       // Initialize chart with dark theme
+      console.log('[useChart] Initializing chart on element:', chartRef.value)
       chartInstance.value = echarts.init(chartRef.value, null, {
         renderer: 'canvas',
       })
+      console.log('[useChart] Chart instance created:', !!chartInstance.value)
 
       // Set initial options
       if (getOptions) {
@@ -29,6 +32,8 @@ export function useChart(chartRef, getOptions) {
 
       // Store cleanup function
       chartRef.value._resizeHandler = resizeHandler
+    } else {
+      console.warn('[useChart] chartRef.value is null on mount')
     }
   })
 
@@ -41,8 +46,12 @@ export function useChart(chartRef, getOptions) {
   })
 
   const updateChart = (options) => {
+    console.log('[useChart] updateChart called, chartInstance exists:', !!chartInstance.value)
     if (chartInstance.value) {
+      console.log('[useChart] Setting chart options')
       chartInstance.value.setOption(options, true)
+    } else {
+      console.warn('[useChart] Chart instance not initialized yet')
     }
   }
 
@@ -69,11 +78,14 @@ export function useChart(chartRef, getOptions) {
 
 /**
  * Generate chart options for prediction forecast
- * @param {Object} data - Prediction data with dates, values, and confidence intervals
+ * @param {Object} data - Prediction data with historical and predicted data
  * @param {string} target - Target name (electricity, gas, etc.)
  */
 export function getPredictionChartOptions(data, target) {
-  const { dates, values, lowerBound, upperBound } = data
+  const { historicalDates, historicalValues, predictedDates, predictedValues, lowerBound, upperBound } = data
+
+  // Combine historical and predicted dates for x-axis
+  const allDates = [...historicalDates, ...predictedDates]
 
   return {
     backgroundColor: 'transparent',
@@ -112,7 +124,7 @@ export function getPredictionChartOptions(data, target) {
       },
     },
     legend: {
-      data: ['Prognoza', 'Dolny przedział', 'Górny przedział'],
+      data: ['Historia', 'Prognoza', 'Dolny przedział', 'Górny przedział'],
       top: 35,
       textStyle: {
         color: '#9ca3af',
@@ -128,7 +140,7 @@ export function getPredictionChartOptions(data, target) {
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: dates,
+      data: allDates,
       axisLine: {
         lineStyle: {
           color: '#4b5563',
@@ -161,11 +173,26 @@ export function getPredictionChartOptions(data, target) {
       },
     },
     series: [
-      // Confidence interval area (lower to upper)
+      // Historical data line
+      {
+        name: 'Historia',
+        type: 'line',
+        data: [...historicalValues, ...Array(predictedDates.length).fill(null)],
+        lineStyle: {
+          color: '#3b82f6',
+          width: 2,
+        },
+        itemStyle: {
+          color: '#3b82f6',
+        },
+        symbol: 'circle',
+        symbolSize: 4,
+      },
+      // Confidence interval area (lower to upper) - only for predicted portion
       {
         name: 'Przedział ufności',
         type: 'line',
-        data: lowerBound,
+        data: [...Array(historicalDates.length).fill(null), ...lowerBound],
         lineStyle: {
           opacity: 0,
         },
@@ -179,7 +206,7 @@ export function getPredictionChartOptions(data, target) {
       {
         name: 'Przedział ufności',
         type: 'line',
-        data: upperBound.map((upper, i) => upper - lowerBound[i]),
+        data: [...Array(historicalDates.length).fill(null), ...upperBound.map((upper, i) => upper - lowerBound[i])],
         lineStyle: {
           opacity: 0,
         },
@@ -190,11 +217,11 @@ export function getPredictionChartOptions(data, target) {
         },
         showInLegend: false,
       },
-      // Lower bound line
+      // Lower bound line - only for predicted portion
       {
         name: 'Dolny przedział',
         type: 'line',
-        data: lowerBound,
+        data: [...Array(historicalDates.length).fill(null), ...lowerBound],
         lineStyle: {
           color: '#ec4899',
           width: 1,
@@ -202,11 +229,11 @@ export function getPredictionChartOptions(data, target) {
         },
         symbol: 'none',
       },
-      // Upper bound line
+      // Upper bound line - only for predicted portion
       {
         name: 'Górny przedział',
         type: 'line',
-        data: upperBound,
+        data: [...Array(historicalDates.length).fill(null), ...upperBound],
         lineStyle: {
           color: '#ec4899',
           width: 1,
@@ -214,11 +241,11 @@ export function getPredictionChartOptions(data, target) {
         },
         symbol: 'none',
       },
-      // Prediction line (main)
+      // Prediction line (main) - only for predicted portion
       {
         name: 'Prognoza',
         type: 'line',
-        data: values,
+        data: [...Array(historicalDates.length).fill(null), ...predictedValues],
         lineStyle: {
           color: '#9333ea',
           width: 3,

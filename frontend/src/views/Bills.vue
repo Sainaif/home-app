@@ -82,11 +82,44 @@
       </div>
     </div>
 
+    <!-- Filters -->
+    <div class="card mb-6">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div>
+          <label class="block text-sm font-medium mb-2">Typ</label>
+          <select v-model="filters.type" class="input">
+            <option value="">Wszystkie</option>
+            <option value="electricity">Prąd</option>
+            <option value="gas">Gaz</option>
+            <option value="internet">Internet</option>
+            <option value="inne">Inne</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-2">Data od</label>
+          <input v-model="filters.dateFrom" type="date" class="input" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-2">Data do</label>
+          <input v-model="filters.dateTo" type="date" class="input" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-2">Sortuj</label>
+          <select v-model="filters.sortBy" class="input">
+            <option value="date-desc">Data (najnowsze)</option>
+            <option value="date-asc">Data (najstarsze)</option>
+            <option value="amount-desc">Kwota (malejąco)</option>
+            <option value="amount-asc">Kwota (rosnąco)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
     <div class="card">
       <div v-if="loading" class="flex justify-center py-12">
         <div class="loading-spinner"></div>
       </div>
-      <div v-else-if="bills.length === 0" class="text-center py-12 text-gray-500">
+      <div v-else-if="filteredBills.length === 0" class="text-center py-12 text-gray-500">
         <FileX class="w-16 h-16 mx-auto mb-4 opacity-50" />
         <p class="text-lg">Brak rachunków</p>
       </div>
@@ -103,7 +136,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="bill in bills" :key="bill.id">
+            <tr v-for="bill in filteredBills" :key="bill.id">
               <td>
                 <div class="flex items-center gap-3">
                   <div class="w-10 h-10 rounded-lg flex items-center justify-center"
@@ -173,7 +206,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../api/client'
 import {
@@ -187,6 +220,50 @@ const loading = ref(false)
 const showCreateModal = ref(false)
 const creating = ref(false)
 const createError = ref('')
+
+const filters = ref({
+  type: '',
+  dateFrom: '',
+  dateTo: '',
+  sortBy: 'date-desc'
+})
+
+const filteredBills = computed(() => {
+  let result = [...bills.value]
+
+  // Filter by type
+  if (filters.value.type) {
+    result = result.filter(b => b.type === filters.value.type)
+  }
+
+  // Filter by date range
+  if (filters.value.dateFrom) {
+    const fromDate = new Date(filters.value.dateFrom)
+    result = result.filter(b => new Date(b.periodEnd) >= fromDate)
+  }
+  if (filters.value.dateTo) {
+    const toDate = new Date(filters.value.dateTo)
+    result = result.filter(b => new Date(b.periodStart) <= toDate)
+  }
+
+  // Sort
+  result.sort((a, b) => {
+    switch (filters.value.sortBy) {
+      case 'date-desc':
+        return new Date(b.periodEnd) - new Date(a.periodEnd)
+      case 'date-asc':
+        return new Date(a.periodEnd) - new Date(b.periodEnd)
+      case 'amount-desc':
+        return b.totalAmountPLN - a.totalAmountPLN
+      case 'amount-asc':
+        return a.totalAmountPLN - b.totalAmountPLN
+      default:
+        return 0
+    }
+  })
+
+  return result
+})
 
 const newBill = ref({
   type: 'electricity',

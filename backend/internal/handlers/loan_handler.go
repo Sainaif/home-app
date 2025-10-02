@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"time"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/sainaif/holy-home/internal/middleware"
 	"github.com/sainaif/holy-home/internal/services"
@@ -8,11 +10,15 @@ import (
 )
 
 type LoanHandler struct {
-	loanService *services.LoanService
+	loanService  *services.LoanService
+	eventService *services.EventService
 }
 
-func NewLoanHandler(loanService *services.LoanService) *LoanHandler {
-	return &LoanHandler{loanService: loanService}
+func NewLoanHandler(loanService *services.LoanService, eventService *services.EventService) *LoanHandler {
+	return &LoanHandler{
+		loanService:  loanService,
+		eventService: eventService,
+	}
 }
 
 // CreateLoan creates a new loan
@@ -30,6 +36,16 @@ func (h *LoanHandler) CreateLoan(c *fiber.Ctx) error {
 			"error": err.Error(),
 		})
 	}
+
+	// Broadcast loan created event
+	h.eventService.Broadcast(services.EventLoanCreated, map[string]interface{}{
+		"loan_id": loan.ID.Hex(),
+	})
+
+	// Broadcast balance updated event
+	h.eventService.Broadcast(services.EventBalanceUpdated, map[string]interface{}{
+		"timestamp": loan.CreatedAt,
+	})
 
 	return c.Status(fiber.StatusCreated).JSON(loan)
 }
@@ -49,6 +65,17 @@ func (h *LoanHandler) CreateLoanPayment(c *fiber.Ctx) error {
 			"error": err.Error(),
 		})
 	}
+
+	// Broadcast loan payment created event
+	h.eventService.Broadcast(services.EventLoanPaymentCreated, map[string]interface{}{
+		"payment_id": payment.ID.Hex(),
+		"loan_id":    payment.LoanID.Hex(),
+	})
+
+	// Broadcast balance updated event
+	h.eventService.Broadcast(services.EventBalanceUpdated, map[string]interface{}{
+		"timestamp": payment.PaidAt,
+	})
 
 	return c.Status(fiber.StatusCreated).JSON(payment)
 }
@@ -114,4 +141,36 @@ func (h *LoanHandler) GetUserBalance(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(balance)
+}
+
+// DeleteLoan deletes a loan (ADMIN only)
+func (h *LoanHandler) DeleteLoan(c *fiber.Ctx) error {
+	id := c.Params("id")
+	loanID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid loan ID",
+		})
+	}
+
+	err = h.loanService.DeleteLoan(c.Context(), loanID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	// Broadcast loan deleted event
+	h.eventService.Broadcast(services.EventLoanDeleted, map[string]interface{}{
+		"loan_id": loanID.Hex(),
+	})
+
+	// Broadcast balance updated event
+	h.eventService.Broadcast(services.EventBalanceUpdated, map[string]interface{}{
+		"timestamp": primitive.NewDateTimeFromTime(time.Now()),
+	})
+
+	return c.JSON(fiber.Map{
+		"message": "Loan deleted successfully",
+	})
 }

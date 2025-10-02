@@ -51,12 +51,6 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
-    path: '/predictions',
-    name: 'Predictions',
-    component: () => import('../views/Predictions.vue'),
-    meta: { requiresAuth: true }
-  },
-  {
     path: '/settings',
     name: 'Settings',
     component: () => import('../views/Settings.vue'),

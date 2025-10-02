@@ -5,7 +5,6 @@
     "readings": "Odczyty",
     "balance": "Bilans",
     "chores": "Obowiązki",
-    "predictions": "Prognozy",
     "settings": "Ustawienia",
     "logout": "Wyloguj"
   },
@@ -69,14 +68,6 @@
     "done": "Wykonany",
     "markDone": "Oznacz jako wykonane",
     "rotate": "Rotuj"
-  },
-  "predictions": {
-    "title": "Prognozy zużycia",
-    "forecast": "Prognoza",
-    "historical": "Dane historyczne",
-    "predicted": "Przewidywane",
-    "confidence": "Przedział ufności",
-    "recompute": "Przelicz"
   },
   "settings": {
     "title": "Ustawienia",

@@ -307,15 +307,15 @@ const sortedAssignments = computed(() => {
 })
 
 onMounted(async () => {
+  // Load chores and users first (needed for enrichment)
   await Promise.all([
-    loadAssignments(),
     loadChores(),
-    loadLeaderboard()
+    loadLeaderboard(),
+    authStore.isAdmin ? loadUsers() : Promise.resolve()
   ])
 
-  if (authStore.isAdmin) {
-    await loadUsers()
-  }
+  // Then load assignments (which enriches with chore/user data)
+  await loadAssignments()
 
   // Find user stats from leaderboard
   userStats.value = leaderboard.value.find(u => u.userId === authStore.user?.id)
@@ -459,10 +459,9 @@ async function createChore() {
 
     showCreateForm.value = false
 
-    await Promise.all([
-      loadAssignments(),
-      loadChores()
-    ])
+    // Load chores first, then assignments (so enrichment works)
+    await loadChores()
+    await loadAssignments()
   } catch (err) {
     console.error('Failed to create chore:', err)
     alert('Błąd tworzenia obowiązku: ' + (err.response?.data?.error || err.message))

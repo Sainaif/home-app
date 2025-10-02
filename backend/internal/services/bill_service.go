@@ -332,6 +332,68 @@ func (s *BillService) CloseBill(ctx context.Context, billID primitive.ObjectID) 
 	return s.updateBillStatus(ctx, billID, "posted", "closed")
 }
 
+// ReopenBill reopens a bill to a previous status (ADMIN only)
+func (s *BillService) ReopenBill(ctx context.Context, billID primitive.ObjectID, userID primitive.ObjectID, targetStatus, reason string) error {
+	// Validate target status
+	if targetStatus != "draft" && targetStatus != "posted" {
+		return errors.New("target status must be 'draft' or 'posted'")
+	}
+
+	if reason == "" {
+		return errors.New("reopen reason is required")
+	}
+
+	// Get current bill
+	bill, err := s.GetBill(ctx, billID)
+	if err != nil {
+		return err
+	}
+
+	// Validate state transition
+	if bill.Status == "draft" {
+		return errors.New("bill is already in draft status")
+	}
+
+	if bill.Status == "posted" && targetStatus == "posted" {
+		return errors.New("bill is already in posted status")
+	}
+
+	now := time.Now()
+
+	// Update bill status and reopen metadata
+	update := bson.M{
+		"$set": bson.M{
+			"status":        targetStatus,
+			"reopened_at":   now,
+			"reopen_reason": reason,
+			"reopened_by":   userID,
+		},
+	}
+
+	// If reopening to draft from posted/closed, clear allocations
+	if targetStatus == "draft" {
+		_, err := s.db.Collection("allocations").DeleteMany(ctx, bson.M{"bill_id": billID})
+		if err != nil {
+			return fmt.Errorf("failed to clear allocations: %w", err)
+		}
+	}
+
+	result, err := s.db.Collection("bills").UpdateOne(
+		ctx,
+		bson.M{"_id": billID},
+		update,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to reopen bill: %w", err)
+	}
+
+	if result.MatchedCount == 0 {
+		return errors.New("bill not found")
+	}
+
+	return nil
+}
+
 func (s *BillService) updateBillStatus(ctx context.Context, billID primitive.ObjectID, fromStatus, toStatus string) error {
 	result, err := s.db.Collection("bills").UpdateOne(
 		ctx,

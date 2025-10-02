@@ -8,15 +8,28 @@ import (
 
 // User represents a system user
 type User struct {
-	ID                primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
-	Email             string              `bson:"email" json:"email"`
-	Name              string              `bson:"name" json:"name"`
-	PasswordHash      string              `bson:"password_hash" json:"-"`
-	Role              string              `bson:"role" json:"role"` // ADMIN, RESIDENT
-	GroupID           *primitive.ObjectID `bson:"group_id,omitempty" json:"groupId,omitempty"`
-	IsActive          bool                `bson:"is_active" json:"isActive"`
-	MustChangePassword bool               `bson:"must_change_password" json:"mustChangePassword"`
-	CreatedAt         time.Time           `bson:"created_at" json:"createdAt"`
+	ID                 primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
+	Email              string              `bson:"email" json:"email"`
+	Name               string              `bson:"name" json:"name"`
+	PasswordHash       string              `bson:"password_hash" json:"-"`
+	Role               string              `bson:"role" json:"role"` // ADMIN, RESIDENT
+	GroupID            *primitive.ObjectID `bson:"group_id,omitempty" json:"groupId,omitempty"`
+	IsActive           bool                `bson:"is_active" json:"isActive"`
+	MustChangePassword bool                `bson:"must_change_password" json:"mustChangePassword"`
+	CreatedAt          time.Time           `bson:"created_at" json:"createdAt"`
+	PasskeyCredentials []PasskeyCredential `bson:"passkey_credentials,omitempty" json:"-"`
+}
+
+// PasskeyCredential represents a WebAuthn credential
+type PasskeyCredential struct {
+	ID              []byte    `bson:"id" json:"id"`
+	PublicKey       []byte    `bson:"public_key" json:"publicKey"`
+	AttestationType string    `bson:"attestation_type" json:"attestationType"`
+	AAGUID          []byte    `bson:"aaguid" json:"aaguid"`
+	SignCount       uint32    `bson:"sign_count" json:"signCount"`
+	Name            string    `bson:"name" json:"name"` // User-friendly name for the credential
+	CreatedAt       time.Time `bson:"created_at" json:"createdAt"`
+	LastUsedAt      time.Time `bson:"last_used_at" json:"lastUsedAt"`
 }
 
 // Group represents a household group (e.g., couples)
@@ -29,16 +42,19 @@ type Group struct {
 
 // Bill represents a utility bill or shared expense
 type Bill struct {
-	ID             primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Type           string             `bson:"type" json:"type"` // electricity, gas, internet, inne
-	CustomType     *string            `bson:"custom_type,omitempty" json:"customType,omitempty"` // used when Type is "inne"
-	PeriodStart    time.Time          `bson:"period_start" json:"periodStart"`
-	PeriodEnd      time.Time          `bson:"period_end" json:"periodEnd"`
+	ID             primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
+	Type           string              `bson:"type" json:"type"` // electricity, gas, internet, inne
+	CustomType     *string             `bson:"custom_type,omitempty" json:"customType,omitempty"` // used when Type is "inne"
+	PeriodStart    time.Time           `bson:"period_start" json:"periodStart"`
+	PeriodEnd      time.Time           `bson:"period_end" json:"periodEnd"`
 	TotalAmountPLN primitive.Decimal128 `bson:"total_amount_pln" json:"totalAmountPLN"`
 	TotalUnits     primitive.Decimal128 `bson:"total_units,omitempty" json:"totalUnits,omitempty"`
-	Notes          *string            `bson:"notes,omitempty" json:"notes,omitempty"`
-	Status         string             `bson:"status" json:"status"` // draft, posted, closed
-	CreatedAt      time.Time          `bson:"created_at" json:"createdAt"`
+	Notes          *string             `bson:"notes,omitempty" json:"notes,omitempty"`
+	Status         string              `bson:"status" json:"status"` // draft, posted, closed
+	ReopenedAt     *time.Time          `bson:"reopened_at,omitempty" json:"reopenedAt,omitempty"`
+	ReopenReason   *string             `bson:"reopen_reason,omitempty" json:"reopenReason,omitempty"`
+	ReopenedBy     *primitive.ObjectID `bson:"reopened_by,omitempty" json:"reopenedBy,omitempty"`
+	CreatedAt      time.Time           `bson:"created_at" json:"createdAt"`
 }
 
 // Consumption represents individual usage readings
@@ -145,21 +161,42 @@ type Notification struct {
 	UserID       *primitive.ObjectID `bson:"user_id,omitempty" json:"userId,omitempty"`
 }
 
-// Prediction represents a forecast result
-type Prediction struct {
-	ID                  primitive.ObjectID   `bson:"_id,omitempty" json:"id"`
-	Target              string               `bson:"target" json:"target"` // electricity, gas, shared_budget
-	PeriodStart         time.Time            `bson:"period_start" json:"periodStart"`
-	PeriodEnd           time.Time            `bson:"period_end" json:"periodEnd"`
-	HorizonMonths       int                  `bson:"horizon_months" json:"horizonMonths"`
-	PredictedUnits      primitive.Decimal128 `bson:"predicted_units" json:"predictedUnits"`
-	PredictedAmountPLN  primitive.Decimal128 `bson:"predicted_amount_pln" json:"predictedAmountPLN"`
-	Model               ModelInfo            `bson:"model" json:"model"`
-	CreatedFrom         string               `bson:"created_from" json:"createdFrom"` // bills, consumptions
-	CreatedAt           time.Time            `bson:"created_at" json:"createdAt"`
+// SupplySettings represents household supply budget settings (singleton)
+type SupplySettings struct {
+	ID                    primitive.ObjectID   `bson:"_id,omitempty" json:"id"`
+	WeeklyContributionPLN primitive.Decimal128 `bson:"weekly_contribution_pln" json:"weeklyContributionPLN"` // per person
+	ContributionDay       string               `bson:"contribution_day" json:"contributionDay"` // monday, tuesday, etc
+	CurrentBudgetPLN      primitive.Decimal128 `bson:"current_budget_pln" json:"currentBudgetPLN"` // grows over time
+	LastContributionAt    time.Time            `bson:"last_contribution_at" json:"lastContributionAt"`
+	IsActive              bool                 `bson:"is_active" json:"isActive"`
+	CreatedAt             time.Time            `bson:"created_at" json:"createdAt"`
+	UpdatedAt             time.Time            `bson:"updated_at" json:"updatedAt"`
 }
 
-type ModelInfo struct {
-	Name    string `bson:"name" json:"name"`
-	Version string `bson:"version" json:"version"`
+// SupplyItem represents a shopping list item or purchased item
+type SupplyItem struct {
+	ID             primitive.ObjectID    `bson:"_id,omitempty" json:"id"`
+	Name           string                `bson:"name" json:"name"`
+	Category       string                `bson:"category" json:"category"` // groceries, cleaning, toiletries, other
+	Status         string                `bson:"status" json:"status"` // needed, bought, archived
+	Quantity       *string               `bson:"quantity,omitempty" json:"quantity,omitempty"` // "2x", "1 kg", etc
+	Priority       int                   `bson:"priority" json:"priority"` // 1-5 (1=low, 5=urgent)
+	AddedByUserID  primitive.ObjectID    `bson:"added_by_user_id" json:"addedByUserId"`
+	AddedAt        time.Time             `bson:"added_at" json:"addedAt"`
+	BoughtByUserID *primitive.ObjectID   `bson:"bought_by_user_id,omitempty" json:"boughtByUserId,omitempty"`
+	BoughtAt       *time.Time            `bson:"bought_at,omitempty" json:"boughtAt,omitempty"`
+	AmountPLN      *primitive.Decimal128 `bson:"amount_pln,omitempty" json:"amountPLN,omitempty"`
+	Notes          *string               `bson:"notes,omitempty" json:"notes,omitempty"`
+}
+
+// SupplyContribution represents a budget contribution
+type SupplyContribution struct {
+	ID          primitive.ObjectID   `bson:"_id,omitempty" json:"id"`
+	UserID      primitive.ObjectID   `bson:"user_id" json:"userId"`
+	AmountPLN   primitive.Decimal128 `bson:"amount_pln" json:"amountPLN"`
+	PeriodStart time.Time            `bson:"period_start" json:"periodStart"`
+	PeriodEnd   time.Time            `bson:"period_end" json:"periodEnd"`
+	Type        string               `bson:"type" json:"type"` // weekly_auto, manual, adjustment
+	Notes       *string              `bson:"notes,omitempty" json:"notes,omitempty"`
+	CreatedAt   time.Time            `bson:"created_at" json:"createdAt"`
 }

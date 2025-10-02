@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -136,6 +137,15 @@ func (s *GroupService) DeleteGroup(ctx context.Context, groupID primitive.Object
 		return errors.New("cannot delete group: users are still assigned to it")
 	}
 
+	// Delete all allocations for this group
+	_, err = s.db.Collection("allocations").DeleteMany(ctx, bson.M{
+		"subject_type": "group",
+		"subject_id":   groupID,
+	})
+	if err != nil {
+		log.Printf("[WARN] Failed to delete allocations for group %s: %v", groupID.Hex(), err)
+	}
+
 	result, err := s.db.Collection("groups").DeleteOne(ctx, bson.M{"_id": groupID})
 	if err != nil {
 		return fmt.Errorf("failed to delete group: %w", err)
@@ -145,5 +155,6 @@ func (s *GroupService) DeleteGroup(ctx context.Context, groupID primitive.Object
 		return errors.New("group not found")
 	}
 
+	log.Printf("[INFO] Deleted group %s and its allocations", groupID.Hex())
 	return nil
 }

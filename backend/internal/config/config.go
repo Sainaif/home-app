@@ -12,7 +12,6 @@ type Config struct {
 	Admin     AdminConfig
 	Auth      AuthConfig
 	Mongo     MongoConfig
-	ML        MLConfig
 	Logging   LogConfig
 }
 
@@ -22,6 +21,7 @@ type AppConfig struct {
 	Host    string
 	Port    string
 	BaseURL string
+	Domain  string // For WebAuthn (e.g., "localhost" or "holyhome.app")
 }
 
 type JWTConfig struct {
@@ -45,11 +45,6 @@ type MongoConfig struct {
 	Database string
 }
 
-type MLConfig struct {
-	BaseURL string
-	Timeout time.Duration
-}
-
 type LogConfig struct {
 	Level  string
 	Format string
@@ -66,11 +61,6 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid JWT_REFRESH_TTL: %w", err)
 	}
 
-	mlTimeout, err := time.ParseDuration(getEnv("ML_TIMEOUT_SECONDS", "30") + "s")
-	if err != nil {
-		return nil, fmt.Errorf("invalid ML_TIMEOUT_SECONDS: %w", err)
-	}
-
 	return &Config{
 		App: AppConfig{
 			Name:    getEnv("APP_NAME", "Holy Home"),
@@ -78,6 +68,7 @@ func Load() (*Config, error) {
 			Host:    getEnv("APP_HOST", "0.0.0.0"),
 			Port:    getEnv("APP_PORT", "8080"),
 			BaseURL: getEnv("APP_BASE_URL", "http://localhost:8080"),
+			Domain:  getEnv("APP_DOMAIN", "localhost"),
 		},
 		JWT: JWTConfig{
 			AccessTTL:     accessTTL,
@@ -95,10 +86,6 @@ func Load() (*Config, error) {
 		Mongo: MongoConfig{
 			URI:      getEnv("MONGO_URI", "mongodb://localhost:27017"),
 			Database: getEnv("MONGO_DB", "holyhome"),
-		},
-		ML: MLConfig{
-			BaseURL: getEnv("ML_BASE_URL", "http://localhost:8000"),
-			Timeout: mlTimeout,
 		},
 		Logging: LogConfig{
 			Level:  getEnv("LOG_LEVEL", "info"),

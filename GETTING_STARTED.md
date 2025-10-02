@@ -7,7 +7,6 @@ Quick guide to get the Holy Home application running locally or in Docker.
 - **Docker & Docker Compose** (recommended)
 - **OR** for local development:
   - Go 1.25+
-  - Python 3.13+
   - MongoDB 8.0+
   - Node.js (current)
 
@@ -44,9 +43,6 @@ docker-compose up -d
 # Check health
 curl http://localhost:16162/healthz
 # Should return: {"status":"ok","time":"..."}
-
-curl http://localhost:16163/healthz
-# Should return: {"status":"ok","service":"ml","time":"..."}
 ```
 
 ### 4. Test Login
@@ -76,7 +72,6 @@ export ADMIN_EMAIL=admin@example.pl
 export ADMIN_PASSWORD_HASH='$argon2id$v=19$m=65536,t=3,p=1$...'
 export JWT_SECRET=your-secret-here
 export JWT_REFRESH_SECRET=your-refresh-secret-here
-export ML_BASE_URL=http://localhost:8000
 
 go run ./cmd/api
 
@@ -86,24 +81,6 @@ go build ./cmd/api
 ```
 
 API will be available at: http://localhost:3000 (local dev) or http://localhost:16162 (Docker)
-
-### ML Sidecar (Python)
-
-```bash
-cd ml
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run
-python -m app.main
-```
-
-ML service will be available at: http://localhost:8000 (local dev) or http://localhost:16163 (Docker)
 
 ### Frontend (Vue 3) - TODO
 
@@ -200,26 +177,6 @@ curl -X POST http://localhost:16162/bills/$BILL_ID/allocate \
   }'
 ```
 
-### 7. Generate Forecast (ML Sidecar)
-
-```bash
-curl -X POST http://localhost:16163/forecast \
-  -H "Content-Type: application/json" \
-  -d '{
-    "target": "electricity",
-    "historical_dates": [
-      "2025-01-01T00:00:00Z",
-      "2025-02-01T00:00:00Z",
-      "2025-03-01T00:00:00Z",
-      "2025-04-01T00:00:00Z",
-      "2025-05-01T00:00:00Z"
-    ],
-    "historical_values": [250, 280, 265, 270, 285],
-    "horizon_months": 3,
-    "cost_per_unit": 1.5
-  }'
-```
-
 ## Directory Structure
 
 ```
@@ -237,15 +194,6 @@ home-app/
 │   ├── Dockerfile
 │   ├── go.mod
 │   └── go.sum
-│
-├── ml/                   # Python ML Service
-│   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py      # FastAPI app
-│   │   ├── models.py    # Pydantic models
-│   │   └── forecaster.py # Forecasting engine
-│   ├── requirements.txt
-│   └── Dockerfile
 │
 ├── frontend/            # Vue 3 Frontend (TODO)
 │   ├── src/
@@ -272,7 +220,6 @@ cd deploy && docker-compose up -d
 
 # View logs
 docker-compose logs -f api
-docker-compose logs -f ml
 
 # Stop services
 docker-compose down
@@ -312,18 +259,6 @@ golangci-lint run
 go build ./cmd/api
 ```
 
-### ML Development
-
-```bash
-cd ml
-
-# Run with auto-reload
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# Test forecast endpoint
-python -c "import requests; print(requests.post('http://localhost:8000/forecast', json={...}).json())"
-```
-
 ## Troubleshooting
 
 ### "Failed to connect to MongoDB"
@@ -335,11 +270,6 @@ python -c "import requests; print(requests.post('http://localhost:8000/forecast'
 - Verify `ADMIN_PASSWORD_HASH` in `.env`
 - Ensure password matches the hash
 - Check admin was created: `docker-compose logs api | grep "Admin bootstrap"`
-
-### "ML service not responding"
-- Check ML service health: `curl http://localhost:16163/healthz`
-- View logs: `docker-compose logs ml`
-- Verify Python dependencies installed correctly
 
 ### Port already in use
 - Check what's using the port: `lsof -i :8080`
@@ -358,10 +288,9 @@ python -c "import requests; print(requests.post('http://localhost:8000/forecast'
 ## Next Steps
 
 1. ✅ Backend API is fully functional
-2. ✅ ML sidecar is ready
-3. ⏳ Build the Vue 3 frontend
-4. ⏳ Add SSE support for real-time updates
-5. ⏳ Implement CSV/PDF exports
+2. ⏳ Build the Vue 3 frontend
+3. ⏳ Add SSE support for real-time updates
+4. ⏳ Implement CSV/PDF exports
 
 ## Support
 

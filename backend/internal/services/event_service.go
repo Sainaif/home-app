@@ -15,9 +15,16 @@ type EventType string
 const (
 	EventBillCreated        EventType = "bill.created"
 	EventConsumptionCreated EventType = "consumption.created"
-	EventPredictionUpdated  EventType = "prediction.updated"
 	EventPaymentCreated     EventType = "payment.created"
 	EventChoreUpdated       EventType = "chore.updated"
+	EventLoanCreated        EventType = "loan.created"
+	EventLoanPaymentCreated EventType = "loan.payment.created"
+	EventLoanDeleted        EventType = "loan.deleted"
+	EventBalanceUpdated     EventType = "balance.updated"
+	EventSupplyItemAdded    EventType = "supply.item.added"
+	EventSupplyItemBought   EventType = "supply.item.bought"
+	EventSupplyBudgetGrew   EventType = "supply.budget.contributed"
+	EventSupplyBudgetLow    EventType = "supply.budget.low"
 )
 
 // Event represents a server-sent event

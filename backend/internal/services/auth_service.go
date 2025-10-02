@@ -10,20 +10,37 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 
+	"github.com/go-webauthn/webauthn/protocol"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/sainaif/holy-home/internal/config"
 	"github.com/sainaif/holy-home/internal/models"
 	"github.com/sainaif/holy-home/internal/utils"
 )
 
 type AuthService struct {
-	db  *mongo.Database
-	cfg *config.Config
+	db       *mongo.Database
+	cfg      *config.Config
+	webAuthn *webauthn.WebAuthn
+	sessions map[string]*webauthn.SessionData // In-memory session storage (use Redis in production)
 }
 
 func NewAuthService(db *mongo.Database, cfg *config.Config) *AuthService {
+	// Initialize WebAuthn with configuration
+	wa, err := utils.NewWebAuthn(
+		cfg.App.Domain,
+		cfg.App.BaseURL,
+		cfg.App.Name,
+	)
+	if err != nil {
+		// Log error but don't fail - passkeys are optional
+		fmt.Printf("Warning: Failed to initialize WebAuthn: %v\n", err)
+	}
+
 	return &AuthService{
-		db:  db,
-		cfg: cfg,
+		db:       db,
+		cfg:      cfg,
+		webAuthn: wa,
+		sessions: make(map[string]*webauthn.SessionData),
 	}
 }
 
@@ -181,6 +198,359 @@ func (s *AuthService) Disable2FA(ctx context.Context, userID primitive.ObjectID)
 	if err != nil {
 		return fmt.Errorf("failed to disable 2FA: %w", err)
 	}
+	return nil
+}
+
+// BeginPasskeyRegistration starts the passkey registration process
+func (s *AuthService) BeginPasskeyRegistration(ctx context.Context, userID primitive.ObjectID) (*protocol.CredentialCreation, error) {
+	if s.webAuthn == nil {
+		return nil, errors.New("WebAuthn not initialized")
+	}
+
+	// Get user
+	var user models.User
+	err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	if err != nil {
+		return nil, fmt.Errorf("user not found: %w", err)
+	}
+
+	// Wrap user for WebAuthn
+	webAuthnUser := utils.WebAuthnUser{User: &user}
+
+	// Begin registration
+	options, session, err := s.webAuthn.BeginRegistration(webAuthnUser)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin registration: %w", err)
+	}
+
+	// Store session (in production, use Redis or similar)
+	s.sessions[userID.Hex()] = session
+
+	return options, nil
+}
+
+// FinishPasskeyRegistration completes the passkey registration process
+func (s *AuthService) FinishPasskeyRegistration(ctx context.Context, userID primitive.ObjectID, credentialName string, response []byte) error {
+	if s.webAuthn == nil {
+		return errors.New("WebAuthn not initialized")
+	}
+
+	// Get session
+	session, exists := s.sessions[userID.Hex()]
+	if !exists {
+		return errors.New("session not found")
+	}
+	defer delete(s.sessions, userID.Hex())
+
+	// Get user
+	var user models.User
+	err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	if err != nil {
+		return fmt.Errorf("user not found: %w", err)
+	}
+
+	// Wrap user for WebAuthn
+	webAuthnUser := utils.WebAuthnUser{User: &user}
+
+	// Parse credential creation response
+	parsedResponse, err := utils.ParseCredentialCreationResponse(response)
+	if err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	// Finish registration
+	credential, err := s.webAuthn.CreateCredential(webAuthnUser, *session, parsedResponse)
+	if err != nil {
+		return fmt.Errorf("failed to create credential: %w", err)
+	}
+
+	// Convert to our model
+	passkeyCredential := utils.ConvertWebAuthnCredential(credential, credentialName)
+
+	// Add credential to user
+	_, err = s.db.Collection("users").UpdateOne(
+		ctx,
+		bson.M{"_id": userID},
+		bson.M{"$push": bson.M{"passkey_credentials": passkeyCredential}},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to save credential: %w", err)
+	}
+
+	return nil
+}
+
+// BeginPasskeyLogin starts the passkey authentication process
+func (s *AuthService) BeginPasskeyLogin(ctx context.Context, email string) (*protocol.CredentialAssertion, error) {
+	if s.webAuthn == nil {
+		return nil, errors.New("WebAuthn not initialized")
+	}
+
+	// Find user by email
+	var user models.User
+	err := s.db.Collection("users").FindOne(ctx, bson.M{"email": email}).Decode(&user)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("user not found")
+		}
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+
+	if !user.IsActive {
+		return nil, errors.New("user account is disabled")
+	}
+
+	if len(user.PasskeyCredentials) == 0 {
+		return nil, errors.New("no passkeys registered")
+	}
+
+	// Wrap user for WebAuthn
+	webAuthnUser := utils.WebAuthnUser{User: &user}
+
+	// Begin login
+	options, session, err := s.webAuthn.BeginLogin(webAuthnUser)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin login: %w", err)
+	}
+
+	// Store session
+	s.sessions[user.ID.Hex()] = session
+
+	return options, nil
+}
+
+// BeginPasskeyDiscoverableLogin starts discoverable credential authentication (no email required)
+func (s *AuthService) BeginPasskeyDiscoverableLogin(ctx context.Context) (*protocol.CredentialAssertion, error) {
+	if s.webAuthn == nil {
+		return nil, errors.New("WebAuthn not initialized")
+	}
+
+	// Begin discoverable login (no user specified)
+	options, session, err := s.webAuthn.BeginDiscoverableLogin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin discoverable login: %w", err)
+	}
+
+	// Store session with a temporary key (we'll update it when we know the user)
+	sessionKey := fmt.Sprintf("discoverable_%d", time.Now().UnixNano())
+	s.sessions[sessionKey] = session
+
+	// Store the session key in the response (we'll need it to retrieve the session)
+	return options, nil
+}
+
+// FinishPasskeyLogin completes the passkey authentication process
+func (s *AuthService) FinishPasskeyLogin(ctx context.Context, email string, response []byte) (*TokenResponse, error) {
+	if s.webAuthn == nil {
+		return nil, errors.New("WebAuthn not initialized")
+	}
+
+	// Find user by email
+	var user models.User
+	err := s.db.Collection("users").FindOne(ctx, bson.M{"email": email}).Decode(&user)
+	if err != nil {
+		return nil, errors.New("invalid credentials")
+	}
+
+	// Get session
+	session, exists := s.sessions[user.ID.Hex()]
+	if !exists {
+		return nil, errors.New("session not found")
+	}
+	defer delete(s.sessions, user.ID.Hex())
+
+	// Wrap user for WebAuthn
+	webAuthnUser := utils.WebAuthnUser{User: &user}
+
+	// Parse credential assertion response
+	parsedResponse, err := utils.ParseCredentialRequestResponse(response)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	// Validate login
+	credential, err := s.webAuthn.ValidateLogin(webAuthnUser, *session, parsedResponse)
+	if err != nil {
+		return nil, fmt.Errorf("authentication failed: %w", err)
+	}
+
+	// Update credential sign count and last used time
+	now := time.Now()
+	_, err = s.db.Collection("users").UpdateOne(
+		ctx,
+		bson.M{
+			"_id": user.ID,
+			"passkey_credentials.id": credential.ID,
+		},
+		bson.M{"$set": bson.M{
+			"passkey_credentials.$.sign_count": credential.Authenticator.SignCount,
+			"passkey_credentials.$.last_used_at": now,
+		}},
+	)
+	if err != nil {
+		// Log but don't fail - authentication was successful
+		fmt.Printf("Warning: Failed to update credential: %v\n", err)
+	}
+
+	// Generate tokens
+	accessToken, err := utils.GenerateAccessToken(
+		user.ID,
+		user.Email,
+		user.Role,
+		s.cfg.JWT.Secret,
+		s.cfg.JWT.AccessTTL,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
+	}
+
+	refreshToken, err := utils.GenerateRefreshToken(
+		user.ID,
+		s.cfg.JWT.RefreshSecret,
+		s.cfg.JWT.RefreshTTL,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
+	}
+
+	return &TokenResponse{
+		Access:             accessToken,
+		Refresh:            refreshToken,
+		MustChangePassword: user.MustChangePassword,
+	}, nil
+}
+
+// FinishPasskeyDiscoverableLogin completes discoverable credential authentication
+func (s *AuthService) FinishPasskeyDiscoverableLogin(ctx context.Context, response []byte) (*TokenResponse, error) {
+	if s.webAuthn == nil {
+		return nil, errors.New("WebAuthn not initialized")
+	}
+
+	// Parse credential assertion response
+	parsedResponse, err := utils.ParseCredentialRequestResponse(response)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	// Find the matching session (try all discoverable sessions)
+	var session *webauthn.SessionData
+	var sessionKey string
+	for key, sess := range s.sessions {
+		if len(key) > 13 && key[:13] == "discoverable_" {
+			session = sess
+			sessionKey = key
+			break
+		}
+	}
+
+	if session == nil {
+		return nil, errors.New("session not found")
+	}
+	defer delete(s.sessions, sessionKey)
+
+	// Create user handler for discoverable login
+	userHandler := func(rawID, userHandle []byte) (webauthn.User, error) {
+		// Convert user handle to ObjectID
+		userIDHex := string(userHandle)
+		userID, err := primitive.ObjectIDFromHex(userIDHex)
+		if err != nil {
+			return nil, errors.New("invalid user handle")
+		}
+
+		// Find user by ID
+		var user models.User
+		err = s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+		if err != nil {
+			return nil, errors.New("user not found")
+		}
+
+		if !user.IsActive {
+			return nil, errors.New("user account is disabled")
+		}
+
+		return utils.WebAuthnUser{User: &user}, nil
+	}
+
+	// Validate discoverable login
+	credential, err := s.webAuthn.ValidateDiscoverableLogin(userHandler, *session, parsedResponse)
+	if err != nil {
+		return nil, fmt.Errorf("authentication failed: %w", err)
+	}
+
+	// Get the user from the user handle for token generation
+	userIDHex := string(parsedResponse.Response.UserHandle)
+	userID, _ := primitive.ObjectIDFromHex(userIDHex)
+	var user models.User
+	s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+
+	// Update credential sign count and last used time
+	now := time.Now()
+	_, err = s.db.Collection("users").UpdateOne(
+		ctx,
+		bson.M{
+			"_id": user.ID,
+			"passkey_credentials.id": credential.ID,
+		},
+		bson.M{"$set": bson.M{
+			"passkey_credentials.$.sign_count": credential.Authenticator.SignCount,
+			"passkey_credentials.$.last_used_at": now,
+		}},
+	)
+	if err != nil {
+		// Log but don't fail - authentication was successful
+		fmt.Printf("Warning: Failed to update credential: %v\n", err)
+	}
+
+	// Generate tokens
+	accessToken, err := utils.GenerateAccessToken(
+		user.ID,
+		user.Email,
+		user.Role,
+		s.cfg.JWT.Secret,
+		s.cfg.JWT.AccessTTL,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
+	}
+
+	refreshToken, err := utils.GenerateRefreshToken(
+		user.ID,
+		s.cfg.JWT.RefreshSecret,
+		s.cfg.JWT.RefreshTTL,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
+	}
+
+	return &TokenResponse{
+		Access:             accessToken,
+		Refresh:            refreshToken,
+		MustChangePassword: user.MustChangePassword,
+	}, nil
+}
+
+// ListPasskeys returns all passkeys for a user
+func (s *AuthService) ListPasskeys(ctx context.Context, userID primitive.ObjectID) ([]models.PasskeyCredential, error) {
+	var user models.User
+	err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	if err != nil {
+		return nil, fmt.Errorf("user not found: %w", err)
+	}
+
+	return user.PasskeyCredentials, nil
+}
+
+// DeletePasskey removes a passkey from a user
+func (s *AuthService) DeletePasskey(ctx context.Context, userID primitive.ObjectID, credentialID []byte) error {
+	_, err := s.db.Collection("users").UpdateOne(
+		ctx,
+		bson.M{"_id": userID},
+		bson.M{"$pull": bson.M{"passkey_credentials": bson.M{"id": credentialID}}},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete passkey: %w", err)
+	}
+
 	return nil
 }
 

@@ -99,9 +99,37 @@
     </div>
 
     <div class="card mt-6">
-      <h2 class="text-xl font-semibold mb-4">Historia pożyczek</h2>
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-semibold">Historia pożyczek</h2>
+        <div class="flex gap-2">
+          <button
+            @click="statusFilter = 'all'"
+            :class="statusFilter === 'all' ? 'btn-primary' : 'btn-outline'"
+            class="btn btn-sm">
+            Wszystkie
+          </button>
+          <button
+            @click="statusFilter = 'open'"
+            :class="statusFilter === 'open' ? 'btn-primary' : 'btn-outline'"
+            class="btn btn-sm">
+            Niespłacone
+          </button>
+          <button
+            @click="statusFilter = 'partial'"
+            :class="statusFilter === 'partial' ? 'btn-primary' : 'btn-outline'"
+            class="btn btn-sm">
+            Częściowo spłacone
+          </button>
+          <button
+            @click="statusFilter = 'settled'"
+            :class="statusFilter === 'settled' ? 'btn-primary' : 'btn-outline'"
+            class="btn btn-sm">
+            Spłacone
+          </button>
+        </div>
+      </div>
       <div v-if="loading" class="text-center py-8">{{ $t('common.loading') }}</div>
-      <div v-else-if="loans.length === 0" class="text-center py-8 text-gray-400">Brak historii</div>
+      <div v-else-if="filteredLoans.length === 0" class="text-center py-8 text-gray-400">Brak historii</div>
       <div v-else class="overflow-x-auto">
         <table class="w-full">
           <thead class="border-b border-gray-700">
@@ -109,19 +137,40 @@
               <th class="pb-3">Od</th>
               <th class="pb-3">Do</th>
               <th class="pb-3">Kwota</th>
+              <th class="pb-3">Pozostało</th>
               <th class="pb-3">Opis</th>
               <th class="pb-3">Status</th>
               <th class="pb-3">Data</th>
+              <th v-if="authStore.isAdmin" class="pb-3">Akcje</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="loan in loans" :key="loan.id" class="border-b border-gray-700">
+            <tr v-for="loan in filteredLoans" :key="loan.id" class="border-b border-gray-700">
               <td class="py-3">{{ loan.fromUserName }}</td>
               <td class="py-3">{{ loan.toUserName }}</td>
               <td class="py-3">{{ formatMoney(loan.amountPLN) }} PLN</td>
+              <td class="py-3" :class="getRemainingColorClass(loan)">
+                {{ formatMoney(loan.remainingPLN) }} PLN
+              </td>
               <td class="py-3 text-gray-400">{{ loan.note || '-' }}</td>
-              <td class="py-3">{{ loan.status }}</td>
+              <td class="py-3">
+                <span :class="getStatusColorClass(loan.status)">
+                  {{ translateStatus(loan.status) }}
+                </span>
+              </td>
               <td class="py-3">{{ formatDate(loan.createdAt) }}</td>
+              <td v-if="authStore.isAdmin" class="py-3">
+                <button
+                  @click="confirmDeleteLoan(loan.id)"
+                  class="btn btn-sm btn-secondary"
+                  title="Usuń pożyczkę">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 6h18"/>
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                  </svg>
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -132,8 +181,9 @@
 
 <script setup>
 // @version 2.0.0 - Fixed array filter checks
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
+import { useEventStream } from '../composables/useEventStream'
 import api from '../api/client'
 
 const authStore = useAuthStore()
@@ -143,6 +193,7 @@ const users = ref([])
 const loading = ref(false)
 const creatingLoan = ref(false)
 const creatingPayment = ref(false)
+const statusFilter = ref('all')
 
 const loanForm = ref({
   lenderId: '',
@@ -168,11 +219,16 @@ const owesYou = computed(() =>
 )
 
 const openLoans = computed(() =>
-  Array.isArray(loans.value) ? loans.value.filter(l => l.status === 'open') : []
+  Array.isArray(loans.value) ? loans.value.filter(l => l.status === 'open' || l.status === 'partial') : []
 )
 
-onMounted(async () => {
-  loading.value = true
+const filteredLoans = computed(() => {
+  if (!Array.isArray(loans.value)) return []
+  if (statusFilter.value === 'all') return loans.value
+  return loans.value.filter(l => l.status === statusFilter.value)
+})
+
+async function loadData() {
   try {
     const requests = [
       api.get('/loans/balances/me'),
@@ -193,9 +249,60 @@ onMounted(async () => {
     console.error('Failed to load balance data:', err)
     balances.value = []
     loans.value = []
-  } finally {
-    loading.value = false
   }
+}
+
+const eventStream = useEventStream()
+
+// Reload data when tab becomes visible
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'visible') {
+    console.log('[Balance] Tab visible, reloading data')
+    loadData()
+  }
+}
+
+onMounted(async () => {
+  loading.value = true
+  await loadData()
+  loading.value = false
+
+  // Connect to SSE
+  eventStream.connect()
+
+  // Listen for loan-related events
+  eventStream.on('loan.created', () => {
+    console.log('[Balance] Loan created event received, reloading data')
+    loadData()
+  })
+
+  eventStream.on('loan.payment.created', () => {
+    console.log('[Balance] Loan payment event received, reloading data')
+    loadData()
+  })
+
+  eventStream.on('loan.deleted', () => {
+    console.log('[Balance] Loan deleted event received, reloading data')
+    loadData()
+  })
+
+  eventStream.on('balance.updated', () => {
+    console.log('[Balance] Balance updated event received, reloading data')
+    loadData()
+  })
+
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+})
+
+onUnmounted(() => {
+  // Cleanup SSE listeners
+  eventStream.off('loan.created', loadData)
+  eventStream.off('loan.payment.created', loadData)
+  eventStream.off('loan.deleted', loadData)
+  eventStream.off('balance.updated', loadData)
+  eventStream.disconnect()
+
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
 async function createLoan() {
@@ -213,12 +320,7 @@ async function createLoan() {
     loanForm.value = { lenderId: '', borrowerId: '', amount: '', note: '', dueDate: '' }
 
     // Reload data
-    const [balancesRes, loansRes] = await Promise.all([
-      api.get('/loans/balances/me'),
-      api.get('/loans')
-    ])
-    balances.value = balancesRes.data || []
-    loans.value = loansRes.data || []
+    await loadData()
   } catch (err) {
     console.error('Failed to create loan:', err)
     alert('Błąd tworzenia pożyczki: ' + (err.response?.data?.error || err.message))
@@ -246,12 +348,7 @@ async function createPayment() {
     }
 
     // Reload data
-    const [balancesRes, loansRes] = await Promise.all([
-      api.get('/loans/balances/me'),
-      api.get('/loans')
-    ])
-    balances.value = balancesRes.data || []
-    loans.value = loansRes.data || []
+    await loadData()
   } catch (err) {
     console.error('Failed to create payment:', err)
     alert('Błąd tworzenia spłaty: ' + (err.response?.data?.error || err.message))
@@ -263,8 +360,13 @@ async function createPayment() {
 function getLoanDescription(loan) {
   const lender = users.value.find(u => u.id === loan.lenderId)
   const borrower = users.value.find(u => u.id === loan.borrowerId)
-  const amount = formatMoney(loan.amountPLN)
-  return `${lender?.name || '?'} → ${borrower?.name || '?'} (${amount} PLN)`
+  const totalAmount = formatMoney(loan.amountPLN)
+  const remaining = loan.remainingPLN ? formatMoney(loan.remainingPLN) : totalAmount
+
+  if (loan.status === 'partial') {
+    return `${lender?.name || '?'} → ${borrower?.name || '?'} (pozostało: ${remaining} PLN z ${totalAmount} PLN)`
+  }
+  return `${lender?.name || '?'} → ${borrower?.name || '?'} (${totalAmount} PLN)`
 }
 
 function formatMoney(decimal128) {
@@ -275,5 +377,43 @@ function formatMoney(decimal128) {
 
 function formatDate(date) {
   return new Date(date).toLocaleDateString('pl-PL')
+}
+
+function translateStatus(status) {
+  const translations = {
+    'open': 'Niespłacona',
+    'partial': 'Częściowo spłacona',
+    'settled': 'Spłacona'
+  }
+  return translations[status] || status
+}
+
+function getStatusColorClass(status) {
+  const colors = {
+    'open': 'text-red-400',
+    'partial': 'text-yellow-400',
+    'settled': 'text-green-400'
+  }
+  return colors[status] || 'text-gray-400'
+}
+
+function getRemainingColorClass(loan) {
+  if (loan.status === 'settled') return 'text-green-400'
+  if (loan.status === 'partial') return 'text-yellow-400'
+  return 'text-red-400'
+}
+
+async function confirmDeleteLoan(loanId) {
+  if (!confirm('Czy na pewno chcesz usunąć tę pożyczkę?')) return
+
+  try {
+    await api.delete(`/loans/${loanId}`)
+
+    // Reload data
+    await loadData()
+  } catch (err) {
+    console.error('Failed to delete loan:', err)
+    alert('Błąd usuwania pożyczki: ' + (err.response?.data?.error || err.message))
+  }
 }
 </script>

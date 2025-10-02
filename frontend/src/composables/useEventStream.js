@@ -24,12 +24,8 @@ export function useEventStream() {
    * Connect to SSE stream
    */
   function connect() {
-    // SSE temporarily disabled
-    console.log('[SSE] Connection disabled - SSE endpoint not available')
-    return
-
     if (!authStore.accessToken) {
-      error.value = 'No authentication token available'
+      error.value = 'Brak tokenu uwierzytelniania'
       return
     }
 
@@ -69,7 +65,7 @@ export function useEventStream() {
         console.error('[SSE] Connection error:', err)
         isConnected.value = false
         isConnecting.value = false
-        error.value = 'Connection error'
+        error.value = 'Błąd połączenia'
 
         // Cleanup and attempt reconnect
         if (eventSource) {
@@ -93,7 +89,7 @@ export function useEventStream() {
   function scheduleReconnect() {
     if (reconnectAttempts >= maxReconnectAttempts) {
       console.warn('[SSE] Max reconnection attempts reached')
-      error.value = 'Max reconnection attempts reached'
+      error.value = 'Osiągnięto maksymalną liczbę prób ponownego połączenia'
       return
     }
 

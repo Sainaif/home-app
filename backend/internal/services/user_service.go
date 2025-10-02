@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -115,6 +116,7 @@ func (s *UserService) GetUser(ctx context.Context, userID primitive.ObjectID) (*
 // UpdateUser updates a user (ADMIN only)
 func (s *UserService) UpdateUser(ctx context.Context, userID primitive.ObjectID, req UpdateUserRequest) error {
 	update := bson.M{}
+	unset := bson.M{}
 
 	if req.Email != nil {
 		// Check if new email already exists
@@ -143,21 +145,37 @@ func (s *UserService) UpdateUser(ctx context.Context, userID primitive.ObjectID,
 	}
 
 	if req.GroupID != nil {
-		update["group_id"] = *req.GroupID
+		log.Printf("[DEBUG] GroupID is not nil: %v, IsZero: %v", *req.GroupID, req.GroupID.IsZero())
+		if req.GroupID.IsZero() {
+			// Zero ObjectID means remove the group
+			log.Printf("[DEBUG] Adding group_id to unset")
+			unset["group_id"] = ""
+		} else {
+			log.Printf("[DEBUG] Setting group_id to %v", *req.GroupID)
+			update["group_id"] = *req.GroupID
+		}
 	}
 
 	if req.IsActive != nil {
 		update["is_active"] = *req.IsActive
 	}
 
-	if len(update) == 0 {
+	if len(update) == 0 && len(unset) == 0 {
 		return errors.New("no fields to update")
+	}
+
+	updateDoc := bson.M{}
+	if len(update) > 0 {
+		updateDoc["$set"] = update
+	}
+	if len(unset) > 0 {
+		updateDoc["$unset"] = unset
 	}
 
 	result, err := s.db.Collection("users").UpdateOne(
 		ctx,
 		bson.M{"_id": userID},
-		bson.M{"$set": update},
+		updateDoc,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update user: %w", err)
@@ -216,5 +234,34 @@ func (s *UserService) ForcePasswordChange(ctx context.Context, userID primitive.
 	if err != nil {
 		return fmt.Errorf("failed to set password change flag: %w", err)
 	}
+	return nil
+}
+
+// DeleteUser deletes a user from the system
+func (s *UserService) DeleteUser(ctx context.Context, userID primitive.ObjectID) error {
+	// Check if user is active
+	var user models.User
+	err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return fmt.Errorf("user not found")
+		}
+		return fmt.Errorf("failed to find user: %w", err)
+	}
+
+	if user.IsActive {
+		return fmt.Errorf("cannot delete active user, deactivate first")
+	}
+
+	// Delete the user
+	result, err := s.db.Collection("users").DeleteOne(ctx, bson.M{"_id": userID})
+	if err != nil {
+		return fmt.Errorf("failed to delete user: %w", err)
+	}
+
+	if result.DeletedCount == 0 {
+		return fmt.Errorf("user not found")
+	}
+
 	return nil
 }
