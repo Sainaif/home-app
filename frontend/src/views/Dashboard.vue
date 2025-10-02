@@ -207,6 +207,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useEventStream } from '../composables/useEventStream'
+import { useDataEvents, DATA_EVENTS } from '../composables/useDataEvents'
 import api from '../api/client'
 import {
   Receipt, CheckSquare, Wallet, Zap, Flame, Wifi, Users,
@@ -228,6 +229,9 @@ const targetUserId = computed(() => route.params.userId || authStore.user?.id)
 
 // Setup SSE for real-time updates
 const { connect, on } = useEventStream()
+
+// Setup event bus for cross-component updates
+const { on: onDataEvent } = useDataEvents()
 
 const totalBalanceNumber = computed(() => {
   const userId = targetUserId.value
@@ -293,6 +297,12 @@ onMounted(async () => {
       loadBalances()
     })
   }
+
+  // Listen to cross-component events
+  onDataEvent(DATA_EVENTS.USER_UPDATED, () => loadDashboardData())
+  onDataEvent(DATA_EVENTS.GROUP_UPDATED, () => loadDashboardData())
+  onDataEvent(DATA_EVENTS.CHORE_CREATED, () => loadChores())
+  onDataEvent(DATA_EVENTS.CHORE_ASSIGNMENT_UPDATED, () => loadChores())
 })
 
 // Watch for userId changes

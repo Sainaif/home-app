@@ -250,9 +250,11 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
+import { useDataEvents, DATA_EVENTS } from '../composables/useDataEvents'
 import api from '../api/client'
 
 const authStore = useAuthStore()
+const { emit } = useDataEvents()
 const assignments = ref([])
 const chores = ref([])
 const users = ref([])
@@ -462,6 +464,7 @@ async function createChore() {
     // Load chores first, then assignments (so enrichment works)
     await loadChores()
     await loadAssignments()
+    emit(DATA_EVENTS.CHORE_CREATED)
   } catch (err) {
     console.error('Failed to create chore:', err)
     alert('Błąd tworzenia obowiązku: ' + (err.response?.data?.error || err.message))
@@ -480,6 +483,7 @@ async function updateStatus(assignmentId, status) {
 
     // Update user stats
     userStats.value = leaderboard.value.find(u => u.userId === authStore.user?.id)
+    emit(DATA_EVENTS.CHORE_ASSIGNMENT_UPDATED, { assignmentId })
   } catch (err) {
     console.error('Failed to update chore status:', err)
     alert('Błąd aktualizacji statusu: ' + (err.response?.data?.error || err.message))

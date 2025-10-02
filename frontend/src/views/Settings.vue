@@ -470,12 +470,14 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { usePasskey } from '../composables/usePasskey'
+import { useDataEvents, DATA_EVENTS } from '../composables/useDataEvents'
 import api from '../api/client'
 import { UserPlus, Users, Edit, Trash, X, Key, Shield, ShieldOff, Download, Upload } from 'lucide-vue-next'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const { checkSupport, listPasskeys, register: registerPasskey, deletePasskey: removePasskey } = usePasskey()
+const { emit } = useDataEvents()
 
 const profileForm = ref({
   name: authStore.user?.name || '',
@@ -560,8 +562,7 @@ onMounted(async () => {
   }
 
   if (authStore.isAdmin) {
-    loadUsers()
-    loadGroups()
+    await Promise.all([loadUsers(), loadGroups()])
   }
 
   // Check passkey support
@@ -589,6 +590,7 @@ async function updateProfile() {
     authStore.user.name = profileForm.value.name
     authStore.user.email = profileForm.value.email
 
+    emit(DATA_EVENTS.USER_UPDATED, { userId: authStore.user.id })
     profileSuccess.value = 'Profil zaktualizowany pomyślnie'
   } catch (err) {
     profileError.value = err.response?.data?.error || 'Błąd aktualizacji profilu'
@@ -661,6 +663,7 @@ async function createUser() {
     showCreateUserModal.value = false
     newUser.value = { name: '', email: '', password: '', role: 'RESIDENT', groupId: '' }
     await loadUsers()
+    emit(DATA_EVENTS.USER_CREATED)
   } catch (err) {
     userError.value = err.response?.data?.error || 'Nie udało się utworzyć użytkownika'
   } finally {
@@ -703,6 +706,7 @@ async function updateUser() {
 
     showEditUserModal.value = false
     await loadUsers()
+    emit(DATA_EVENTS.USER_UPDATED, { userId: editUserForm.value.id })
   } catch (err) {
     userError.value = err.response?.data?.error || 'Nie udało się zaktualizować użytkownika'
   } finally {
@@ -716,6 +720,7 @@ async function toggleUserStatus(user) {
       isActive: !user.isActive
     })
     await loadUsers()
+    emit(DATA_EVENTS.USER_UPDATED, { userId: user.id })
   } catch (err) {
     console.error('Failed to toggle user status:', err)
     alert('Nie udało się zmienić statusu użytkownika: ' + (err.response?.data?.error || err.message))
@@ -750,6 +755,7 @@ async function deleteUser(user) {
   try {
     await api.delete(`/users/${user.id}`)
     await loadUsers()
+    emit(DATA_EVENTS.USER_DELETED, { userId: user.id })
     alert('Użytkownik został usunięty')
   } catch (err) {
     console.error('Failed to delete user:', err)
@@ -781,12 +787,14 @@ async function saveGroup() {
         name: groupForm.value.name,
         weight: groupForm.value.weight
       })
+      emit(DATA_EVENTS.GROUP_UPDATED, { groupId: editingGroup.value.id })
     } else {
       // Create new group
       await api.post('/groups', {
         name: groupForm.value.name,
         weight: groupForm.value.weight
       })
+      emit(DATA_EVENTS.GROUP_CREATED)
     }
 
     closeGroupModal()
@@ -805,6 +813,7 @@ async function deleteGroup(groupId) {
     await api.delete(`/groups/${groupId}`)
     await loadGroups()
     await loadUsers() // Refresh users to update group assignments
+    emit(DATA_EVENTS.GROUP_DELETED, { groupId })
     alert('Grupa została usunięta pomyślnie')
   } catch (err) {
     console.error('Failed to delete group:', err)

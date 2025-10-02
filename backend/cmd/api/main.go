@@ -58,9 +58,18 @@ func main() {
 	app.Use(recover.New())
 	app.Use(middleware.RequestIDMiddleware())
 
-	// Add cache control middleware to prevent browser caching of API responses
+	// Smart cache control middleware - GET requests cacheable, mutations not
 	app.Use(func(c *fiber.Ctx) error {
-		c.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		method := c.Method()
+
+		if method == "GET" {
+			// GET requests: Allow caching but require revalidation
+			c.Set("Cache-Control", "no-cache")
+		} else {
+			// POST, PATCH, DELETE, PUT: No caching
+			c.Set("Cache-Control", "no-store, must-revalidate")
+		}
+
 		c.Set("Pragma", "no-cache")
 		c.Set("Expires", "0")
 		return c.Next()
