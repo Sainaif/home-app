@@ -23,7 +23,6 @@ func NewGroupHandler(groupService *services.GroupService, auditService *services
 func (h *GroupHandler) CreateGroup(c *fiber.Ctx) error {
 	userID, _ := middleware.GetUserID(c)
 	userEmail := c.Locals("userEmail").(string)
-	userName := c.Locals("userName").(string)
 
 	var req services.CreateGroupRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -34,7 +33,7 @@ func (h *GroupHandler) CreateGroup(c *fiber.Ctx) error {
 
 	group, err := h.groupService.CreateGroup(c.Context(), req)
 	if err != nil {
-		h.auditService.LogAction(c.Context(), userID, userEmail, userName, "create_group", "group", nil,
+		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "create_group", "group", nil,
 			map[string]interface{}{"name": req.Name, "error": err.Error()},
 			c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -42,7 +41,7 @@ func (h *GroupHandler) CreateGroup(c *fiber.Ctx) error {
 		})
 	}
 
-	h.auditService.LogAction(c.Context(), userID, userEmail, userName, "create_group", "group", &group.ID,
+	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "create_group", "group", &group.ID,
 		map[string]interface{}{"name": req.Name, "weight": req.Weight},
 		c.IP(), c.Get("User-Agent"), "success")
 
@@ -85,7 +84,6 @@ func (h *GroupHandler) GetGroup(c *fiber.Ctx) error {
 func (h *GroupHandler) UpdateGroup(c *fiber.Ctx) error {
 	userID, _ := middleware.GetUserID(c)
 	userEmail := c.Locals("userEmail").(string)
-	userName := c.Locals("userName").(string)
 
 	id := c.Params("id")
 	groupID, err := primitive.ObjectIDFromHex(id)
@@ -103,7 +101,7 @@ func (h *GroupHandler) UpdateGroup(c *fiber.Ctx) error {
 	}
 
 	if err := h.groupService.UpdateGroup(c.Context(), groupID, req); err != nil {
-		h.auditService.LogAction(c.Context(), userID, userEmail, userName, "update_group", "group", &groupID,
+		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "update_group", "group", &groupID,
 			map[string]interface{}{"error": err.Error()},
 			c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -111,7 +109,7 @@ func (h *GroupHandler) UpdateGroup(c *fiber.Ctx) error {
 		})
 	}
 
-	h.auditService.LogAction(c.Context(), userID, userEmail, userName, "update_group", "group", &groupID,
+	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "update_group", "group", &groupID,
 		map[string]interface{}{"changes": req},
 		c.IP(), c.Get("User-Agent"), "success")
 
@@ -124,7 +122,6 @@ func (h *GroupHandler) UpdateGroup(c *fiber.Ctx) error {
 func (h *GroupHandler) DeleteGroup(c *fiber.Ctx) error {
 	userID, _ := middleware.GetUserID(c)
 	userEmail := c.Locals("userEmail").(string)
-	userName := c.Locals("userName").(string)
 
 	id := c.Params("id")
 	groupID, err := primitive.ObjectIDFromHex(id)
@@ -135,7 +132,7 @@ func (h *GroupHandler) DeleteGroup(c *fiber.Ctx) error {
 	}
 
 	if err := h.groupService.DeleteGroup(c.Context(), groupID); err != nil {
-		h.auditService.LogAction(c.Context(), userID, userEmail, userName, "delete_group", "group", &groupID,
+		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "delete_group", "group", &groupID,
 			map[string]interface{}{"error": err.Error()},
 			c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -143,7 +140,7 @@ func (h *GroupHandler) DeleteGroup(c *fiber.Ctx) error {
 		})
 	}
 
-	h.auditService.LogAction(c.Context(), userID, userEmail, userName, "delete_group", "group", &groupID,
+	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "delete_group", "group", &groupID,
 		map[string]interface{}{},
 		c.IP(), c.Get("User-Agent"), "success")
 

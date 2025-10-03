@@ -48,6 +48,7 @@ type Bill struct {
 	ID             primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
 	Type           string              `bson:"type" json:"type"` // electricity, gas, internet, inne
 	CustomType     *string             `bson:"custom_type,omitempty" json:"customType,omitempty"` // used when Type is "inne"
+	AllocationType *string             `bson:"allocation_type,omitempty" json:"allocationType,omitempty"` // simple (like gas) or metered (like electricity) - only for "inne"
 	PeriodStart    time.Time           `bson:"period_start" json:"periodStart"`
 	PeriodEnd      time.Time           `bson:"period_end" json:"periodEnd"`
 	TotalAmountPLN primitive.Decimal128 `bson:"total_amount_pln" json:"totalAmountPLN"`

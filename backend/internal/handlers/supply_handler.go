@@ -12,12 +12,14 @@ import (
 type SupplyHandler struct {
 	supplyService *services.SupplyService
 	auditService  *services.AuditService
+	eventService  *services.EventService
 }
 
-func NewSupplyHandler(supplyService *services.SupplyService, auditService *services.AuditService) *SupplyHandler {
+func NewSupplyHandler(supplyService *services.SupplyService, auditService *services.AuditService, eventService *services.EventService) *SupplyHandler {
 	return &SupplyHandler{
 		supplyService: supplyService,
 		auditService:  auditService,
+		eventService:  eventService,
 	}
 }
 
@@ -119,7 +121,6 @@ func (h *SupplyHandler) CreateItem(c *fiber.Ctx) error {
 	}
 
 	userEmail := c.Locals("userEmail").(string)
-	userName := c.Locals("userName").(string)
 
 	var req struct {
 		Name            string  `json:"name"`
@@ -149,7 +150,7 @@ func (h *SupplyHandler) CreateItem(c *fiber.Ctx) error {
 
 	item, err := h.supplyService.CreateItem(c.Context(), userID, req.Name, req.Category, req.CurrentQuantity, req.MinQuantity, req.Unit, req.Priority, req.Notes)
 	if err != nil {
-		h.auditService.LogAction(c.Context(), userID, userEmail, userName, "create_supply_item", "supply", nil,
+		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "create_supply_item", "supply", nil,
 			map[string]interface{}{"name": req.Name, "error": err.Error()},
 			c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -157,9 +158,17 @@ func (h *SupplyHandler) CreateItem(c *fiber.Ctx) error {
 		})
 	}
 
-	h.auditService.LogAction(c.Context(), userID, userEmail, userName, "create_supply_item", "supply", &item.ID,
+	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "create_supply_item", "supply", &item.ID,
 		map[string]interface{}{"name": req.Name, "category": req.Category, "quantity": req.CurrentQuantity},
 		c.IP(), c.Get("User-Agent"), "success")
+
+	// Broadcast event to all users
+	h.eventService.Broadcast(services.EventSupplyItemAdded, map[string]interface{}{
+		"itemId":   item.ID.Hex(),
+		"name":     req.Name,
+		"category": req.Category,
+		"addedBy":  userEmail,
+	})
 
 	return c.Status(fiber.StatusCreated).JSON(item)
 }
@@ -168,7 +177,6 @@ func (h *SupplyHandler) CreateItem(c *fiber.Ctx) error {
 func (h *SupplyHandler) UpdateItem(c *fiber.Ctx) error {
 	userID, _ := middleware.GetUserID(c)
 	userEmail := c.Locals("userEmail").(string)
-	userName := c.Locals("userName").(string)
 
 	id := c.Params("id")
 	itemID, err := primitive.ObjectIDFromHex(id)
@@ -194,7 +202,7 @@ func (h *SupplyHandler) UpdateItem(c *fiber.Ctx) error {
 	}
 
 	if err := h.supplyService.UpdateItem(c.Context(), itemID, req.Name, req.Category, req.MinQuantity, req.Unit, req.Priority, req.Notes); err != nil {
-		h.auditService.LogAction(c.Context(), userID, userEmail, userName, "update_supply_item", "supply", &itemID,
+		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "update_supply_item", "supply", &itemID,
 			map[string]interface{}{"error": err.Error()},
 			c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -202,7 +210,7 @@ func (h *SupplyHandler) UpdateItem(c *fiber.Ctx) error {
 		})
 	}
 
-	h.auditService.LogAction(c.Context(), userID, userEmail, userName, "update_supply_item", "supply", &itemID,
+	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "update_supply_item", "supply", &itemID,
 		map[string]interface{}{"changes": req},
 		c.IP(), c.Get("User-Agent"), "success")
 
@@ -229,7 +237,6 @@ func (h *SupplyHandler) RestockItem(c *fiber.Ctx) error {
 	}
 
 	userEmail := c.Locals("userEmail").(string)
-	userName := c.Locals("userName").(string)
 
 	var req struct {
 		QuantityToAdd int      `json:"quantityToAdd"`
@@ -244,7 +251,7 @@ func (h *SupplyHandler) RestockItem(c *fiber.Ctx) error {
 	}
 
 	if err := h.supplyService.RestockItem(c.Context(), itemID, userID, req.QuantityToAdd, req.AmountPLN, req.NeedsRefund); err != nil {
-		h.auditService.LogAction(c.Context(), userID, userEmail, userName, "restock_supply_item", "supply", &itemID,
+		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "restock_supply_item", "supply", &itemID,
 			map[string]interface{}{"quantity": req.QuantityToAdd, "error": err.Error()},
 			c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -252,7 +259,7 @@ func (h *SupplyHandler) RestockItem(c *fiber.Ctx) error {
 		})
 	}
 
-	h.auditService.LogAction(c.Context(), userID, userEmail, userName, "restock_supply_item", "supply", &itemID,
+	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "restock_supply_item", "supply", &itemID,
 		map[string]interface{}{"quantity": req.QuantityToAdd, "amount": req.AmountPLN, "needs_refund": req.NeedsRefund},
 		c.IP(), c.Get("User-Agent"), "success")
 
@@ -348,7 +355,6 @@ func (h *SupplyHandler) MarkAsRefunded(c *fiber.Ctx) error {
 func (h *SupplyHandler) DeleteItem(c *fiber.Ctx) error {
 	userID, _ := middleware.GetUserID(c)
 	userEmail := c.Locals("userEmail").(string)
-	userName := c.Locals("userName").(string)
 
 	id := c.Params("id")
 	itemID, err := primitive.ObjectIDFromHex(id)
@@ -359,7 +365,7 @@ func (h *SupplyHandler) DeleteItem(c *fiber.Ctx) error {
 	}
 
 	if err := h.supplyService.DeleteItem(c.Context(), itemID); err != nil {
-		h.auditService.LogAction(c.Context(), userID, userEmail, userName, "delete_supply_item", "supply", &itemID,
+		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "delete_supply_item", "supply", &itemID,
 			map[string]interface{}{"error": err.Error()},
 			c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -367,7 +373,7 @@ func (h *SupplyHandler) DeleteItem(c *fiber.Ctx) error {
 		})
 	}
 
-	h.auditService.LogAction(c.Context(), userID, userEmail, userName, "delete_supply_item", "supply", &itemID,
+	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "delete_supply_item", "supply", &itemID,
 		map[string]interface{}{},
 		c.IP(), c.Get("User-Agent"), "success")
 

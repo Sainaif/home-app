@@ -25,6 +25,7 @@ func NewBillService(db *mongo.Database) *BillService {
 type CreateBillRequest struct {
 	Type           string    `json:"type"` // electricity, gas, internet, inne
 	CustomType     *string   `json:"customType,omitempty"` // required when type is "inne"
+	AllocationType *string   `json:"allocationType,omitempty"` // "simple" or "metered", required when type is "inne"
 	PeriodStart    time.Time `json:"periodStart"`
 	PeriodEnd      time.Time `json:"periodEnd"`
 	TotalAmountPLN float64   `json:"totalAmountPLN"`
@@ -50,6 +51,21 @@ func (s *BillService) CreateBill(ctx context.Context, req CreateBillRequest) (*m
 		return nil, errors.New("customType should only be provided when type is 'inne'")
 	}
 
+	// Validate allocationType for "inne" type
+	if req.Type == "inne" && (req.AllocationType == nil || (*req.AllocationType != "simple" && *req.AllocationType != "metered")) {
+		return nil, errors.New("allocationType must be 'simple' or 'metered' when type is 'inne'")
+	}
+
+	// Set default allocation types for standard bill types
+	allocationType := req.AllocationType
+	if req.Type == "gas" || req.Type == "internet" {
+		simpleType := "simple"
+		allocationType = &simpleType
+	} else if req.Type == "electricity" {
+		meteredType := "metered"
+		allocationType = &meteredType
+	}
+
 	if req.PeriodEnd.Before(req.PeriodStart) {
 		return nil, errors.New("period end must be after period start")
 	}
@@ -63,6 +79,7 @@ func (s *BillService) CreateBill(ctx context.Context, req CreateBillRequest) (*m
 		ID:             primitive.NewObjectID(),
 		Type:           req.Type,
 		CustomType:     req.CustomType,
+		AllocationType: allocationType,
 		PeriodStart:    req.PeriodStart,
 		PeriodEnd:      req.PeriodEnd,
 		TotalAmountPLN: amountDec,

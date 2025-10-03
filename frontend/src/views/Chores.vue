@@ -6,7 +6,7 @@
         <button @click="showLeaderboard = !showLeaderboard" class="btn btn-outline">
           {{ showLeaderboard ? 'Ukryj ranking' : 'Pokaż ranking' }}
         </button>
-        <button v-if="authStore.isAdmin" @click="showCreateForm = !showCreateForm" class="btn btn-primary">
+        <button v-if="authStore.hasPermission('chores.create')" @click="showCreateForm = !showCreateForm" class="btn btn-primary">
           {{ showCreateForm ? 'Anuluj' : '+ Dodaj obowiązek' }}
         </button>
       </div>
@@ -71,8 +71,8 @@
       </div>
     </div>
 
-    <!-- Create Chore Form (Admin Only) -->
-    <div v-if="authStore.isAdmin && showCreateForm" class="card mb-6">
+    <!-- Create Chore Form -->
+    <div v-if="showCreateForm && authStore.hasPermission('chores.create')" class="card mb-6">
       <h2 class="text-xl font-semibold mb-4">Dodaj nowy obowiązek</h2>
       <form @submit.prevent="createChore" class="space-y-4">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -163,7 +163,7 @@
             <option value="overdue">Zaległe</option>
           </select>
         </div>
-        <div v-if="authStore.isAdmin">
+        <div v-if="authStore.hasPermission('chores.read')">
           <label class="block text-sm font-medium mb-2">Użytkownik</label>
           <select v-model="filters.userId" @change="loadAssignments" class="input">
             <option value="">Wszyscy</option>
@@ -313,7 +313,7 @@ onMounted(async () => {
   await Promise.all([
     loadChores(),
     loadLeaderboard(),
-    authStore.isAdmin ? loadUsers() : Promise.resolve()
+    loadUsers()
   ])
 
   // Then load assignments (which enriches with chore/user data)

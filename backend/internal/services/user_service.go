@@ -254,6 +254,26 @@ func (s *UserService) ForcePasswordChange(ctx context.Context, userID primitive.
 }
 
 // DeleteUser deletes a user from the system
+// GetUserIDsByRole returns all user IDs that have a specific role
+func (s *UserService) GetUserIDsByRole(ctx context.Context, roleName string) ([]primitive.ObjectID, error) {
+	cursor, err := s.db.Collection("users").Find(ctx, bson.M{"role": roleName, "is_active": true})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var userIDs []primitive.ObjectID
+	for cursor.Next(ctx) {
+		var user models.User
+		if err := cursor.Decode(&user); err != nil {
+			continue
+		}
+		userIDs = append(userIDs, user.ID)
+	}
+
+	return userIDs, nil
+}
+
 func (s *UserService) DeleteUser(ctx context.Context, userID primitive.ObjectID) error {
 	// Check if user is active
 	var user models.User

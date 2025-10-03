@@ -258,7 +258,7 @@ const totalBalance = computed(() => {
 
 const totalPendingAmount = computed(() => {
   return pendingAllocations.value.reduce((sum, item) => {
-    const amount = parseFloat(item.allocation.amountPLN.$numberDecimal || item.allocation.amountPLN || 0)
+    const amount = parseFloat(item.allocation.amountPLN || 0)
     return sum + amount
   }, 0)
 })
@@ -384,7 +384,7 @@ async function loadPendingAllocations() {
     // For each posted bill, get user's allocations
     const allocationsPromises = postedBills.map(async (bill) => {
       try {
-        const allocRes = await api.get(`/allocations?billId=${bill.id}`)
+        const allocRes = await api.get(`/bills/${bill.id}/allocation`)
         const allocations = allocRes.data || []
 
         // Find user's allocation (either direct user or through group)
@@ -399,7 +399,17 @@ async function loadPendingAllocations() {
         })
 
         if (userAllocation) {
-          return { bill, allocation: userAllocation }
+          // Map new allocation format to expected Dashboard format
+          const mapped = {
+            bill,
+            allocation: {
+              id: userAllocation.subjectId,
+              amountPLN: userAllocation.amount || 0, // New endpoint returns plain number as 'amount'
+              units: userAllocation.units || 0
+            }
+          }
+          console.log('Mapped allocation:', mapped)
+          return mapped
         }
       } catch (err) {
         console.error(`Failed to load allocations for bill ${bill.id}:`, err)

@@ -12,12 +12,14 @@ import (
 type UserHandler struct {
 	userService  *services.UserService
 	auditService *services.AuditService
+	roleService  *services.RoleService
 }
 
-func NewUserHandler(userService *services.UserService, auditService *services.AuditService) *UserHandler {
+func NewUserHandler(userService *services.UserService, auditService *services.AuditService, roleService *services.RoleService) *UserHandler {
 	return &UserHandler{
 		userService:  userService,
 		auditService: auditService,
+		roleService:  roleService,
 	}
 }
 
@@ -180,7 +182,7 @@ func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
 	})
 }
 
-// GetMe retrieves the current user's profile
+// GetMe retrieves the current user's profile with permissions
 func (h *UserHandler) GetMe(c *fiber.Ctx) error {
 	userID, err := middleware.GetUserID(c)
 	if err != nil {
@@ -196,7 +198,25 @@ func (h *UserHandler) GetMe(c *fiber.Ctx) error {
 		})
 	}
 
-	return c.JSON(user)
+	// Fetch role permissions
+	permissions, err := h.roleService.GetRolePermissions(c.Context(), user.Role)
+	if err != nil {
+		// If role not found, return user without permissions
+		permissions = []string{}
+	}
+
+	// Return user with permissions
+	return c.JSON(fiber.Map{
+		"id":                 user.ID,
+		"email":              user.Email,
+		"name":               user.Name,
+		"role":               user.Role,
+		"groupId":            user.GroupID,
+		"isActive":           user.IsActive,
+		"mustChangePassword": user.MustChangePassword,
+		"createdAt":          user.CreatedAt,
+		"permissions":        permissions,
+	})
 }
 
 // ForcePasswordChange forces a user to change their password on next login (ADMIN only)

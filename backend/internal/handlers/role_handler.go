@@ -11,13 +11,17 @@ type RoleHandler struct {
 	roleService       *services.RoleService
 	permissionService *services.PermissionService
 	auditService      *services.AuditService
+	eventService      *services.EventService
+	userService       *services.UserService
 }
 
-func NewRoleHandler(roleService *services.RoleService, permissionService *services.PermissionService, auditService *services.AuditService) *RoleHandler {
+func NewRoleHandler(roleService *services.RoleService, permissionService *services.PermissionService, auditService *services.AuditService, eventService *services.EventService, userService *services.UserService) *RoleHandler {
 	return &RoleHandler{
 		roleService:       roleService,
 		permissionService: permissionService,
 		auditService:      auditService,
+		eventService:      eventService,
+		userService:       userService,
 	}
 }
 
@@ -100,15 +104,41 @@ func (h *RoleHandler) UpdateRole(c *fiber.Ctx) error {
 		})
 	}
 
+	// Get role before update for audit trail
+	oldRole, err := h.roleService.GetRoleByID(c.Context(), roleID)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Role not found",
+		})
+	}
+
 	err = h.roleService.UpdateRole(c.Context(), roleID, req.DisplayName, req.Permissions)
 	if err != nil {
-		h.auditService.LogAction(c.Context(), userID, userEmail, "", "role.update", "role", &roleID, map[string]interface{}{"error": err.Error()}, c.IP(), c.Get("User-Agent"), "failure")
+		h.auditService.LogAction(c.Context(), userID, userEmail, "", "role.update", "role", &roleID, map[string]interface{}{
+			"roleName": oldRole.Name,
+			"error":    err.Error(),
+		}, c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
 
-	h.auditService.LogAction(c.Context(), userID, userEmail, "", "role.update", "role", &roleID, map[string]interface{}{"displayName": req.DisplayName}, c.IP(), c.Get("User-Agent"), "success")
+	h.auditService.LogAction(c.Context(), userID, userEmail, "", "role.update", "role", &roleID, map[string]interface{}{
+		"roleName":       oldRole.Name,
+		"oldDisplayName": oldRole.DisplayName,
+		"newDisplayName": req.DisplayName,
+		"oldPermissions": oldRole.Permissions,
+		"newPermissions": req.Permissions,
+	}, c.IP(), c.Get("User-Agent"), "success")
+
+	// Notify all users with this role that their permissions have changed
+	userIDs, err := h.userService.GetUserIDsByRole(c.Context(), oldRole.Name)
+	if err == nil && len(userIDs) > 0 {
+		h.eventService.BroadcastToUserIDs(userIDs, services.EventPermissionsUpdated, map[string]interface{}{
+			"message": "Twoje uprawnienia zostały zaktualizowane. Odśwież stronę, aby zastosować zmiany.",
+		})
+	}
+
 	return c.JSON(fiber.Map{"success": true})
 }
 
@@ -125,14 +155,28 @@ func (h *RoleHandler) DeleteRole(c *fiber.Ctx) error {
 		})
 	}
 
+	// Get role before deletion for audit trail
+	role, err := h.roleService.GetRoleByID(c.Context(), roleID)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Role not found",
+		})
+	}
+
 	err = h.roleService.DeleteRole(c.Context(), roleID)
 	if err != nil {
-		h.auditService.LogAction(c.Context(), userID, userEmail, "", "role.delete", "role", &roleID, map[string]interface{}{"error": err.Error()}, c.IP(), c.Get("User-Agent"), "failure")
+		h.auditService.LogAction(c.Context(), userID, userEmail, "", "role.delete", "role", &roleID, map[string]interface{}{
+			"roleName": role.Name,
+			"error":    err.Error(),
+		}, c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
 
-	h.auditService.LogAction(c.Context(), userID, userEmail, "", "role.delete", "role", &roleID, nil, c.IP(), c.Get("User-Agent"), "success")
+	h.auditService.LogAction(c.Context(), userID, userEmail, "", "role.delete", "role", &roleID, map[string]interface{}{
+		"roleName":    role.Name,
+		"displayName": role.DisplayName,
+	}, c.IP(), c.Get("User-Agent"), "success")
 	return c.JSON(fiber.Map{"success": true})
 }

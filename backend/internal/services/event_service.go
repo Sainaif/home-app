@@ -25,6 +25,7 @@ const (
 	EventSupplyItemBought   EventType = "supply.item.bought"
 	EventSupplyBudgetGrew   EventType = "supply.budget.contributed"
 	EventSupplyBudgetLow    EventType = "supply.budget.low"
+	EventPermissionsUpdated EventType = "permissions.updated"
 )
 
 // Event represents a server-sent event
@@ -125,4 +126,29 @@ func (s *EventService) SubscriberCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.subscribers)
+}
+
+// BroadcastToUserIDs sends an event to specific user IDs
+func (s *EventService) BroadcastToUserIDs(userIDs []primitive.ObjectID, eventType EventType, data map[string]interface{}) {
+	event := Event{
+		ID:        primitive.NewObjectID().Hex(),
+		Type:      eventType,
+		Data:      data,
+		Timestamp: time.Now(),
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, userID := range userIDs {
+		userIDStr := userID.Hex()
+		if ch, ok := s.subscribers[userIDStr]; ok {
+			select {
+			case ch <- event:
+				// Event sent successfully
+			default:
+				// Channel buffer full, skip
+			}
+		}
+	}
 }

@@ -213,7 +213,7 @@
     </div>
 
     <!-- Admin Section -->
-    <div v-if="authStore.isAdmin" class="mt-8 space-y-6">
+    <div class="mt-8 space-y-6">
       <!-- Users Management -->
       <div class="card">
         <div class="flex justify-between items-center mb-4">
@@ -226,36 +226,39 @@
 
         <div v-if="loadingUsers" class="text-center py-8">Ładowanie...</div>
         <div v-else-if="users.length === 0" class="text-center py-8 text-gray-400">Brak użytkowników</div>
-        <div v-else class="overflow-x-auto">
-          <table class="w-full">
+        <div v-else class="overflow-x-auto -mx-4 sm:mx-0">
+          <table class="w-full min-w-max">
             <thead class="border-b border-gray-700">
               <tr class="text-left">
-                <th class="pb-3">Nazwa</th>
-                <th class="pb-3">Email</th>
-                <th class="pb-3">Rola</th>
-                <th class="pb-3">Grupa</th>
-                <th class="pb-3">Status</th>
-                <th class="pb-3">Akcje</th>
+                <th class="pb-3 px-2 sm:px-0">Nazwa</th>
+                <th class="pb-3 px-2 sm:px-0 hidden md:table-cell">Email</th>
+                <th class="pb-3 px-2 sm:px-0">Rola</th>
+                <th class="pb-3 px-2 sm:px-0 hidden lg:table-cell">Grupa</th>
+                <th class="pb-3 px-2 sm:px-0 hidden sm:table-cell">Status</th>
+                <th class="pb-3 px-2 sm:px-0">Akcje</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="user in users" :key="user.id" class="border-b border-gray-700">
-                <td class="py-3">{{ user.name }}</td>
-                <td class="py-3">{{ user.email }}</td>
-                <td class="py-3">
-                  <span :class="user.role === 'ADMIN' ? 'text-purple-400' : 'text-gray-400'">
+                <td class="py-3 px-2 sm:px-0">
+                  <div>{{ user.name }}</div>
+                  <div class="text-xs text-gray-400 md:hidden">{{ user.email }}</div>
+                </td>
+                <td class="py-3 px-2 sm:px-0 hidden md:table-cell">{{ user.email }}</td>
+                <td class="py-3 px-2 sm:px-0">
+                  <span :class="user.role === 'ADMIN' ? 'text-purple-400' : 'text-gray-400'" class="text-xs sm:text-sm">
                     {{ getUserRoleDisplayName(user.role) }}
                   </span>
                 </td>
-                <td class="py-3">{{ user.groupName || '-' }}</td>
-                <td class="py-3">
-                  <span :class="user.isActive ? 'text-green-400' : 'text-red-400'">
+                <td class="py-3 px-2 sm:px-0 hidden lg:table-cell">{{ user.groupName || '-' }}</td>
+                <td class="py-3 px-2 sm:px-0 hidden sm:table-cell">
+                  <span :class="user.isActive ? 'text-green-400' : 'text-red-400'" class="text-xs sm:text-sm">
                     {{ user.isActive ? 'Aktywny' : 'Nieaktywny' }}
                   </span>
                 </td>
-                <td class="py-3">
-                  <div class="flex flex-wrap gap-2">
-                    <button @click="viewUserDashboard(user.id)" class="text-blue-400 hover:text-blue-300 text-sm">
+                <td class="py-3 px-2 sm:px-0">
+                  <div class="flex flex-col sm:flex-row flex-wrap gap-1 sm:gap-2">
+                    <button @click="viewUserDashboard(user.id)" class="text-blue-400 hover:text-blue-300 text-xs sm:text-sm whitespace-nowrap">
                       Dashboard
                     </button>
                     <button
@@ -266,14 +269,14 @@
                     </button>
                     <button
                       @click="toggleUserStatus(user)"
-                      class="btn btn-sm"
+                      class="btn btn-sm text-xs"
                       :class="user.isActive ? 'btn-secondary' : 'btn-primary'"
                       :disabled="user.id === authStore.user.id">
                       {{ user.isActive ? 'Dezaktywuj' : 'Aktywuj' }}
                     </button>
                     <button
                       @click="forcePasswordChange(user)"
-                      class="btn btn-sm btn-outline"
+                      class="btn btn-sm btn-outline text-xs"
                       :disabled="user.id === authStore.user.id"
                       title="Wymuś zmianę hasła">
                       Zmień hasło
@@ -308,15 +311,15 @@
         <div v-else class="space-y-3">
           <div v-for="group in groups" :key="group.id"
                class="p-4 bg-gray-700/30 rounded-xl">
-            <div class="flex justify-between items-start mb-3">
-              <div>
+            <div class="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3">
+              <div class="flex-1">
                 <p class="font-medium">{{ group.name }}</p>
                 <p class="text-sm text-gray-400">Waga: {{ parseFloat(group.weight.$numberDecimal || group.weight || 1).toFixed(2) }}</p>
               </div>
-              <div class="flex gap-2">
-                <button @click="manageGroupUsers(group)" class="btn btn-sm btn-outline">
+              <div class="flex flex-wrap gap-2 w-full sm:w-auto">
+                <button @click="manageGroupUsers(group)" class="btn btn-sm btn-outline flex-1 sm:flex-initial">
                   <Users class="w-3 h-3 mr-1" />
-                  Użytkownicy
+                  <span class="text-xs">Użytkownicy</span>
                 </button>
                 <button @click="editGroup(group)" class="btn btn-sm btn-outline">
                   <Edit class="w-3 h-3" />
@@ -340,7 +343,7 @@
       </div>
 
       <!-- Audit Logs -->
-      <div v-if="authStore.isAdmin" class="card">
+      <div class="card">
         <div class="flex justify-between items-center mb-4">
           <div>
             <h2 class="text-xl font-semibold">Logi audytu</h2>
@@ -462,32 +465,60 @@
 
         <div v-if="loadingAuditLogs" class="text-center py-8">Ładowanie...</div>
         <div v-else-if="auditLogs.length === 0" class="text-center py-8 text-gray-400">Brak logów</div>
-        <div v-else>
-          <div class="overflow-x-auto max-h-[600px] overflow-y-auto border border-gray-700 rounded-lg">
-            <table class="w-full">
-              <thead class="text-left border-b border-gray-700 bg-gray-800/50 sticky top-0">
-                <tr>
-                  <th class="px-4 py-3 text-sm font-medium text-gray-400">Data</th>
-                  <th class="px-4 py-3 text-sm font-medium text-gray-400">Użytkownik</th>
-                  <th class="px-4 py-3 text-sm font-medium text-gray-400">Akcja</th>
-                  <th class="px-4 py-3 text-sm font-medium text-gray-400">Zasób</th>
-                  <th class="px-4 py-3 text-sm font-medium text-gray-400">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="log in auditLogs" :key="log.id" class="border-b border-gray-800 last:border-0 hover:bg-gray-800/30">
-                  <td class="px-4 py-3 text-sm">{{ formatDate(log.createdAt) }}</td>
-                  <td class="px-4 py-3 text-sm">{{ log.userName || log.userEmail }}</td>
-                  <td class="px-4 py-3 text-sm">{{ translateAction(log.action) }}</td>
-                  <td class="px-4 py-3 text-sm text-gray-400">{{ log.resourceType || '-' }}</td>
-                  <td class="px-4 py-3">
-                    <span :class="log.status === 'success' ? 'text-green-400' : 'text-red-400'" class="text-sm">
-                      {{ log.status === 'success' ? 'Sukces' : 'Błąd' }}
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+        <div v-else class="space-y-2 max-h-[600px] overflow-y-auto">
+          <div v-for="log in auditLogs" :key="log.id"
+               class="p-4 rounded-lg bg-gray-700/30 hover:bg-gray-700/50 transition-colors cursor-pointer"
+               @click="toggleAuditLogDetails(log.id)">
+            <div class="flex items-start justify-between">
+              <div class="flex-1">
+                <!-- Title with status -->
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="font-medium">{{ getAuditLogTitle(log) }}</span>
+                  <span :class="log.status === 'success' ? 'text-green-400' : 'text-red-400'" class="text-xs">
+                    {{ log.status === 'success' ? '✓' : '✗' }}
+                  </span>
+                </div>
+
+                <!-- Summary -->
+                <div class="text-sm text-gray-300 mb-2" v-if="getAuditLogSummary(log)">
+                  {{ getAuditLogSummary(log) }}
+                </div>
+
+                <!-- Metadata -->
+                <div class="text-xs text-gray-500 flex flex-wrap gap-x-3 gap-y-1">
+                  <span>{{ log.userName || log.userEmail }}</span>
+                  <span>•</span>
+                  <span>{{ formatDate(log.createdAt) }}</span>
+                  <span v-if="log.resourceType && getResourceRoute(log)">•</span>
+                  <router-link
+                    v-if="log.resourceType && log.resourceId && log.status === 'success' && getResourceRoute(log)"
+                    :to="getResourceRoute(log)"
+                    @click.stop
+                    class="text-purple-400 hover:text-purple-300 underline">
+                    Zobacz {{ translateResourceType(log.resourceType) }}
+                  </router-link>
+                </div>
+
+                <!-- Expandable Details -->
+                <div v-if="expandedAuditLogs.has(log.id) && log.details && Object.keys(log.details).length > 0"
+                     class="mt-3 pt-3 border-t border-gray-600">
+                  <div class="text-sm space-y-2">
+                    <div v-for="(value, key) in formatAuditDetails(log)" :key="key">
+                      <div class="text-gray-400 font-medium mb-1">{{ translateDetailKey(key) }}</div>
+                      <div class="text-gray-300 pl-3 break-words" style="white-space: pre-wrap;">{{ value }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <svg
+                class="w-5 h-5 text-gray-400 transition-transform flex-shrink-0"
+                :class="{ 'rotate-180': expandedAuditLogs.has(log.id) }"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
           </div>
           <div class="mt-3 text-sm text-gray-400 text-center">
             Pokazano {{ auditLogs.length }} z ostatnich wpisów
@@ -496,13 +527,13 @@
       </div>
 
       <!-- Role Management -->
-      <div v-if="authStore.isAdmin" class="card">
-        <div class="flex justify-between items-center mb-4">
-          <div>
+      <div class="card">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+          <div class="flex-1">
             <h2 class="text-xl font-semibold">Zarządzanie rolami i uprawnieniami</h2>
             <p class="text-sm text-gray-400 mt-1">Konfiguruj role użytkowników i ich uprawnienia</p>
           </div>
-          <button @click="showCreateRoleModal = true" class="btn btn-primary btn-sm flex items-center gap-2">
+          <button @click="showCreateRoleModal = true" class="btn btn-primary btn-sm flex items-center gap-2 w-full sm:w-auto">
             <UserPlus class="w-4 h-4" />
             Nowa rola
           </button>
@@ -511,31 +542,31 @@
         <div v-if="loadingRoles" class="text-center py-8">Ładowanie...</div>
         <div v-else class="space-y-3">
           <div v-for="role in roles" :key="role.id" class="p-4 bg-gray-700/30 rounded-xl">
-            <div class="flex justify-between items-start mb-3">
-              <div>
-                <div class="flex items-center gap-2">
+            <div class="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 flex-wrap">
                   <h3 class="font-semibold">{{ role.displayName }}</h3>
-                  <span v-if="role.name === 'ADMIN'" class="text-xs px-2 py-0.5 bg-purple-600/20 text-purple-400 rounded">Niezmienne</span>
+                  <span v-if="role.name === 'ADMIN'" class="text-xs px-2 py-0.5 bg-purple-600/20 text-purple-400 rounded whitespace-nowrap">Niezmienne</span>
                 </div>
                 <p class="text-sm text-gray-400 mt-1">{{ role.permissions.length }} uprawnień</p>
               </div>
-              <div class="flex gap-2">
-                <button v-if="role.name !== 'ADMIN'" @click="openEditRoleModal(role)" class="btn btn-sm btn-outline flex items-center gap-1">
+              <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <button v-if="role.name !== 'ADMIN'" @click="openEditRoleModal(role)" class="btn btn-sm btn-outline flex items-center justify-center gap-1">
                   <Edit class="w-3 h-3" />
-                  Edytuj
+                  <span class="text-xs">Edytuj</span>
                 </button>
-                <button v-if="role.name !== 'ADMIN'" @click="deleteRole(role.id)" class="btn btn-sm btn-secondary flex items-center gap-1">
+                <button v-if="role.name !== 'ADMIN'" @click="deleteRole(role.id)" class="btn btn-sm btn-secondary flex items-center justify-center gap-1">
                   <Trash class="w-3 h-3" />
-                  Usuń
+                  <span class="text-xs">Usuń</span>
                 </button>
-                <span v-if="role.name === 'ADMIN'" class="text-sm text-gray-500 italic">Rola administratora (chroniona)</span>
+                <span v-if="role.name === 'ADMIN'" class="text-xs sm:text-sm text-gray-500 italic text-center sm:text-left">Rola administratora (chroniona)</span>
               </div>
             </div>
             <div class="flex flex-wrap gap-2">
-              <span v-for="perm in role.permissions.slice(0, 5)" :key="perm" class="text-xs px-2 py-1 bg-gray-800 rounded">
+              <span v-for="perm in role.permissions.slice(0, 5)" :key="perm" class="text-xs px-2 py-1 bg-gray-800 rounded whitespace-nowrap">
                 {{ translatePermissionName(perm) }}
               </span>
-              <span v-if="role.permissions.length > 5" class="text-xs px-2 py-1 text-gray-400">
+              <span v-if="role.permissions.length > 5" class="text-xs px-2 py-1 text-gray-400 whitespace-nowrap">
                 +{{ role.permissions.length - 5 }} więcej
               </span>
             </div>
@@ -544,7 +575,7 @@
       </div>
 
       <!-- Approval Requests -->
-      <div v-if="authStore.isAdmin" class="card">
+      <div class="card">
         <div class="flex justify-between items-center mb-4">
           <div>
             <h2 class="text-xl font-semibold">Oczekujące zatwierdzenia</h2>
@@ -583,64 +614,85 @@
 
       <!-- Backup & Restore -->
       <div class="card">
-        <div class="flex justify-between items-center mb-4">
-          <div>
-            <h2 class="text-xl font-semibold">Kopia zapasowa i przywracanie</h2>
-            <p class="text-sm text-gray-400 mt-1">Eksportuj lub importuj wszystkie dane systemu</p>
-          </div>
+        <div class="mb-4">
+          <h2 class="text-xl font-semibold mb-1">Kopia zapasowa i przywracanie</h2>
+          <p class="text-sm text-gray-400">Eksportuj lub importuj wszystkie dane systemu</p>
         </div>
 
-        <div class="space-y-4">
-          <div class="p-4 bg-gray-700/30 rounded-xl">
-            <div class="flex items-start gap-3">
-              <div class="w-10 h-10 rounded-lg bg-green-600/20 flex items-center justify-center flex-shrink-0">
-                <Download class="w-5 h-5 text-green-400" />
-              </div>
-              <div class="flex-1">
-                <h3 class="font-medium mb-1">Eksportuj dane</h3>
-                <p class="text-sm text-gray-400 mb-3">
-                  Pobierz pełną kopię zapasową wszystkich danych (użytkownicy, rachunki, historia, passkeys)
-                </p>
-                <button @click="exportBackup" :disabled="exportingBackup" class="btn btn-primary flex items-center gap-2">
-                  <Download class="w-4 h-4" />
-                  {{ exportingBackup ? 'Eksportowanie...' : 'Pobierz kopię zapasową' }}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="p-4 bg-gray-700/30 rounded-xl border-2 border-red-600/20">
-            <div class="flex items-start gap-3">
-              <div class="w-10 h-10 rounded-lg bg-red-600/20 flex items-center justify-center flex-shrink-0">
-                <Upload class="w-5 h-5 text-red-400" />
-              </div>
-              <div class="flex-1">
-                <h3 class="font-medium mb-1 text-red-400">Importuj dane (NIEBEZPIECZNE)</h3>
-                <p class="text-sm text-gray-400 mb-3">
-                  <strong class="text-red-400">OSTRZEŻENIE:</strong> Operacja usunie WSZYSTKIE obecne dane i zastąpi je danymi z kopii zapasowej. Tej operacji nie można cofnąć!
-                </p>
-                <div class="space-y-2">
-                  <input
-                    type="file"
-                    ref="backupFileInput"
-                    accept=".json"
-                    @change="handleBackupFileSelect"
-                    class="hidden" />
-                  <button
-                    @click="$refs.backupFileInput.click()"
-                    :disabled="importingBackup"
-                    class="btn btn-secondary flex items-center gap-2">
-                    <Upload class="w-4 h-4" />
-                    {{ importingBackup ? 'Importowanie...' : 'Wybierz plik kopii zapasowej' }}
-                  </button>
-                  <p v-if="selectedBackupFile" class="text-sm text-gray-400">
-                    Wybrany plik: {{ selectedBackupFile.name }}
-                  </p>
+        <div class="space-y-3">
+          <!-- Export Section -->
+          <div class="border border-gray-700 rounded-xl overflow-hidden">
+            <button
+              @click="showExportBackup = !showExportBackup"
+              class="w-full p-4 bg-gray-700/30 hover:bg-gray-700/50 transition-colors flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-green-600/20 flex items-center justify-center flex-shrink-0">
+                  <Download class="w-5 h-5 text-green-400" />
+                </div>
+                <div class="text-left">
+                  <h3 class="font-medium">Eksportuj dane</h3>
+                  <p class="text-xs text-gray-400">Pobierz pełną kopię zapasową</p>
                 </div>
               </div>
+              <svg class="w-5 h-5 transition-transform" :class="{ 'rotate-180': showExportBackup }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            <div v-if="showExportBackup" class="p-4 border-t border-gray-700">
+              <p class="text-sm text-gray-400 mb-3">
+                Pobierz pełną kopię zapasową wszystkich danych (użytkownicy, rachunki, historia, passkeys)
+              </p>
+              <button @click="exportBackup" :disabled="exportingBackup" class="btn btn-primary flex items-center gap-2">
+                <Download class="w-4 h-4" />
+                {{ exportingBackup ? 'Eksportowanie...' : 'Pobierz kopię zapasową' }}
+              </button>
             </div>
           </div>
 
+          <!-- Import Section -->
+          <div class="border border-red-600/30 rounded-xl overflow-hidden">
+            <button
+              @click="showImportBackup = !showImportBackup"
+              class="w-full p-4 bg-gray-700/30 hover:bg-gray-700/50 transition-colors flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-red-600/20 flex items-center justify-center flex-shrink-0">
+                  <Upload class="w-5 h-5 text-red-400" />
+                </div>
+                <div class="text-left">
+                  <h3 class="font-medium text-red-400">Importuj dane (NIEBEZPIECZNE)</h3>
+                  <p class="text-xs text-gray-400">Zastąp wszystkie dane kopią zapasową</p>
+                </div>
+              </div>
+              <svg class="w-5 h-5 transition-transform" :class="{ 'rotate-180': showImportBackup }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            <div v-if="showImportBackup" class="p-4 border-t border-red-600/30 bg-red-600/5">
+              <p class="text-sm text-gray-400 mb-3">
+                <strong class="text-red-400">OSTRZEŻENIE:</strong> Operacja usunie WSZYSTKIE obecne dane i zastąpi je danymi z kopii zapasowej. Tej operacji nie można cofnąć!
+              </p>
+              <div class="space-y-2">
+                <input
+                  type="file"
+                  ref="backupFileInput"
+                  accept=".json"
+                  @change="handleBackupFileSelect"
+                  class="hidden" />
+                <button
+                  @click="$refs.backupFileInput.click()"
+                  :disabled="importingBackup"
+                  class="btn btn-secondary flex items-center gap-2">
+                  <Upload class="w-4 h-4" />
+                  {{ importingBackup ? 'Importowanie...' : 'Wybierz plik kopii zapasowej' }}
+                </button>
+                <p v-if="selectedBackupFile" class="text-sm text-gray-400">
+                  Wybrany plik: {{ selectedBackupFile.name }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Status Messages -->
           <div v-if="backupError" class="p-4 bg-red-600/20 rounded-xl border border-red-600/50">
             <p class="text-red-400 text-sm">{{ backupError }}</p>
           </div>
@@ -911,6 +963,8 @@ const selectedBackupFile = ref(null)
 const backupFileInput = ref(null)
 const backupError = ref('')
 const backupSuccess = ref('')
+const showExportBackup = ref(false)
+const showImportBackup = ref(false)
 
 // Modals
 const showCreateUserModal = ref(false)
@@ -972,6 +1026,7 @@ const renameSessionForm = ref({
 // Audit logs state
 const auditLogs = ref([])
 const loadingAuditLogs = ref(false)
+const expandedAuditLogs = ref(new Set())
 const auditFilters = ref({
   userEmail: '',
   action: '',
@@ -1555,12 +1610,15 @@ function formatDate(dateString) {
 function translateCategory(category) {
   const translations = {
     'users': 'Użytkownicy',
+    'groups': 'Grupy',
     'bills': 'Rachunki',
     'chores': 'Obowiązki',
     'supplies': 'Zaopatrzenie',
     'roles': 'Role',
     'approvals': 'Zatwierdzenia',
-    'audit': 'Audyt'
+    'audit': 'Audyt',
+    'loans': 'Pożyczki',
+    'backup': 'Kopia zapasowa'
   }
   return translations[category] || category
 }
@@ -1573,12 +1631,18 @@ function translatePermission(description) {
     'Update user information': 'Aktualizuj informacje o użytkownikach',
     'Delete users': 'Usuń użytkowników',
 
+    // Groups
+    'Create new groups': 'Twórz nowe grupy',
+    'View groups': 'Przeglądaj grupy',
+    'Update groups': 'Aktualizuj grupy',
+    'Delete groups': 'Usuń grupy',
+
     // Bills
     'Create new bills': 'Twórz nowe rachunki',
     'View bills': 'Przeglądaj rachunki',
     'Update bills': 'Aktualizuj rachunki',
     'Delete bills': 'Usuń rachunki',
-    'Post bills (freeze allocations)': 'Opublikuj rachunki (zamroź alokacje)',
+    'Post bills (freeze allocations)': 'Opublikuj rachunki',
     'Close bills': 'Zamknij rachunki',
 
     // Chores
@@ -1615,6 +1679,10 @@ function translatePermissionName(name) {
     'users.read': 'Czytaj użytkowników',
     'users.update': 'Edytuj użytkowników',
     'users.delete': 'Usuń użytkowników',
+    'groups.create': 'Twórz grupy',
+    'groups.read': 'Czytaj grupy',
+    'groups.update': 'Edytuj grupy',
+    'groups.delete': 'Usuń grupy',
     'bills.create': 'Twórz rachunki',
     'bills.read': 'Czytaj rachunki',
     'bills.update': 'Edytuj rachunki',
@@ -1635,23 +1703,60 @@ function translatePermissionName(name) {
     'roles.update': 'Edytuj role',
     'roles.delete': 'Usuń role',
     'approvals.review': 'Sprawdzaj zatwierdzenia',
-    'audit.read': 'Czytaj logi audytu'
+    'audit.read': 'Czytaj logi audytu',
+    'loans.create': 'Twórz pożyczki',
+    'loans.read': 'Czytaj pożyczki',
+    'loans.update': 'Edytuj pożyczki',
+    'loans.delete': 'Usuń pożyczki',
+    'backup.export': 'Eksportuj kopię zapasową',
+    'backup.import': 'Importuj kopię zapasową'
   }
   return translations[name] || name
 }
 
 function translateAction(action) {
   const translations = {
+    // Role actions
     'role.create': 'Tworzenie roli',
     'role.update': 'Aktualizacja roli',
     'role.delete': 'Usunięcie roli',
+
+    // User actions
+    'user.create': 'Tworzenie użytkownika',
     'user.update': 'Aktualizacja użytkownika',
-    'chore.delete': 'Usunięcie obowiązku',
-    'chore.create': 'Tworzenie obowiązku',
+    'user.delete': 'Usunięcie użytkownika',
+
+    // Bill actions
+    'create_bill': 'Tworzenie rachunku',
     'bill.create': 'Tworzenie rachunku',
     'bill.update': 'Aktualizacja rachunku',
+    'bill.delete': 'Usunięcie rachunku',
+    'post_bill': 'Opublikowanie rachunku',
+    'close_bill': 'Zamknięcie rachunku',
+
+    // Reading/Consumption actions
+    'create_reading': 'Dodanie odczytu',
+    'reading.create': 'Dodanie odczytu',
+
+    // Chore actions
+    'chore.create': 'Tworzenie obowiązku',
+    'chore.update': 'Aktualizacja obowiązku',
+    'chore.delete': 'Usunięcie obowiązku',
+
+    // Supply actions
     'supply.create': 'Tworzenie zaopatrzenia',
-    'supply.update': 'Aktualizacja zaopatrzenia'
+    'supply.update': 'Aktualizacja zaopatrzenia',
+    'supply.delete': 'Usunięcie zaopatrzenia',
+
+    // Group actions
+    'group.create': 'Tworzenie grupy',
+    'group.update': 'Aktualizacja grupy',
+    'group.delete': 'Usunięcie grupy',
+
+    // Loan actions
+    'loan.create': 'Tworzenie pożyczki',
+    'loan.update': 'Aktualizacja pożyczki',
+    'loan.delete': 'Usunięcie pożyczki'
   }
   return translations[action] || action
 }
@@ -1698,6 +1803,338 @@ function clearAuditFilters() {
     resourceType: ''
   }
   loadAuditLogs()
+}
+
+function toggleAuditLogDetails(logId) {
+  if (expandedAuditLogs.value.has(logId)) {
+    expandedAuditLogs.value.delete(logId)
+  } else {
+    expandedAuditLogs.value.add(logId)
+  }
+}
+
+function formatAuditDetails(log) {
+  if (!log.details) return {}
+
+  const details = log.details
+  const formatted = {}
+
+  // Handle permission changes specially
+  if (details.oldPermissions && details.newPermissions) {
+    const oldPerms = new Set(details.oldPermissions)
+    const newPerms = new Set(details.newPermissions)
+
+    const added = [...newPerms].filter(p => !oldPerms.has(p))
+    const removed = [...oldPerms].filter(p => !newPerms.has(p))
+    const unchanged = [...oldPerms].filter(p => newPerms.has(p))
+
+    if (added.length > 0) {
+      formatted['Dodane uprawnienia'] = added.map(p => '• ' + translatePermissionName(p)).join('\n')
+    }
+    if (removed.length > 0) {
+      formatted['Usunięte uprawnienia'] = removed.map(p => '• ' + translatePermissionName(p)).join('\n')
+    }
+    if (unchanged.length > 0) {
+      formatted['Niezmienione uprawnienia'] = `${unchanged.length} uprawnień`
+    }
+
+    // Skip showing raw oldPermissions/newPermissions
+    const keysToSkip = ['oldPermissions', 'newPermissions']
+    for (const [key, value] of Object.entries(details)) {
+      if (!keysToSkip.includes(key)) {
+        formatted[translateDetailKey(key)] = value
+      }
+    }
+  }
+  // Handle 'changes' object (flatten it)
+  else if (details.changes && typeof details.changes === 'object') {
+    formatted['Zmienione pola'] = Object.entries(details.changes)
+      .map(([k, v]) => `${translateDetailKey(k)}: ${v}`)
+      .join('\n')
+
+    // Show other fields
+    for (const [key, value] of Object.entries(details)) {
+      if (key !== 'changes') {
+        if (Array.isArray(value)) {
+          formatted[translateDetailKey(key)] = value.join(', ')
+        } else if (typeof value === 'object' && value !== null) {
+          formatted[translateDetailKey(key)] = JSON.stringify(value, null, 2)
+        } else {
+          formatted[translateDetailKey(key)] = value
+        }
+      }
+    }
+  }
+  // Default formatting for all other cases
+  else {
+    for (const [key, value] of Object.entries(details)) {
+      const translatedKey = translateDetailKey(key)
+
+      if (Array.isArray(value)) {
+        // Check if it's a permission array
+        if (key.includes('ermission') || key.includes('Permissions')) {
+          formatted[translatedKey] = value.map(p => '• ' + translatePermissionName(p)).join('\n')
+        } else {
+          formatted[translatedKey] = value.join(', ')
+        }
+      } else if (typeof value === 'object' && value !== null) {
+        formatted[translatedKey] = JSON.stringify(value, null, 2)
+      } else {
+        formatted[translatedKey] = value
+      }
+    }
+  }
+
+  return formatted
+}
+
+function getResourceRoute(log) {
+  if (!log.resourceId || log.status !== 'success') return null
+
+  const routes = {
+    'bill': '/bills',
+    'chore': '/chores',
+    'user': '/settings',
+    'role': '/settings',
+    'group': '/settings'
+  }
+
+  return routes[log.resourceType] || null
+}
+
+function getAuditLogTitle(log) {
+  const action = translateAction(log.action)
+
+  // Try to extract entity name from details
+  let entityName = ''
+
+  if (log.details) {
+    // For user updates - prefer targetUser over userName
+    if (log.details.targetUser) {
+      entityName = log.details.targetUser
+    } else if (log.details.userName) {
+      entityName = log.details.userName
+    } else if (log.details.userEmail) {
+      entityName = log.details.userEmail
+    }
+    // For role updates
+    else if (log.details.roleName) {
+      entityName = log.details.roleName
+    } else if (log.details.newDisplayName) {
+      entityName = log.details.newDisplayName
+    } else if (log.details.displayName) {
+      entityName = log.details.displayName
+    }
+    // For bills - handle both billType and type, and bill_type
+    else if (log.details.bill_type) {
+      entityName = translateBillType(log.details.bill_type)
+    } else if (log.details.billType) {
+      entityName = translateBillType(log.details.billType)
+    } else if (log.details.type) {
+      entityName = translateBillType(log.details.type)
+    }
+    // For chores
+    else if (log.details.choreName) {
+      entityName = log.details.choreName
+    } else if (log.details.name && log.resourceType === 'chore') {
+      entityName = log.details.name
+    }
+    // For groups
+    else if (log.details.groupName) {
+      entityName = log.details.groupName
+    } else if (log.details.name && log.resourceType === 'group') {
+      entityName = log.details.name
+    }
+  }
+
+  return entityName ? `${action}: ${entityName}` : action
+}
+
+function translateBillType(type) {
+  const translations = {
+    'electricity': 'Prąd',
+    'gas': 'Gaz',
+    'internet': 'Internet',
+    'water': 'Woda',
+    'inne': 'Inne'
+  }
+  return translations[type] || type
+}
+
+function getAuditLogSummary(log) {
+  if (!log.details) return ''
+
+  const details = log.details
+  const summaries = []
+
+  // Role permission changes - show exact permissions added/removed
+  if (details.oldPermissions && details.newPermissions) {
+    const oldPerms = new Set(details.oldPermissions)
+    const newPerms = new Set(details.newPermissions)
+
+    const added = [...newPerms].filter(p => !oldPerms.has(p))
+    const removed = [...oldPerms].filter(p => !newPerms.has(p))
+
+    if (added.length > 0) {
+      const addedNames = added.slice(0, 2).map(p => translatePermissionName(p))
+      const addedSummary = addedNames.join(', ')
+      summaries.push(`Dodano: ${addedSummary}${added.length > 2 ? ` i ${added.length - 2} więcej` : ''}`)
+    }
+    if (removed.length > 0) {
+      const removedNames = removed.slice(0, 2).map(p => translatePermissionName(p))
+      const removedSummary = removedNames.join(', ')
+      summaries.push(`Usunięto: ${removedSummary}${removed.length > 2 ? ` i ${removed.length - 2} więcej` : ''}`)
+    }
+  }
+
+  // Display name changes
+  if (details.oldDisplayName && details.newDisplayName && details.oldDisplayName !== details.newDisplayName) {
+    summaries.push(`Nazwa: ${details.oldDisplayName} → ${details.newDisplayName}`)
+  }
+
+  // User role changes
+  if (details.oldRole && details.newRole) {
+    summaries.push(`Rola: ${details.oldRole} → ${details.newRole}`)
+  } else if (details.newRole) {
+    summaries.push(`Nowa rola: ${details.newRole}`)
+  }
+
+  // Target user for user updates
+  if (details.targetUser && !details.newRole && !details.oldRole) {
+    summaries.push(`Użytkownik: ${details.targetUser}`)
+  }
+
+  // Handle 'changes' object from group/supply updates
+  if (details.changes && typeof details.changes === 'object') {
+    for (const [key, value] of Object.entries(details.changes)) {
+      if (key === 'name') {
+        summaries.push(`Nazwa: ${value}`)
+      } else if (key === 'weight') {
+        summaries.push(`Waga: ${value}`)
+      } else if (key === 'category') {
+        summaries.push(`Kategoria: ${value}`)
+      } else if (key === 'minQuantity') {
+        summaries.push(`Min. ilość: ${value}`)
+      }
+    }
+  }
+
+  // Bill amount
+  if (details.amount && !details.old_status) {
+    summaries.push(`Kwota: ${details.amount} PLN`)
+  }
+
+  // Bill type
+  if (details.type && !details.amount) {
+    summaries.push(`Typ: ${translateBillType(details.type)}`)
+  } else if (details.bill_type && !details.old_status) {
+    summaries.push(`Typ: ${translateBillType(details.bill_type)}`)
+  }
+
+  // Status changes (use old_status/new_status as per backend)
+  if (details.old_status && details.new_status) {
+    summaries.push(`Status: ${details.old_status} → ${details.new_status}`)
+  }
+
+  // Meter readings
+  if (details.meter_value) {
+    summaries.push(`Licznik: ${details.meter_value}`)
+  }
+
+  // Supply quantity changes
+  if (details.quantity && log.action.includes('supply')) {
+    summaries.push(`Ilość: ${details.quantity}`)
+  }
+
+  // Period for bills
+  if (details.period_start && details.period_end) {
+    summaries.push(`Okres: ${details.period_start} - ${details.period_end}`)
+  }
+
+  // Limit to first 3 items for summary
+  if (summaries.length > 3) {
+    return summaries.slice(0, 3).join(' • ') + ' i więcej...'
+  }
+
+  return summaries.join(' • ')
+}
+
+function translateResourceType(resourceType) {
+  const translations = {
+    'bill': 'rachunek',
+    'chore': 'obowiązek',
+    'user': 'użytkownika',
+    'role': 'rolę',
+    'group': 'grupę',
+    'supply': 'zaopatrzenie',
+    'loan': 'pożyczkę'
+  }
+  return translations[resourceType] || resourceType
+}
+
+function translateDetailKey(key) {
+  const translations = {
+    // User fields
+    'userName': 'Nazwa użytkownika',
+    'userEmail': 'Email użytkownika',
+    'targetUser': 'Zmieniony użytkownik',
+    'oldRole': 'Poprzednia rola',
+    'newRole': 'Nowa rola',
+    'userId': 'ID użytkownika',
+
+    // Role fields
+    'roleName': 'Nazwa roli',
+    'displayName': 'Nazwa wyświetlana',
+    'oldDisplayName': 'Poprzednia nazwa',
+    'newDisplayName': 'Nowa nazwa',
+    'oldPermissions': 'Poprzednie uprawnienia',
+    'newPermissions': 'Nowe uprawnienia',
+    'permissions': 'Uprawnienia',
+
+    // Bill fields
+    'billType': 'Typ rachunku',
+    'bill_type': 'Typ rachunku',
+    'type': 'Typ',
+    'amount': 'Kwota (PLN)',
+    'period': 'Okres',
+    'period_start': 'Początek okresu',
+    'period_end': 'Koniec okresu',
+    'oldStatus': 'Poprzedni status',
+    'newStatus': 'Nowy status',
+    'old_status': 'Poprzedni status',
+    'new_status': 'Nowy status',
+    'status': 'Status',
+
+    // Consumption/Reading fields
+    'bill_id': 'ID rachunku',
+    'meter_value': 'Wartość licznika',
+    'source': 'Źródło',
+
+    // Chore fields
+    'choreName': 'Nazwa obowiązku',
+    'name': 'Nazwa',
+    'description': 'Opis',
+    'assignee': 'Przypisany do',
+    'dueDate': 'Termin',
+
+    // Group fields
+    'groupName': 'Nazwa grupy',
+    'weight': 'Waga',
+
+    // Supply fields
+    'itemName': 'Nazwa pozycji',
+    'quantity': 'Ilość',
+    'unit': 'Jednostka',
+
+    // Common fields
+    'createdAt': 'Utworzono',
+    'updatedAt': 'Zaktualizowano',
+    'deletedAt': 'Usunięto',
+    'id': 'ID',
+    'error': 'Błąd'
+  }
+
+  return translations[key] || key
 }
 
 // Role management functions

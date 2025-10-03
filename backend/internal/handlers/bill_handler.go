@@ -12,22 +12,25 @@ import (
 type BillHandler struct {
 	billService        *services.BillService
 	consumptionService *services.ConsumptionService
+	allocationService  *services.AllocationService
 	auditService       *services.AuditService
+	eventService       *services.EventService
 }
 
-func NewBillHandler(billService *services.BillService, consumptionService *services.ConsumptionService, auditService *services.AuditService) *BillHandler {
+func NewBillHandler(billService *services.BillService, consumptionService *services.ConsumptionService, allocationService *services.AllocationService, auditService *services.AuditService, eventService *services.EventService) *BillHandler {
 	return &BillHandler{
 		billService:        billService,
 		consumptionService: consumptionService,
+		allocationService:  allocationService,
 		auditService:       auditService,
+		eventService:       eventService,
 	}
 }
 
 // CreateBill creates a new bill (ADMIN only)
 func (h *BillHandler) CreateBill(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(primitive.ObjectID)
+	userID := c.Locals("userId").(primitive.ObjectID)
 	userEmail := c.Locals("userEmail").(string)
-	userName := c.Locals("userName").(string)
 
 	var req services.CreateBillRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -38,7 +41,7 @@ func (h *BillHandler) CreateBill(c *fiber.Ctx) error {
 
 	bill, err := h.billService.CreateBill(c.Context(), req)
 	if err != nil {
-		h.auditService.LogAction(c.Context(), userID, userEmail, userName, "create_bill", "bill", nil,
+		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "create_bill", "bill", nil,
 			map[string]interface{}{"type": req.Type, "amount": req.TotalAmountPLN},
 			c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -46,9 +49,19 @@ func (h *BillHandler) CreateBill(c *fiber.Ctx) error {
 		})
 	}
 
-	h.auditService.LogAction(c.Context(), userID, userEmail, userName, "create_bill", "bill", &bill.ID,
+	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "create_bill", "bill", &bill.ID,
 		map[string]interface{}{"type": bill.Type, "amount": req.TotalAmountPLN, "period_start": req.PeriodStart, "period_end": req.PeriodEnd},
 		c.IP(), c.Get("User-Agent"), "success")
+
+	// Broadcast event to all users
+	h.eventService.Broadcast(services.EventBillCreated, map[string]interface{}{
+		"billId":     bill.ID.Hex(),
+		"type":       bill.Type,
+		"amount":     req.TotalAmountPLN,
+		"createdBy":  userEmail,
+		"periodStart": req.PeriodStart,
+		"periodEnd":   req.PeriodEnd,
+	})
 
 	return c.Status(fiber.StatusCreated).JSON(bill)
 }
@@ -110,9 +123,8 @@ func (h *BillHandler) GetBill(c *fiber.Ctx) error {
 
 // PostBill changes status to posted (ADMIN only)
 func (h *BillHandler) PostBill(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(primitive.ObjectID)
+	userID := c.Locals("userId").(primitive.ObjectID)
 	userEmail := c.Locals("userEmail").(string)
-	userName := c.Locals("userName").(string)
 
 	id := c.Params("id")
 	billID, err := primitive.ObjectIDFromHex(id)
@@ -126,7 +138,7 @@ func (h *BillHandler) PostBill(c *fiber.Ctx) error {
 	bill, _ := h.billService.GetBill(c.Context(), billID)
 
 	if err := h.billService.PostBill(c.Context(), billID); err != nil {
-		h.auditService.LogAction(c.Context(), userID, userEmail, userName, "post_bill", "bill", &billID,
+		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "post_bill", "bill", &billID,
 			map[string]interface{}{"bill_type": bill.Type, "status": "draft"},
 			c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -134,7 +146,7 @@ func (h *BillHandler) PostBill(c *fiber.Ctx) error {
 		})
 	}
 
-	h.auditService.LogAction(c.Context(), userID, userEmail, userName, "post_bill", "bill", &billID,
+	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "post_bill", "bill", &billID,
 		map[string]interface{}{"bill_type": bill.Type, "old_status": "draft", "new_status": "posted"},
 		c.IP(), c.Get("User-Agent"), "success")
 
@@ -145,9 +157,8 @@ func (h *BillHandler) PostBill(c *fiber.Ctx) error {
 
 // CloseBill changes status to closed (ADMIN only)
 func (h *BillHandler) CloseBill(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(primitive.ObjectID)
+	userID := c.Locals("userId").(primitive.ObjectID)
 	userEmail := c.Locals("userEmail").(string)
-	userName := c.Locals("userName").(string)
 
 	id := c.Params("id")
 	billID, err := primitive.ObjectIDFromHex(id)
@@ -161,7 +172,7 @@ func (h *BillHandler) CloseBill(c *fiber.Ctx) error {
 	bill, _ := h.billService.GetBill(c.Context(), billID)
 
 	if err := h.billService.CloseBill(c.Context(), billID); err != nil {
-		h.auditService.LogAction(c.Context(), userID, userEmail, userName, "close_bill", "bill", &billID,
+		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "close_bill", "bill", &billID,
 			map[string]interface{}{"bill_type": bill.Type, "status": "posted"},
 			c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -169,7 +180,7 @@ func (h *BillHandler) CloseBill(c *fiber.Ctx) error {
 		})
 	}
 
-	h.auditService.LogAction(c.Context(), userID, userEmail, userName, "close_bill", "bill", &billID,
+	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "close_bill", "bill", &billID,
 		map[string]interface{}{"bill_type": bill.Type, "old_status": "posted", "new_status": "closed"},
 		c.IP(), c.Get("User-Agent"), "success")
 
@@ -229,7 +240,6 @@ func (h *BillHandler) CreateConsumption(c *fiber.Ctx) error {
 	}
 
 	userEmail := c.Locals("userEmail").(string)
-	userName := c.Locals("userName").(string)
 
 	var req services.CreateConsumptionRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -253,7 +263,7 @@ func (h *BillHandler) CreateConsumption(c *fiber.Ctx) error {
 
 	consumption, err := h.consumptionService.CreateConsumption(c.Context(), req, source)
 	if err != nil {
-		h.auditService.LogAction(c.Context(), userID, userEmail, userName, "create_reading", "consumption", nil,
+		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "create_reading", "consumption", nil,
 			map[string]interface{}{"bill_id": req.BillID.Hex(), "bill_type": bill.Type, "meter_value": req.MeterValue},
 			c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -261,9 +271,18 @@ func (h *BillHandler) CreateConsumption(c *fiber.Ctx) error {
 		})
 	}
 
-	h.auditService.LogAction(c.Context(), userID, userEmail, userName, "create_reading", "consumption", &consumption.ID,
+	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "create_reading", "consumption", &consumption.ID,
 		map[string]interface{}{"bill_id": req.BillID.Hex(), "bill_type": bill.Type, "meter_value": req.MeterValue, "source": source},
 		c.IP(), c.Get("User-Agent"), "success")
+
+	// Broadcast event to all users
+	h.eventService.Broadcast(services.EventConsumptionCreated, map[string]interface{}{
+		"consumptionId": consumption.ID.Hex(),
+		"billId":        req.BillID.Hex(),
+		"billType":      bill.Type,
+		"meterValue":    req.MeterValue,
+		"createdBy":     userEmail,
+	})
 
 	return c.Status(fiber.StatusCreated).JSON(consumption)
 }
@@ -355,4 +374,24 @@ func (h *BillHandler) MarkConsumptionInvalid(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"message": "Consumption marked as invalid"})
+}
+
+// GetBillAllocation returns allocation breakdown for a bill
+func (h *BillHandler) GetBillAllocation(c *fiber.Ctx) error {
+	id := c.Params("id")
+	billID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid bill ID",
+		})
+	}
+
+	breakdown, err := h.allocationService.GetAllocationBreakdown(c.Context(), billID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(breakdown)
 }

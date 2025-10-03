@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"context"
+	"fmt"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -51,9 +53,9 @@ func AuthMiddleware(cfg *config.Config) fiber.Handler {
 		}
 
 		// Store user info in context
-		c.Locals(UserIDKey, claims.UserID)
-		c.Locals(UserEmail, claims.Email)
-		c.Locals(UserRole, claims.Role)
+		c.Locals("userId", claims.UserID)
+		c.Locals("userEmail", claims.Email)
+		c.Locals("userRole", claims.Role)
 
 		return c.Next()
 	}
@@ -62,7 +64,7 @@ func AuthMiddleware(cfg *config.Config) fiber.Handler {
 // RequireRole creates a middleware that checks for specific roles
 func RequireRole(roles ...string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		userRole, ok := c.Locals(UserRole).(string)
+		userRole, ok := c.Locals("userRole").(string)
 		if !ok {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 				"error": "Access forbidden: role not found",
@@ -83,7 +85,7 @@ func RequireRole(roles ...string) fiber.Handler {
 
 // GetUserID extracts the user ID from the request context
 func GetUserID(c *fiber.Ctx) (primitive.ObjectID, error) {
-	userID, ok := c.Locals(UserIDKey).(primitive.ObjectID)
+	userID, ok := c.Locals("userId").(primitive.ObjectID)
 	if !ok {
 		return primitive.NilObjectID, fiber.ErrUnauthorized
 	}
@@ -92,9 +94,65 @@ func GetUserID(c *fiber.Ctx) (primitive.ObjectID, error) {
 
 // GetUserRole extracts the user role from the request context
 func GetUserRole(c *fiber.Ctx) (string, error) {
-	role, ok := c.Locals(UserRole).(string)
+	role, ok := c.Locals("userRole").(string)
 	if !ok {
 		return "", fiber.ErrUnauthorized
 	}
 	return role, nil
+}
+
+// RequirePermission creates a middleware that checks for specific permissions
+// This requires the RoleService to check if the user's role has the permission
+func RequirePermission(permission string, roleServiceGetter func() interface{}) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		userRole, ok := c.Locals("userRole").(string)
+		if !ok {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "Access forbidden: role not found",
+				"debug": "userRole not found in context",
+			})
+		}
+
+		// Get the RoleService from the getter function
+		roleService := roleServiceGetter()
+		if roleService == nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Role service not available",
+				"debug": "roleServiceGetter returned nil",
+			})
+		}
+
+		// Type assert to RoleService interface with HasPermission method
+		type PermissionChecker interface {
+			HasPermission(ctx context.Context, roleName, permission string) (bool, error)
+		}
+
+		checker, ok := roleService.(PermissionChecker)
+		if !ok {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error":       "Invalid role service",
+				"debug":       "type assertion failed",
+				"serviceType": fmt.Sprintf("%T", roleService),
+			})
+		}
+
+		hasPermission, err := checker.HasPermission(c.Context(), userRole, permission)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to check permissions",
+				"debug": err.Error(),
+				"role":  userRole,
+				"perm":  permission,
+			})
+		}
+
+		if !hasPermission {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "Access forbidden: insufficient permissions",
+				"debug": fmt.Sprintf("Role '%s' does not have permission '%s'", userRole, permission),
+			})
+		}
+
+		return c.Next()
+	}
 }

@@ -1,5 +1,13 @@
 <template>
-  <UpdateBanner :show="hasNewVersion || isUpdating" :isUpdating="isUpdating" />
+  <UpdateBanner :show="hasNewVersion || isUpdating || hasPermissionUpdate" :isUpdating="isUpdating || isRefreshingPermissions" />
+  <NotificationToast ref="notificationToast" />
+  <NotificationHistory
+    :isOpen="showNotificationHistory"
+    @close="showNotificationHistory = false"
+    @openPreferences="showNotificationPreferences = true" />
+  <NotificationPreferences
+    :isOpen="showNotificationPreferences"
+    @close="showNotificationPreferences = false" />
 
   <div class="min-h-screen pb-20 md:pb-0">
     <!-- Desktop Navigation -->
@@ -35,6 +43,14 @@
           </div>
 
           <div class="flex items-center gap-2">
+            <button
+              @click="showNotificationHistory = true"
+              class="btn btn-outline btn-sm relative flex items-center gap-2">
+              <Bell class="w-4 h-4" />
+              <span v-if="notificationStore.unreadCount > 0" class="absolute -top-1 -right-1 bg-purple-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                {{ notificationStore.unreadCount > 9 ? '9+' : notificationStore.unreadCount }}
+              </span>
+            </button>
             <router-link to="/settings" class="btn btn-outline btn-sm flex items-center gap-2">
               <Settings class="w-4 h-4" />
               {{ $t('nav.settings') }}
@@ -59,6 +75,14 @@
             <span class="text-lg font-bold gradient-text">Holy Home</span>
           </router-link>
           <div class="flex items-center gap-2">
+            <button
+              @click="showNotificationHistory = true"
+              class="p-2.5 rounded-lg bg-gray-800/50 hover:bg-gray-700/50 active:scale-95 transition-all relative">
+              <Bell class="w-5 h-5 text-gray-300" />
+              <span v-if="notificationStore.unreadCount > 0" class="absolute -top-0.5 -right-0.5 bg-purple-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center text-[10px]">
+                {{ notificationStore.unreadCount > 9 ? '9+' : notificationStore.unreadCount }}
+              </span>
+            </button>
             <router-link to="/settings" class="p-2.5 rounded-lg bg-gray-800/50 hover:bg-gray-700/50 active:scale-95 transition-all">
               <Settings class="w-5 h-5 text-gray-300" />
             </router-link>
@@ -107,18 +131,296 @@
 </template>
 
 <script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
+import { useNotificationStore } from './stores/notification'
 import { useVersionCheck } from './composables/useVersionCheck'
+import { useEventStream } from './composables/useEventStream'
 import UpdateBanner from './components/UpdateBanner.vue'
-import { Home, LayoutDashboard, Receipt, Wallet, CheckSquare, ShoppingCart, Settings, LogOut } from 'lucide-vue-next'
+import NotificationToast from './components/NotificationToast.vue'
+import NotificationHistory from './components/NotificationHistory.vue'
+import NotificationPreferences from './components/NotificationPreferences.vue'
+import { Home, LayoutDashboard, Receipt, Wallet, CheckSquare, ShoppingCart, Settings, LogOut, Bell } from 'lucide-vue-next'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const notificationStore = useNotificationStore()
 const { hasNewVersion, isUpdating } = useVersionCheck()
+const eventStream = useEventStream()
+
+const hasPermissionUpdate = ref(false)
+const isRefreshingPermissions = ref(false)
+const notificationToast = ref(null)
+const showNotificationHistory = ref(false)
+const showNotificationPreferences = ref(false)
 
 function handleLogout() {
   authStore.logout()
   router.push('/login')
 }
+
+// Auto-refresh permissions when window gains focus (no cooldown needed with SSE)
+async function refreshPermissionsIfNeeded() {
+  if (!authStore.isAuthenticated) return
+
+  try {
+    await authStore.loadUser()
+    console.log('Permissions refreshed on focus')
+  } catch (error) {
+    console.error('Failed to refresh permissions:', error)
+  }
+}
+
+// Handle permission update events
+async function handlePermissionUpdate() {
+  hasPermissionUpdate.value = true
+  isRefreshingPermissions.value = true
+
+  try {
+    // Wait a moment to show the banner
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    // Reload permissions
+    await authStore.loadUser()
+
+    // Wait another moment
+    await new Promise(resolve => setTimeout(resolve, 500))
+
+    // Reload the page to refresh all components with new permissions
+    window.location.reload()
+  } catch (error) {
+    console.error('Failed to refresh permissions:', error)
+    hasPermissionUpdate.value = false
+    isRefreshingPermissions.value = false
+  }
+}
+
+// Translate event types to Polish messages
+function translateEvent(eventType, data) {
+  const translations = {
+    'bill.created': {
+      type: 'bill',
+      title: 'Nowy rachunek',
+      message: `${data.createdBy} dodał rachunek: ${translateBillType(data.type)} - ${data.amount} PLN`,
+      resourceId: data.billId,
+      resourceType: 'bill'
+    },
+    'consumption.created': {
+      type: 'bill',
+      title: 'Nowy odczyt',
+      message: `${data.createdBy} dodał odczyt dla ${translateBillType(data.billType)}: ${data.meterValue}`,
+      resourceId: data.billId,
+      resourceType: 'bill'
+    },
+    'chore.updated': {
+      type: 'chore',
+      title: data.action === 'created' ? 'Nowy obowiązek' : 'Zaktualizowano obowiązek',
+      message: data.name,
+      resourceId: data.choreId,
+      resourceType: 'chore'
+    },
+    'supply.item.added': {
+      type: 'supply',
+      title: 'Nowa pozycja',
+      message: `${data.addedBy} dodał: ${data.name} (${data.category})`,
+      resourceId: data.itemId,
+      resourceType: 'supply'
+    },
+    'loan.created': {
+      type: 'loan',
+      title: 'Nowa pożyczka',
+      message: data.message || 'Dodano nową pożyczkę',
+      resourceId: data.loanId,
+      resourceType: 'loan'
+    },
+    'loan.payment.created': {
+      type: 'loan',
+      title: 'Spłata pożyczki',
+      message: data.message || 'Zarejestrowano spłatę',
+      resourceId: data.loanId,
+      resourceType: 'loan'
+    },
+    'loan.deleted': {
+      type: 'loan',
+      title: 'Usunięto pożyczkę',
+      message: data.message || 'Pożyczka została usunięta',
+      resourceType: 'loan'
+    },
+    'supply.item.bought': {
+      type: 'supply',
+      title: 'Zakupiono produkt',
+      message: `${data.boughtBy} kupił: ${data.name}`,
+      resourceId: data.itemId,
+      resourceType: 'supply'
+    },
+    'supply.budget.contributed': {
+      type: 'supply',
+      title: 'Wpłata na budżet',
+      message: `${data.contributedBy} wpłacił ${data.amount} PLN`,
+      resourceType: 'supply'
+    },
+    'supply.budget.low': {
+      type: 'supply',
+      title: 'Niski budżet',
+      message: `Budżet wynosi ${data.currentBudget} PLN`,
+      resourceType: 'supply'
+    },
+    'payment.created': {
+      type: 'bill',
+      title: 'Nowa wpłata',
+      message: data.message || 'Zarejestrowano wpłatę',
+      resourceId: data.billId,
+      resourceType: 'bill'
+    },
+    'balance.updated': {
+      type: 'loan',
+      title: 'Zaktualizowano bilans',
+      message: data.message || 'Bilans został zaktualizowany',
+      resourceType: 'loan'
+    },
+    'permissions.updated': {
+      type: 'system',
+      title: 'System',
+      message: data.message || 'Zaktualizowano uprawnienia',
+      skipNotification: true // Don't show this as a notification
+    }
+  }
+
+  return translations[eventType] || {
+    type: 'info',
+    title: 'Nowe zdarzenie',
+    message: eventType
+  }
+}
+
+function translateBillType(type) {
+  const types = {
+    'electricity': 'Prąd',
+    'gas': 'Gaz',
+    'internet': 'Internet',
+    'water': 'Woda',
+    'inne': 'Inne'
+  }
+  return types[type] || type
+}
+
+// Request browser notification permission
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) {
+    console.log('This browser does not support notifications')
+    return false
+  }
+
+  if (Notification.permission === 'granted') {
+    return true
+  }
+
+  if (Notification.permission !== 'denied') {
+    const permission = await Notification.requestPermission()
+    return permission === 'granted'
+  }
+
+  return false
+}
+
+// Show browser notification
+function showBrowserNotification(notification) {
+  if (Notification.permission !== 'granted') return
+
+  const options = {
+    body: notification.message,
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    tag: notification.resourceId || 'general',
+    requireInteraction: false,
+    silent: false
+  }
+
+  const notif = new Notification(notification.title, options)
+
+  // Handle click - focus window and navigate
+  notif.onclick = () => {
+    window.focus()
+    notif.close()
+
+    // Navigate to the resource if possible
+    if (notification.resourceId && notification.resourceType) {
+      const routes = {
+        bill: `/bills?id=${notification.resourceId}`,
+        chore: `/chores?id=${notification.resourceId}`,
+        supply: `/supplies?id=${notification.resourceId}`,
+        loan: `/balance?loanId=${notification.resourceId}`
+      }
+      const route = routes[notification.resourceType]
+      if (route) {
+        router.push(route)
+      }
+    }
+  }
+}
+
+// Handle all SSE events
+function handleSSEEvent(event) {
+  if (!notificationToast.value) return
+
+  const notification = translateEvent(event.type, event.data || {})
+
+  // Skip notifications marked as skipNotification
+  if (notification.skipNotification) {
+    return
+  }
+
+  // Check user preferences - should we show this type?
+  if (!notificationStore.shouldShowNotification(notification.type)) {
+    return
+  }
+
+  // Add to notification history
+  notificationStore.addNotification(notification)
+
+  // Show in-app toast notification
+  notificationToast.value.show(notification)
+
+  // Show browser notification if permission granted
+  showBrowserNotification(notification)
+}
+
+onMounted(async () => {
+  // Refresh permissions when window gains focus
+  window.addEventListener('focus', refreshPermissionsIfNeeded)
+
+  // Also refresh on initial mount if authenticated
+  if (authStore.isAuthenticated) {
+    refreshPermissionsIfNeeded()
+
+    // Request browser notification permission
+    await requestNotificationPermission()
+
+    // Connect to event stream and listen for all events
+    eventStream.connect()
+
+    // Permission updates trigger page reload
+    eventStream.on('permissions.updated', handlePermissionUpdate)
+
+    // Other events show toast notifications
+    eventStream.on('bill.created', handleSSEEvent)
+    eventStream.on('consumption.created', handleSSEEvent)
+    eventStream.on('chore.updated', handleSSEEvent)
+    eventStream.on('supply.item.added', handleSSEEvent)
+    eventStream.on('supply.item.bought', handleSSEEvent)
+    eventStream.on('supply.budget.contributed', handleSSEEvent)
+    eventStream.on('supply.budget.low', handleSSEEvent)
+    eventStream.on('loan.created', handleSSEEvent)
+    eventStream.on('loan.payment.created', handleSSEEvent)
+    eventStream.on('loan.deleted', handleSSEEvent)
+    eventStream.on('payment.created', handleSSEEvent)
+    eventStream.on('balance.updated', handleSSEEvent)
+  }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('focus', refreshPermissionsIfNeeded)
+  eventStream.disconnect()
+})
 </script>

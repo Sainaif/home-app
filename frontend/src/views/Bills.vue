@@ -5,7 +5,7 @@
         <h1 class="text-4xl font-bold gradient-text mb-2">{{ $t('bills.title') }}</h1>
         <p class="text-gray-400">Historia rachunków i odczyty liczników</p>
       </div>
-      <button v-if="authStore.isAdmin && activeTab === 'bills'" @click="showCreateModal = true" class="btn btn-primary flex items-center gap-2">
+      <button v-if="authStore.hasPermission('bills.create') && activeTab === 'bills'" @click="showCreateModal = true" class="btn btn-primary flex items-center gap-2">
         <Plus class="w-5 h-5" />
         {{ $t('bills.createNew') }}
       </button>
@@ -55,12 +55,20 @@
             <input v-model="newBill.customType" type="text" required class="input" placeholder="np. Czynsz, Woda..." />
           </div>
 
+          <div v-if="newBill.type === 'inne'">
+            <label class="block text-sm font-medium mb-2">Sposób rozliczenia</label>
+            <select v-model="newBill.allocationType" required class="input">
+              <option value="simple">Równy podział (jak Gaz/Internet)</option>
+              <option value="metered">Według odczytów (jak Prąd)</option>
+            </select>
+          </div>
+
           <div>
             <label class="block text-sm font-medium mb-2">Kwota (PLN)</label>
             <input v-model.number="newBill.totalAmountPLN" type="number" step="0.01" required class="input" placeholder="150.00" />
           </div>
 
-          <div v-if="newBill.type === 'electricity' || newBill.type === 'gas'">
+          <div v-if="newBill.type === 'electricity' || newBill.type === 'gas' || (newBill.type === 'inne' && newBill.allocationType === 'metered')">
             <label class="block text-sm font-medium mb-2">Jednostki</label>
             <input v-model.number="newBill.totalUnits" type="number" step="0.001" class="input" placeholder="100.000" />
           </div>
@@ -68,11 +76,11 @@
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="block text-sm font-medium mb-2">Okres od</label>
-              <input v-model="newBill.periodStart" type="date" required class="input" />
+              <input v-model="newBill.periodStart" type="date" required class="input" min="2000-01-01" max="2099-12-31" />
             </div>
             <div>
               <label class="block text-sm font-medium mb-2">Okres do</label>
-              <input v-model="newBill.periodEnd" type="date" required class="input" />
+              <input v-model="newBill.periodEnd" type="date" required class="input" min="2000-01-01" max="2099-12-31" />
             </div>
           </div>
 
@@ -239,7 +247,13 @@
                   </div>
                 </td>
                 <td>
-                  <span class="font-bold text-purple-400">{{ formatMoney(bill.totalAmountPLN) }} PLN</span>
+                  <div class="flex items-center gap-2">
+                    <span class="font-bold text-purple-400">{{ formatMoney(bill.totalAmountPLN) }} PLN</span>
+                    <button @click.stop="toggleBillExpansion(bill.id)" class="text-gray-400 hover:text-purple-400 transition-colors">
+                      <ChevronDown v-if="!expandedBills[bill.id]" class="w-4 h-4" />
+                      <ChevronUp v-else class="w-4 h-4" />
+                    </button>
+                  </div>
                 </td>
                 <td>
                   <span class="text-gray-300">{{ bill.totalUnits ? formatUnits(bill.totalUnits) + ' ' + getUnit(bill.type) : '-' }}</span>
@@ -269,6 +283,48 @@
                       <Trash2 class="w-3 h-3" />
                       Usuń
                     </button>
+                  </div>
+                </td>
+              </tr>
+              <!-- Allocation breakdown row -->
+              <tr v-if="expandedBills[bill.id]" class="bg-gray-800/30">
+                <td colspan="7" class="p-4">
+                  <div v-if="loadingAllocations[bill.id]" class="text-center text-gray-400">
+                    Ładowanie rozliczenia...
+                  </div>
+                  <div v-else-if="billAllocations[bill.id] && billAllocations[bill.id].length > 0" class="space-y-2">
+                    <h3 class="text-sm font-semibold text-purple-400 mb-3">Rozliczenie między użytkownikami:</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      <div v-for="allocation in billAllocations[bill.id]" :key="allocation.subjectId"
+                           class="bg-gray-800/50 rounded-lg p-3 border border-gray-700/50">
+                        <div class="flex justify-between items-start">
+                          <div>
+                            <p class="font-medium text-white">{{ allocation.subjectName }}</p>
+                            <p class="text-xs text-gray-400">Waga: {{ allocation.weight.toFixed(2) }}</p>
+                          </div>
+                          <div class="text-right">
+                            <p class="font-bold text-purple-400">{{ formatMoney(allocation.amount) }} PLN</p>
+                            <div v-if="allocation.units !== undefined" class="text-xs text-gray-400">
+                              {{ formatUnits(allocation.units) }} {{ getUnit(bill.type) }}
+                            </div>
+                          </div>
+                        </div>
+                        <div v-if="allocation.personalAmount !== undefined && allocation.sharedAmount !== undefined"
+                             class="mt-2 pt-2 border-t border-gray-700/50 text-xs text-gray-400 space-y-1">
+                          <div class="flex justify-between">
+                            <span>Osobiste:</span>
+                            <span>{{ formatMoney(allocation.personalAmount) }} PLN</span>
+                          </div>
+                          <div class="flex justify-between">
+                            <span>Wspólne:</span>
+                            <span>{{ formatMoney(allocation.sharedAmount) }} PLN</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else class="text-center text-gray-400">
+                    Brak danych o rozliczeniu
                   </div>
                 </td>
               </tr>
@@ -375,7 +431,7 @@ import { useAuthStore } from '../stores/auth'
 import api from '../api/client'
 import {
   Plus, FileX, Zap, Flame, Wifi, Calendar, Receipt, Gauge,
-  Send, Check, X, AlertCircle, Trash2
+  Send, Check, X, AlertCircle, Trash2, ChevronDown, ChevronUp
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -388,6 +444,9 @@ const loading = ref(false)
 const showCreateModal = ref(false)
 const creating = ref(false)
 const createError = ref('')
+const billAllocations = ref({}) // Store allocations by bill ID
+const loadingAllocations = ref({})
+const expandedBills = ref({})
 
 const filters = ref({
   type: '',
@@ -417,7 +476,7 @@ const form = ref({
 })
 
 const filteredBills = computed(() => {
-  let result = [...bills.value]
+  let result = [...bills.value].filter(b => b && b.id) // Filter out undefined/null bills
 
   if (filters.value.type) {
     result = result.filter(b => b.type === filters.value.type)
@@ -482,6 +541,7 @@ const filteredReadings = computed(() => {
 const newBill = ref({
   type: 'electricity',
   customType: '',
+  allocationType: 'simple',
   totalAmountPLN: '',
   totalUnits: '',
   periodStart: '',
@@ -537,17 +597,46 @@ async function createBill() {
   createError.value = ''
 
   try {
+    // Validate dates
+    const startDate = new Date(newBill.value.periodStart)
+    const endDate = new Date(newBill.value.periodEnd)
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      createError.value = 'Nieprawidłowe daty'
+      creating.value = false
+      return
+    }
+
+    if (startDate.getFullYear() < 2000 || startDate.getFullYear() > 2100) {
+      createError.value = 'Data rozpoczęcia musi być między 2000 a 2100'
+      creating.value = false
+      return
+    }
+
+    if (endDate.getFullYear() < 2000 || endDate.getFullYear() > 2100) {
+      createError.value = 'Data zakończenia musi być między 2000 a 2100'
+      creating.value = false
+      return
+    }
+
+    if (endDate <= startDate) {
+      createError.value = 'Data zakończenia musi być późniejsza niż data rozpoczęcia'
+      creating.value = false
+      return
+    }
+
     const payload = {
       type: newBill.value.type,
       totalAmountPLN: newBill.value.totalAmountPLN,
       totalUnits: newBill.value.totalUnits || undefined,
-      periodStart: new Date(newBill.value.periodStart).toISOString(),
-      periodEnd: new Date(newBill.value.periodEnd).toISOString(),
+      periodStart: startDate.toISOString(),
+      periodEnd: endDate.toISOString(),
       notes: newBill.value.notes || undefined
     }
 
     if (newBill.value.type === 'inne' && newBill.value.customType) {
       payload.customType = newBill.value.customType
+      payload.allocationType = newBill.value.allocationType
     }
 
     await api.post('/bills', payload)
@@ -557,6 +646,7 @@ async function createBill() {
     newBill.value = {
       type: 'electricity',
       customType: '',
+      allocationType: 'simple',
       totalAmountPLN: '',
       totalUnits: '',
       periodStart: '',
@@ -644,6 +734,33 @@ function formatMeterValue(value) {
 function formatDate(date) {
   if (!date) return '-'
   return new Date(date).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+async function loadBillAllocation(billId) {
+  if (billAllocations.value[billId]) {
+    // Already loaded, just return
+    return
+  }
+
+  loadingAllocations.value[billId] = true
+  try {
+    const response = await api.get(`/bills/${billId}/allocation`)
+    billAllocations.value[billId] = response.data
+  } catch (err) {
+    console.error('Failed to load allocation:', err)
+    billAllocations.value[billId] = []
+  } finally {
+    loadingAllocations.value[billId] = false
+  }
+}
+
+async function toggleBillExpansion(billId) {
+  if (expandedBills.value[billId]) {
+    expandedBills.value[billId] = false
+  } else {
+    expandedBills.value[billId] = true
+    await loadBillAllocation(billId)
+  }
 }
 
 function formatDateTime(date) {

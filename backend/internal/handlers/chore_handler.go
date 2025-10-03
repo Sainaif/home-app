@@ -14,14 +14,16 @@ type ChoreHandler struct {
 	approvalService *services.ApprovalService
 	roleService     *services.RoleService
 	auditService    *services.AuditService
+	eventService    *services.EventService
 }
 
-func NewChoreHandler(choreService *services.ChoreService, approvalService *services.ApprovalService, roleService *services.RoleService, auditService *services.AuditService) *ChoreHandler {
+func NewChoreHandler(choreService *services.ChoreService, approvalService *services.ApprovalService, roleService *services.RoleService, auditService *services.AuditService, eventService *services.EventService) *ChoreHandler {
 	return &ChoreHandler{
 		choreService:    choreService,
 		approvalService: approvalService,
 		roleService:     roleService,
 		auditService:    auditService,
+		eventService:    eventService,
 	}
 }
 
@@ -40,6 +42,14 @@ func (h *ChoreHandler) CreateChore(c *fiber.Ctx) error {
 			"error": err.Error(),
 		})
 	}
+
+	// Broadcast event to all users
+	h.eventService.Broadcast(services.EventChoreUpdated, map[string]interface{}{
+		"choreId":     chore.ID.Hex(),
+		"name":        chore.Name,
+		"description": chore.Description,
+		"action":      "created",
+	})
 
 	return c.Status(fiber.StatusCreated).JSON(chore)
 }

@@ -9,6 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/sainaif/holy-home/internal/models"
 )
@@ -30,12 +31,18 @@ func (s *PermissionService) InitializeDefaultPermissions(ctx context.Context) er
 		{ID: primitive.NewObjectID(), Name: "users.update", Description: "Aktualizuj informacje o użytkownikach", Category: "users"},
 		{ID: primitive.NewObjectID(), Name: "users.delete", Description: "Usuń użytkowników", Category: "users"},
 
+		// Group management
+		{ID: primitive.NewObjectID(), Name: "groups.create", Description: "Twórz nowe grupy", Category: "groups"},
+		{ID: primitive.NewObjectID(), Name: "groups.read", Description: "Przeglądaj grupy", Category: "groups"},
+		{ID: primitive.NewObjectID(), Name: "groups.update", Description: "Aktualizuj grupy", Category: "groups"},
+		{ID: primitive.NewObjectID(), Name: "groups.delete", Description: "Usuń grupy", Category: "groups"},
+
 		// Bill management
 		{ID: primitive.NewObjectID(), Name: "bills.create", Description: "Twórz nowe rachunki", Category: "bills"},
 		{ID: primitive.NewObjectID(), Name: "bills.read", Description: "Przeglądaj rachunki", Category: "bills"},
 		{ID: primitive.NewObjectID(), Name: "bills.update", Description: "Aktualizuj rachunki", Category: "bills"},
 		{ID: primitive.NewObjectID(), Name: "bills.delete", Description: "Usuń rachunki", Category: "bills"},
-		{ID: primitive.NewObjectID(), Name: "bills.post", Description: "Opublikuj rachunki (zamroź alokacje)", Category: "bills"},
+		{ID: primitive.NewObjectID(), Name: "bills.post", Description: "Opublikuj rachunki", Category: "bills"},
 		{ID: primitive.NewObjectID(), Name: "bills.close", Description: "Zamknij rachunki", Category: "bills"},
 
 		// Chore management
@@ -62,24 +69,32 @@ func (s *PermissionService) InitializeDefaultPermissions(ctx context.Context) er
 
 		// Audit logs
 		{ID: primitive.NewObjectID(), Name: "audit.read", Description: "Przeglądaj logi audytu", Category: "audit"},
+
+		// Loan management
+		{ID: primitive.NewObjectID(), Name: "loans.read", Description: "Przeglądaj pożyczki", Category: "loans"},
+		{ID: primitive.NewObjectID(), Name: "loans.delete", Description: "Usuń pożyczki", Category: "loans"},
+
+		// Reading management
+		{ID: primitive.NewObjectID(), Name: "readings.delete", Description: "Usuń odczyty liczników", Category: "readings"},
+
+		// Backup management
+		{ID: primitive.NewObjectID(), Name: "backup.export", Description: "Eksportuj kopię zapasową", Category: "backup"},
+		{ID: primitive.NewObjectID(), Name: "backup.import", Description: "Importuj kopię zapasową", Category: "backup"},
 	}
 
-	// Check if permissions already exist
-	count, err := s.db.Collection("permissions").CountDocuments(ctx, bson.M{})
-	if err != nil {
-		return err
+	// Insert or update permissions (upsert missing ones)
+	for _, perm := range permissions {
+		filter := bson.M{"name": perm.Name}
+		update := bson.M{
+			"$setOnInsert": perm,
+		}
+		opts := options.Update().SetUpsert(true)
+		_, err := s.db.Collection("permissions").UpdateOne(ctx, filter, update, opts)
+		if err != nil {
+			return err
+		}
 	}
-	if count > 0 {
-		return nil // Already initialized
-	}
-
-	// Insert permissions
-	docs := make([]interface{}, len(permissions))
-	for i, perm := range permissions {
-		docs[i] = perm
-	}
-	_, err = s.db.Collection("permissions").InsertMany(ctx, docs)
-	return err
+	return nil
 }
 
 // GetAllPermissions retrieves all permissions
@@ -121,53 +136,68 @@ func NewRoleService(db *mongo.Database) *RoleService {
 
 // InitializeDefaultRoles creates the default ADMIN and RESIDENT roles
 func (s *RoleService) InitializeDefaultRoles(ctx context.Context) error {
-	// Check if roles already exist
-	count, err := s.db.Collection("roles").CountDocuments(ctx, bson.M{})
-	if err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil // Already initialized
-	}
-
 	now := time.Now()
 
 	// ADMIN role with all permissions
-	adminRole := models.Role{
-		ID:          primitive.NewObjectID(),
-		Name:        "ADMIN",
-		DisplayName: "Administrator",
-		IsSystem:    true,
-		Permissions: []string{
-			"users.create", "users.read", "users.update", "users.delete",
-			"bills.create", "bills.read", "bills.update", "bills.delete", "bills.post", "bills.close",
-			"chores.create", "chores.read", "chores.update", "chores.delete", "chores.assign",
-			"supplies.create", "supplies.read", "supplies.update", "supplies.delete",
-			"roles.create", "roles.read", "roles.update", "roles.delete",
-			"approvals.review",
-			"audit.read",
-		},
-		CreatedAt: now,
-		UpdatedAt: now,
+	adminPermissions := []string{
+		"users.create", "users.read", "users.update", "users.delete",
+		"groups.create", "groups.read", "groups.update", "groups.delete",
+		"bills.create", "bills.read", "bills.update", "bills.delete", "bills.post", "bills.close",
+		"chores.create", "chores.read", "chores.update", "chores.delete", "chores.assign",
+		"supplies.create", "supplies.read", "supplies.update", "supplies.delete",
+		"roles.create", "roles.read", "roles.update", "roles.delete",
+		"approvals.review",
+		"audit.read",
+		"loans.read", "loans.delete",
+		"readings.delete",
+		"backup.export", "backup.import",
 	}
 
 	// MIESZKANIEC role with limited permissions
-	residentRole := models.Role{
-		ID:          primitive.NewObjectID(),
-		Name:        "MIESZKANIEC",
-		DisplayName: "Mieszkaniec",
-		IsSystem:    true,
-		Permissions: []string{
-			"users.read",
-			"bills.read",
-			"chores.read",
-			"supplies.read", "supplies.update",
-		},
-		CreatedAt: now,
-		UpdatedAt: now,
+	residentPermissions := []string{
+		"users.read",
+		"groups.read",
+		"bills.read",
+		"chores.read",
+		"supplies.read", "supplies.update",
 	}
 
-	_, err = s.db.Collection("roles").InsertMany(ctx, []interface{}{adminRole, residentRole})
+	// Upsert ADMIN role - always update permissions to include new ones
+	adminFilter := bson.M{"name": "ADMIN"}
+	adminUpdate := bson.M{
+		"$setOnInsert": bson.M{
+			"_id":         primitive.NewObjectID(),
+			"name":        "ADMIN",
+			"displayName": "Administrator",
+			"isSystem":    true,
+			"createdAt":   now,
+		},
+		"$set": bson.M{
+			"permissions": adminPermissions,
+			"updatedAt":   now,
+		},
+	}
+	adminOpts := options.Update().SetUpsert(true)
+	_, err := s.db.Collection("roles").UpdateOne(ctx, adminFilter, adminUpdate, adminOpts)
+	if err != nil {
+		return err
+	}
+
+	// Upsert MIESZKANIEC role - only create once, never update
+	residentFilter := bson.M{"name": "MIESZKANIEC"}
+	residentUpdate := bson.M{
+		"$setOnInsert": bson.M{
+			"_id":         primitive.NewObjectID(),
+			"name":        "MIESZKANIEC",
+			"displayName": "Mieszkaniec",
+			"isSystem":    true,
+			"createdAt":   now,
+			"updatedAt":   now,
+			"permissions": residentPermissions,
+		},
+	}
+	residentOpts := options.Update().SetUpsert(true)
+	_, err = s.db.Collection("roles").UpdateOne(ctx, residentFilter, residentUpdate, residentOpts)
 	return err
 }
 
@@ -175,6 +205,19 @@ func (s *RoleService) InitializeDefaultRoles(ctx context.Context) error {
 func (s *RoleService) GetRole(ctx context.Context, name string) (*models.Role, error) {
 	var role models.Role
 	err := s.db.Collection("roles").FindOne(ctx, bson.M{"name": name}).Decode(&role)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("role not found")
+		}
+		return nil, err
+	}
+	return &role, nil
+}
+
+// GetRoleByID retrieves a role by ID
+func (s *RoleService) GetRoleByID(ctx context.Context, id primitive.ObjectID) (*models.Role, error) {
+	var role models.Role
+	err := s.db.Collection("roles").FindOne(ctx, bson.M{"_id": id}).Decode(&role)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, errors.New("role not found")
@@ -300,4 +343,13 @@ func (s *RoleService) HasPermission(ctx context.Context, roleName, permission st
 		}
 	}
 	return false, nil
+}
+
+// GetRolePermissions returns all permissions for a given role
+func (s *RoleService) GetRolePermissions(ctx context.Context, roleName string) ([]string, error) {
+	role, err := s.GetRole(ctx, roleName)
+	if err != nil {
+		return nil, err
+	}
+	return role.Permissions, nil
 }

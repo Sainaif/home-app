@@ -56,7 +56,12 @@ func main() {
 	})
 
 	// Global Middleware
-	app.Use(recover.New())
+	app.Use(recover.New(recover.Config{
+		EnableStackTrace: true,
+		StackTraceHandler: func(c *fiber.Ctx, e interface{}) {
+			log.Printf("PANIC: %s %s - %v", c.Method(), c.Path(), e)
+		},
+	}))
 	app.Use(middleware.RequestIDMiddleware())
 
 	// Smart cache control middleware - GET requests cacheable, mutations not
@@ -104,6 +109,7 @@ func main() {
 	groupService := services.NewGroupService(db.Database)
 	billService := services.NewBillService(db.Database)
 	consumptionService := services.NewConsumptionService(db.Database)
+	allocationService := services.NewAllocationService(db.Database)
 	loanService := services.NewLoanService(db.Database)
 	choreService := services.NewChoreService(db.Database)
 	supplyService := services.NewSupplyService(db.Database)
@@ -127,18 +133,21 @@ func main() {
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(authService)
 	sessionHandler := handlers.NewSessionHandler(sessionService)
-	userHandler := handlers.NewUserHandler(userService, auditService)
+	userHandler := handlers.NewUserHandler(userService, auditService, roleService)
 	groupHandler := handlers.NewGroupHandler(groupService, auditService)
-	billHandler := handlers.NewBillHandler(billService, consumptionService, auditService)
+	billHandler := handlers.NewBillHandler(billService, consumptionService, allocationService, auditService, eventService)
 	loanHandler := handlers.NewLoanHandler(loanService, eventService, auditService)
-	choreHandler := handlers.NewChoreHandler(choreService, approvalService, roleService, auditService)
-	supplyHandler := handlers.NewSupplyHandler(supplyService, auditService)
+	choreHandler := handlers.NewChoreHandler(choreService, approvalService, roleService, auditService, eventService)
+	supplyHandler := handlers.NewSupplyHandler(supplyService, auditService, eventService)
 	backupHandler := handlers.NewBackupHandler(backupService)
 	eventHandler := handlers.NewEventHandler(eventService)
 	exportHandler := handlers.NewExportHandler(exportService)
 	auditHandler := handlers.NewAuditHandler(auditService)
-	roleHandler := handlers.NewRoleHandler(roleService, permissionService, auditService)
+	roleHandler := handlers.NewRoleHandler(roleService, permissionService, auditService, eventService, userService)
 	approvalHandler := handlers.NewApprovalHandler(approvalService)
+
+	// Helper function to provide RoleService to middleware
+	getRoleService := func() interface{} { return roleService }
 
 	// Authentication routes
 	auth := app.Group("/auth")
@@ -163,38 +172,39 @@ func main() {
 
 	// User routes
 	users := app.Group("/users")
-	users.Get("/", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), userHandler.GetUsers)
-	users.Post("/", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), userHandler.CreateUser)
+	users.Get("/", middleware.AuthMiddleware(cfg), middleware.RequirePermission("users.read", getRoleService), userHandler.GetUsers)
+	users.Post("/", middleware.AuthMiddleware(cfg), middleware.RequirePermission("users.create", getRoleService), userHandler.CreateUser)
 	users.Get("/me", middleware.AuthMiddleware(cfg), userHandler.GetMe)
 	users.Get("/:id", middleware.AuthMiddleware(cfg), userHandler.GetUser)
 	users.Patch("/:id", middleware.AuthMiddleware(cfg), userHandler.UpdateUser)
-	users.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), userHandler.DeleteUser)
+	users.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequirePermission("users.delete", getRoleService), userHandler.DeleteUser)
 	users.Post("/change-password", middleware.AuthMiddleware(cfg), userHandler.ChangePassword)
-	users.Post("/:id/force-password-change", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), userHandler.ForcePasswordChange)
+	users.Post("/:id/force-password-change", middleware.AuthMiddleware(cfg), middleware.RequirePermission("users.update", getRoleService), userHandler.ForcePasswordChange)
 
 	// Group routes
 	groups := app.Group("/groups")
 	groups.Get("/", middleware.AuthMiddleware(cfg), groupHandler.GetGroups)
-	groups.Post("/", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), groupHandler.CreateGroup)
+	groups.Post("/", middleware.AuthMiddleware(cfg), middleware.RequirePermission("groups.create", getRoleService), groupHandler.CreateGroup)
 	groups.Get("/:id", middleware.AuthMiddleware(cfg), groupHandler.GetGroup)
-	groups.Patch("/:id", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), groupHandler.UpdateGroup)
-	groups.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), groupHandler.DeleteGroup)
+	groups.Patch("/:id", middleware.AuthMiddleware(cfg), middleware.RequirePermission("groups.update", getRoleService), groupHandler.UpdateGroup)
+	groups.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequirePermission("groups.delete", getRoleService), groupHandler.DeleteGroup)
 
 	// Bill routes
 	bills := app.Group("/bills")
-	bills.Post("/", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), billHandler.CreateBill)
+	bills.Post("/", middleware.AuthMiddleware(cfg), middleware.RequirePermission("bills.create", getRoleService), billHandler.CreateBill)
 	bills.Get("/", middleware.AuthMiddleware(cfg), billHandler.GetBills)
 	bills.Get("/:id", middleware.AuthMiddleware(cfg), billHandler.GetBill)
-	bills.Post("/:id/post", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), billHandler.PostBill)
-	bills.Post("/:id/close", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), billHandler.CloseBill)
-	bills.Post("/:id/reopen", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), billHandler.ReopenBill)
-	bills.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), billHandler.DeleteBill)
+	bills.Post("/:id/post", middleware.AuthMiddleware(cfg), middleware.RequirePermission("bills.post", getRoleService), billHandler.PostBill)
+	bills.Post("/:id/close", middleware.AuthMiddleware(cfg), middleware.RequirePermission("bills.close", getRoleService), billHandler.CloseBill)
+	bills.Post("/:id/reopen", middleware.AuthMiddleware(cfg), middleware.RequirePermission("bills.update", getRoleService), billHandler.ReopenBill)
+	bills.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequirePermission("bills.delete", getRoleService), billHandler.DeleteBill)
+	bills.Get("/:id/allocation", middleware.AuthMiddleware(cfg), billHandler.GetBillAllocation)
 
 	// Consumption routes
 	consumptions := app.Group("/consumptions")
 	consumptions.Post("/", middleware.AuthMiddleware(cfg), billHandler.CreateConsumption)
 	consumptions.Get("/", middleware.AuthMiddleware(cfg), billHandler.GetConsumptions)
-	consumptions.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), billHandler.DeleteConsumption)
+	consumptions.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequirePermission("readings.delete", getRoleService), billHandler.DeleteConsumption)
 	consumptions.Post("/:id/mark-invalid", middleware.AuthMiddleware(cfg), billHandler.MarkConsumptionInvalid)
 
 	// Loan routes
@@ -203,8 +213,8 @@ func main() {
 	loans.Get("/", middleware.AuthMiddleware(cfg), loanHandler.GetLoans)
 	loans.Get("/balances", middleware.AuthMiddleware(cfg), loanHandler.GetBalances)
 	loans.Get("/balances/me", middleware.AuthMiddleware(cfg), loanHandler.GetMyBalance)
-	loans.Get("/balances/user/:id", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), loanHandler.GetUserBalance)
-	loans.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), loanHandler.DeleteLoan)
+	loans.Get("/balances/user/:id", middleware.AuthMiddleware(cfg), middleware.RequirePermission("loans.read", getRoleService), loanHandler.GetUserBalance)
+	loans.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequirePermission("loans.delete", getRoleService), loanHandler.DeleteLoan)
 
 	// Loan payment routes
 	loanPayments := app.Group("/loan-payments")
@@ -212,14 +222,14 @@ func main() {
 
 	// Chore routes
 	chores := app.Group("/chores")
-	chores.Post("/", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), choreHandler.CreateChore)
+	chores.Post("/", middleware.AuthMiddleware(cfg), middleware.RequirePermission("chores.create", getRoleService), choreHandler.CreateChore)
 	chores.Get("/", middleware.AuthMiddleware(cfg), choreHandler.GetChores)
 	chores.Get("/with-assignments", middleware.AuthMiddleware(cfg), choreHandler.GetChoresWithAssignments)
 	chores.Delete("/:id", middleware.AuthMiddleware(cfg), choreHandler.DeleteChore)
-	chores.Post("/assign", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), choreHandler.AssignChore)
-	chores.Post("/swap", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), choreHandler.SwapChoreAssignment)
-	chores.Post("/:id/rotate", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), choreHandler.RotateChore)
-	chores.Post("/:id/auto-assign", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), choreHandler.AutoAssignChore)
+	chores.Post("/assign", middleware.AuthMiddleware(cfg), middleware.RequirePermission("chores.assign", getRoleService), choreHandler.AssignChore)
+	chores.Post("/swap", middleware.AuthMiddleware(cfg), middleware.RequirePermission("chores.assign", getRoleService), choreHandler.SwapChoreAssignment)
+	chores.Post("/:id/rotate", middleware.AuthMiddleware(cfg), middleware.RequirePermission("chores.assign", getRoleService), choreHandler.RotateChore)
+	chores.Post("/:id/auto-assign", middleware.AuthMiddleware(cfg), middleware.RequirePermission("chores.assign", getRoleService), choreHandler.AutoAssignChore)
 
 	// Chore assignment routes
 	choreAssignments := app.Group("/chore-assignments")
@@ -235,8 +245,8 @@ func main() {
 
 	// Settings
 	supplies.Get("/settings", middleware.AuthMiddleware(cfg), supplyHandler.GetSettings)
-	supplies.Patch("/settings", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), supplyHandler.UpdateSettings)
-	supplies.Post("/settings/adjust", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), supplyHandler.AdjustBudget)
+	supplies.Patch("/settings", middleware.AuthMiddleware(cfg), middleware.RequirePermission("supplies.update", getRoleService), supplyHandler.UpdateSettings)
+	supplies.Post("/settings/adjust", middleware.AuthMiddleware(cfg), middleware.RequirePermission("supplies.update", getRoleService), supplyHandler.AdjustBudget)
 
 	// Items
 	supplies.Get("/items", middleware.AuthMiddleware(cfg), supplyHandler.GetItems)
@@ -245,7 +255,7 @@ func main() {
 	supplies.Post("/items/:id/restock", middleware.AuthMiddleware(cfg), supplyHandler.RestockItem)
 	supplies.Post("/items/:id/consume", middleware.AuthMiddleware(cfg), supplyHandler.ConsumeItem)
 	supplies.Patch("/items/:id/quantity", middleware.AuthMiddleware(cfg), supplyHandler.SetQuantity)
-	supplies.Post("/items/:id/refund", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), supplyHandler.MarkAsRefunded)
+	supplies.Post("/items/:id/refund", middleware.AuthMiddleware(cfg), middleware.RequirePermission("supplies.update", getRoleService), supplyHandler.MarkAsRefunded)
 	supplies.Delete("/items/:id", middleware.AuthMiddleware(cfg), supplyHandler.DeleteItem)
 
 	// Contributions
@@ -263,31 +273,31 @@ func main() {
 	exports := app.Group("/exports")
 	exports.Get("/bills", middleware.AuthMiddleware(cfg), exportHandler.ExportBills)
 
-	// Audit log routes (ADMIN ONLY)
+	// Audit log routes
 	audit := app.Group("/audit")
-	audit.Get("/logs", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), auditHandler.GetLogs)
+	audit.Get("/logs", middleware.AuthMiddleware(cfg), middleware.RequirePermission("audit.read", getRoleService), auditHandler.GetLogs)
 
-	// Role and permission routes (ADMIN ONLY)
+	// Role and permission routes
 	roles := app.Group("/roles")
-	roles.Get("/", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), roleHandler.GetAllRoles)
-	roles.Post("/", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), roleHandler.CreateRole)
-	roles.Patch("/:id", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), roleHandler.UpdateRole)
-	roles.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), roleHandler.DeleteRole)
+	roles.Get("/", middleware.AuthMiddleware(cfg), middleware.RequirePermission("roles.read", getRoleService), roleHandler.GetAllRoles)
+	roles.Post("/", middleware.AuthMiddleware(cfg), middleware.RequirePermission("roles.create", getRoleService), roleHandler.CreateRole)
+	roles.Patch("/:id", middleware.AuthMiddleware(cfg), middleware.RequirePermission("roles.update", getRoleService), roleHandler.UpdateRole)
+	roles.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequirePermission("roles.delete", getRoleService), roleHandler.DeleteRole)
 
 	permissions := app.Group("/permissions")
-	permissions.Get("/", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), roleHandler.GetAllPermissions)
+	permissions.Get("/", middleware.AuthMiddleware(cfg), middleware.RequirePermission("roles.read", getRoleService), roleHandler.GetAllPermissions)
 
-	// Approval routes (ADMIN ONLY)
+	// Approval routes
 	approvals := app.Group("/approvals")
-	approvals.Get("/pending", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), approvalHandler.GetPendingRequests)
-	approvals.Get("/", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), approvalHandler.GetAllRequests)
-	approvals.Post("/:id/approve", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), approvalHandler.ApproveRequest)
-	approvals.Post("/:id/reject", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), approvalHandler.RejectRequest)
+	approvals.Get("/pending", middleware.AuthMiddleware(cfg), middleware.RequirePermission("approvals.review", getRoleService), approvalHandler.GetPendingRequests)
+	approvals.Get("/", middleware.AuthMiddleware(cfg), middleware.RequirePermission("approvals.review", getRoleService), approvalHandler.GetAllRequests)
+	approvals.Post("/:id/approve", middleware.AuthMiddleware(cfg), middleware.RequirePermission("approvals.review", getRoleService), approvalHandler.ApproveRequest)
+	approvals.Post("/:id/reject", middleware.AuthMiddleware(cfg), middleware.RequirePermission("approvals.review", getRoleService), approvalHandler.RejectRequest)
 
-	// Backup routes (ADMIN ONLY - DANGEROUS)
+	// Backup routes
 	backup := app.Group("/backup")
-	backup.Get("/export", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), backupHandler.ExportBackup)
-	backup.Post("/import", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), backupHandler.ImportBackup)
+	backup.Get("/export", middleware.AuthMiddleware(cfg), middleware.RequirePermission("backup.export", getRoleService), backupHandler.ExportBackup)
+	backup.Post("/import", middleware.AuthMiddleware(cfg), middleware.RequirePermission("backup.import", getRoleService), backupHandler.ImportBackup)
 	exports.Get("/balances", middleware.AuthMiddleware(cfg), exportHandler.ExportBalances)
 	exports.Get("/chores", middleware.AuthMiddleware(cfg), exportHandler.ExportChores)
 	exports.Get("/consumptions", middleware.AuthMiddleware(cfg), exportHandler.ExportConsumptions)
@@ -322,6 +332,9 @@ func customErrorHandler(c *fiber.Ctx, err error) error {
 		code = e.Code
 		message = e.Message
 	}
+
+	// Log the error with details
+	log.Printf("ERROR: %s %s - Status: %d - Error: %v", c.Method(), c.Path(), code, err)
 
 	return c.Status(code).JSON(fiber.Map{
 		"error": message,

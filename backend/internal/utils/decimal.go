@@ -49,3 +49,13 @@ func RoundPLN(value float64) float64 {
 func RoundUnits(value float64) float64 {
 	return RoundBankers(value, 3)
 }
+
+// RoundToTwoDecimals rounds to 2 decimal places
+func RoundToTwoDecimals(value float64) float64 {
+	return RoundBankers(value, 2)
+}
+
+// RoundToThreeDecimals rounds to 3 decimal places
+func RoundToThreeDecimals(value float64) float64 {
+	return RoundBankers(value, 3)
+}
