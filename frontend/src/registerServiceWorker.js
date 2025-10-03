@@ -18,20 +18,19 @@ export function register() {
             registration.update()
           }, 60 * 60 * 1000)
 
-          // Handle updates
+          // Handle updates - auto-update without prompt
           registration.addEventListener('updatefound', () => {
             const newWorker = registration.installing
 
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // New service worker available
-                console.log('[SW] New content available, please refresh')
+                // New service worker available - auto-update
+                console.log('[SW] New content available, auto-updating...')
 
-                // Optionally show update notification to user
-                if (window.confirm('Dostępna jest nowa wersja. Odświeżyć stronę?')) {
-                  newWorker.postMessage({ type: 'SKIP_WAITING' })
-                  window.location.reload()
-                }
+                // Skip waiting and activate immediately
+                newWorker.postMessage({ type: 'SKIP_WAITING' })
+
+                // The controllerchange event will trigger reload
               }
             })
           })

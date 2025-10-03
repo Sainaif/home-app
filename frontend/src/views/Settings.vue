@@ -17,12 +17,7 @@
 
         <div>
           <label class="block text-sm font-medium mb-2">Rola</label>
-          <input :value="authStore.user?.role ? $t(`roles.${authStore.user.role}`) : ''" disabled class="input bg-gray-700" />
-        </div>
-
-        <div v-if="authStore.user?.groupId">
-          <label class="block text-sm font-medium mb-2">Grupa</label>
-          <input :value="authStore.user?.groupName || authStore.user?.groupId || ''" disabled class="input bg-gray-700" />
+          <input :value="getUserRoleDisplayName(authStore.user?.role)" disabled class="input bg-gray-700" />
         </div>
 
         <div v-if="profileError" class="text-red-500 text-sm">{{ profileError }}</div>
@@ -249,7 +244,7 @@
                 <td class="py-3">{{ user.email }}</td>
                 <td class="py-3">
                   <span :class="user.role === 'ADMIN' ? 'text-purple-400' : 'text-gray-400'">
-                    {{ $t(`roles.${user.role}`) }}
+                    {{ getUserRoleDisplayName(user.role) }}
                   </span>
                 </td>
                 <td class="py-3">{{ user.groupName || '-' }}</td>
@@ -312,18 +307,192 @@
         <div v-else-if="groups.length === 0" class="text-center py-8 text-gray-400">Brak grup</div>
         <div v-else class="space-y-3">
           <div v-for="group in groups" :key="group.id"
-               class="flex justify-between items-center p-4 bg-gray-700/30 rounded-xl">
-            <div>
-              <p class="font-medium">{{ group.name }}</p>
-              <p class="text-sm text-gray-400">Waga: {{ parseFloat(group.weight.$numberDecimal || group.weight || 1).toFixed(2) }}</p>
+               class="p-4 bg-gray-700/30 rounded-xl">
+            <div class="flex justify-between items-start mb-3">
+              <div>
+                <p class="font-medium">{{ group.name }}</p>
+                <p class="text-sm text-gray-400">Waga: {{ parseFloat(group.weight.$numberDecimal || group.weight || 1).toFixed(2) }}</p>
+              </div>
+              <div class="flex gap-2">
+                <button @click="manageGroupUsers(group)" class="btn btn-sm btn-outline">
+                  <Users class="w-3 h-3 mr-1" />
+                  Użytkownicy
+                </button>
+                <button @click="editGroup(group)" class="btn btn-sm btn-outline">
+                  <Edit class="w-3 h-3" />
+                </button>
+                <button @click="deleteGroup(group.id)" class="btn btn-sm btn-secondary">
+                  <Trash class="w-3 h-3" />
+                </button>
+              </div>
             </div>
-            <div class="flex gap-2">
-              <button @click="editGroup(group)" class="btn btn-sm btn-outline">
-                <Edit class="w-3 h-3" />
-              </button>
-              <button @click="deleteGroup(group.id)" class="btn btn-sm btn-secondary">
-                <Trash class="w-3 h-3" />
-              </button>
+            <div v-if="getUsersInGroup(group.id).length > 0" class="mt-2">
+              <p class="text-xs text-gray-400 mb-1">Członkowie:</p>
+              <div class="flex flex-wrap gap-1">
+                <span v-for="user in getUsersInGroup(group.id)" :key="user.id"
+                      class="text-xs px-2 py-1 bg-gray-800 rounded">
+                  {{ user.name }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Audit Logs -->
+      <div v-if="authStore.isAdmin" class="card">
+        <div class="flex justify-between items-center mb-4">
+          <div>
+            <h2 class="text-xl font-semibold">Logi audytu</h2>
+            <p class="text-sm text-gray-400 mt-1">Historia wszystkich akcji użytkowników i administratorów</p>
+          </div>
+          <button @click="loadAuditLogs" :disabled="loadingAuditLogs" class="btn btn-outline btn-sm">
+            <RefreshCw class="w-4 h-4" />
+          </button>
+        </div>
+
+        <!-- Filters -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+          <select v-model="auditFilters.userEmail" @change="loadAuditLogs" class="input">
+            <option value="">Wszyscy użytkownicy</option>
+            <option v-for="user in users" :key="user.id" :value="user.email">{{ user.name }} ({{ user.email }})</option>
+          </select>
+          <select v-model="auditFilters.action" @change="loadAuditLogs" class="input">
+            <option value="">Wszystkie akcje</option>
+            <option value="role.create">Tworzenie roli</option>
+            <option value="role.update">Aktualizacja roli</option>
+            <option value="role.delete">Usunięcie roli</option>
+            <option value="user.update">Aktualizacja użytkownika</option>
+            <option value="chore.delete">Usunięcie obowiązku</option>
+          </select>
+          <select v-model="auditFilters.status" @change="loadAuditLogs" class="input">
+            <option value="">Wszystkie statusy</option>
+            <option value="success">Sukces</option>
+            <option value="failure">Błąd</option>
+          </select>
+          <select v-model="auditLimit" @change="loadAuditLogs" class="input">
+            <option :value="10">10 wpisów</option>
+            <option :value="25">25 wpisów</option>
+            <option :value="50">50 wpisów</option>
+            <option :value="100">100 wpisów</option>
+            <option :value="200">200 wpisów</option>
+          </select>
+        </div>
+
+        <div v-if="loadingAuditLogs" class="text-center py-8">Ładowanie...</div>
+        <div v-else-if="auditLogs.length === 0" class="text-center py-8 text-gray-400">Brak logów</div>
+        <div v-else>
+          <div class="overflow-x-auto max-h-[600px] overflow-y-auto border border-gray-700 rounded-lg">
+            <table class="w-full">
+              <thead class="text-left border-b border-gray-700 bg-gray-800/50 sticky top-0">
+                <tr>
+                  <th class="px-4 py-3 text-sm font-medium text-gray-400">Data</th>
+                  <th class="px-4 py-3 text-sm font-medium text-gray-400">Użytkownik</th>
+                  <th class="px-4 py-3 text-sm font-medium text-gray-400">Akcja</th>
+                  <th class="px-4 py-3 text-sm font-medium text-gray-400">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="log in auditLogs" :key="log.id" class="border-b border-gray-800 last:border-0 hover:bg-gray-800/30">
+                  <td class="px-4 py-3 text-sm">{{ formatDate(log.createdAt) }}</td>
+                  <td class="px-4 py-3 text-sm">{{ log.userName || log.userEmail }}</td>
+                  <td class="px-4 py-3 text-sm">{{ translateAction(log.action) }}</td>
+                  <td class="px-4 py-3">
+                    <span :class="log.status === 'success' ? 'text-green-400' : 'text-red-400'" class="text-sm">
+                      {{ log.status === 'success' ? 'Sukces' : 'Błąd' }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="mt-3 text-sm text-gray-400 text-center">
+            Pokazano {{ auditLogs.length }} z ostatnich wpisów
+          </div>
+        </div>
+      </div>
+
+      <!-- Role Management -->
+      <div v-if="authStore.isAdmin" class="card">
+        <div class="flex justify-between items-center mb-4">
+          <div>
+            <h2 class="text-xl font-semibold">Zarządzanie rolami i uprawnieniami</h2>
+            <p class="text-sm text-gray-400 mt-1">Konfiguruj role użytkowników i ich uprawnienia</p>
+          </div>
+          <button @click="showCreateRoleModal = true" class="btn btn-primary btn-sm flex items-center gap-2">
+            <UserPlus class="w-4 h-4" />
+            Nowa rola
+          </button>
+        </div>
+
+        <div v-if="loadingRoles" class="text-center py-8">Ładowanie...</div>
+        <div v-else class="space-y-3">
+          <div v-for="role in roles" :key="role.id" class="p-4 bg-gray-700/30 rounded-xl">
+            <div class="flex justify-between items-start mb-3">
+              <div>
+                <div class="flex items-center gap-2">
+                  <h3 class="font-semibold">{{ role.displayName }}</h3>
+                  <span v-if="role.name === 'ADMIN'" class="text-xs px-2 py-0.5 bg-purple-600/20 text-purple-400 rounded">Niezmienne</span>
+                </div>
+                <p class="text-sm text-gray-400 mt-1">{{ role.permissions.length }} uprawnień</p>
+              </div>
+              <div class="flex gap-2">
+                <button v-if="role.name !== 'ADMIN'" @click="openEditRoleModal(role)" class="btn btn-sm btn-outline flex items-center gap-1">
+                  <Edit class="w-3 h-3" />
+                  Edytuj
+                </button>
+                <button v-if="role.name !== 'ADMIN'" @click="deleteRole(role.id)" class="btn btn-sm btn-secondary flex items-center gap-1">
+                  <Trash class="w-3 h-3" />
+                  Usuń
+                </button>
+                <span v-if="role.name === 'ADMIN'" class="text-sm text-gray-500 italic">Rola administratora (chroniona)</span>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <span v-for="perm in role.permissions.slice(0, 5)" :key="perm" class="text-xs px-2 py-1 bg-gray-800 rounded">
+                {{ translatePermissionName(perm) }}
+              </span>
+              <span v-if="role.permissions.length > 5" class="text-xs px-2 py-1 text-gray-400">
+                +{{ role.permissions.length - 5 }} więcej
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Approval Requests -->
+      <div v-if="authStore.isAdmin" class="card">
+        <div class="flex justify-between items-center mb-4">
+          <div>
+            <h2 class="text-xl font-semibold">Oczekujące zatwierdzenia</h2>
+            <p class="text-sm text-gray-400 mt-1">Wnioski użytkowników wymagające zgody administratora</p>
+          </div>
+          <button @click="loadApprovals" :disabled="loadingApprovals" class="btn btn-outline btn-sm">
+            <RefreshCw class="w-4 h-4" />
+          </button>
+        </div>
+
+        <div v-if="loadingApprovals" class="text-center py-8">Ładowanie...</div>
+        <div v-else-if="pendingApprovals.length === 0" class="text-center py-8 text-gray-400">Brak oczekujących wniosków</div>
+        <div v-else class="space-y-3">
+          <div v-for="approval in pendingApprovals" :key="approval.id" class="p-4 bg-gray-700/30 rounded-xl">
+            <div class="flex justify-between items-start">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="font-semibold">{{ approval.userName || approval.userEmail }}</span>
+                  <span class="text-sm text-gray-400">•</span>
+                  <span class="text-sm font-mono text-gray-400">{{ approval.action }}</span>
+                </div>
+                <p class="text-sm text-gray-400">{{ formatDate(approval.createdAt) }}</p>
+              </div>
+              <div class="flex gap-2">
+                <button @click="approveRequest(approval.id)" class="btn btn-sm btn-primary">
+                  Zatwierdź
+                </button>
+                <button @click="rejectRequest(approval.id)" class="btn btn-sm btn-secondary">
+                  Odrzuć
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -425,16 +594,8 @@
           <div>
             <label class="block text-sm font-medium mb-2">Rola</label>
             <select v-model="newUser.role" required class="input">
-              <option value="RESIDENT">Mieszkaniec</option>
-              <option value="ADMIN">Administrator</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-sm font-medium mb-2">Grupa</label>
-            <select v-model="newUser.groupId" class="input">
-              <option value="">Brak grupy</option>
-              <option v-for="group in groups" :key="group.id" :value="group.id">
-                {{ group.name }}
+              <option v-for="role in roles" :key="role.id" :value="role.name">
+                {{ role.displayName }}
               </option>
             </select>
           </div>
@@ -509,16 +670,8 @@
           <div>
             <label class="block text-sm font-medium mb-2">Rola</label>
             <select v-model="editUserForm.role" required class="input">
-              <option value="RESIDENT">Mieszkaniec</option>
-              <option value="ADMIN">Administrator</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-sm font-medium mb-2">Grupa</label>
-            <select v-model="editUserForm.groupId" class="input">
-              <option value="">Brak grupy</option>
-              <option v-for="group in groups" :key="group.id" :value="group.id">
-                {{ group.name }}
+              <option v-for="role in roles" :key="role.id" :value="role.name">
+                {{ role.displayName }}
               </option>
             </select>
           </div>
@@ -536,6 +689,98 @@
         </form>
       </div>
     </div>
+
+    <!-- Manage Group Users Modal -->
+    <div v-if="showManageGroupUsersModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" @click.self="showManageGroupUsersModal = false">
+      <div class="card max-w-lg w-full mx-4">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-2xl font-bold">Użytkownicy w grupie: {{ selectedGroup?.name }}</h2>
+          <button @click="showManageGroupUsersModal = false" class="text-gray-400 hover:text-white">
+            <X class="w-6 h-6" />
+          </button>
+        </div>
+
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium mb-2">Dodaj użytkownika do grupy</label>
+            <select v-model="userToAdd" class="input mb-2">
+              <option value="">Wybierz użytkownika</option>
+              <option v-for="user in getAvailableUsers()" :key="user.id" :value="user.id">
+                {{ user.name }} ({{ user.email }})
+              </option>
+            </select>
+            <button @click="addUserToGroup" :disabled="!userToAdd || addingUserToGroup" class="btn btn-primary btn-sm">
+              {{ addingUserToGroup ? 'Dodawanie...' : 'Dodaj do grupy' }}
+            </button>
+          </div>
+
+          <div v-if="getUsersInGroup(selectedGroup?.id).length > 0">
+            <label class="block text-sm font-medium mb-2">Obecni członkowie</label>
+            <div class="space-y-2">
+              <div v-for="user in getUsersInGroup(selectedGroup?.id)" :key="user.id"
+                   class="flex justify-between items-center p-3 bg-gray-700/30 rounded-lg">
+                <div>
+                  <p class="font-medium">{{ user.name }}</p>
+                  <p class="text-sm text-gray-400">{{ user.email }}</p>
+                </div>
+                <button @click="removeUserFromGroup(user.id)" class="btn btn-sm btn-secondary">
+                  <Trash class="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          </div>
+          <div v-else class="text-center py-4 text-gray-400">
+            Brak użytkowników w tej grupie
+          </div>
+
+          <div v-if="groupUserError" class="text-red-500 text-sm">{{ groupUserError }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create/Edit Role Modal -->
+    <div v-if="showCreateRoleModal || showEditRoleModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showCreateRoleModal = false; showEditRoleModal = false">
+      <div class="bg-gray-800 rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-xl font-semibold">{{ showEditRoleModal ? 'Edytuj rolę' : 'Nowa rola' }}</h3>
+          <button @click="showCreateRoleModal = false; showEditRoleModal = false" class="text-gray-400 hover:text-white">
+            <X class="w-5 h-5" />
+          </button>
+        </div>
+        <form @submit.prevent="showEditRoleModal ? updateRole() : createRole()" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium mb-2">Nazwa systemowa</label>
+            <input v-model="roleForm.name" type="text" class="input" :disabled="showEditRoleModal" required />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-2">Nazwa wyświetlana</label>
+            <input v-model="roleForm.displayName" type="text" class="input" required />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-3">Uprawnienia</label>
+            <div class="space-y-4 max-h-[300px] overflow-y-auto">
+              <div v-for="(perms, category) in permissions" :key="category" class="p-3 bg-gray-700/30 rounded-lg">
+                <h4 class="text-sm font-semibold mb-2 capitalize">{{ translateCategory(category) }}</h4>
+                <div class="space-y-2">
+                  <label v-for="perm in perms" :key="perm.name" class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" :value="perm.name" v-model="roleForm.permissions" class="checkbox" />
+                    <span class="text-sm">{{ translatePermission(perm.description) }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="flex gap-3">
+            <button type="submit" class="btn btn-primary flex-1">
+              {{ showEditRoleModal ? 'Zapisz' : 'Utwórz' }}
+            </button>
+            <button type="button" @click="showCreateRoleModal = false; showEditRoleModal = false" class="btn btn-outline">
+              Anuluj
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -546,7 +791,7 @@ import { useAuthStore } from '../stores/auth'
 import { usePasskey } from '../composables/usePasskey'
 import { useDataEvents, DATA_EVENTS } from '../composables/useDataEvents'
 import api from '../api/client'
-import { UserPlus, Users, Edit, Trash, X, Key, Shield, ShieldOff, Download, Upload } from 'lucide-vue-next'
+import { UserPlus, Users, Edit, Trash, X, Key, Shield, ShieldOff, Download, Upload, RefreshCw, CheckSquare, Gauge, ShoppingCart } from 'lucide-vue-next'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -588,22 +833,21 @@ const backupSuccess = ref('')
 const showCreateUserModal = ref(false)
 const showEditUserModal = ref(false)
 const showCreateGroupModal = ref(false)
+const showManageGroupUsersModal = ref(false)
 
 // Forms
 const newUser = ref({
   name: '',
   email: '',
   password: '',
-  role: 'RESIDENT',
-  groupId: ''
+  role: 'RESIDENT'
 })
 
 const editUserForm = ref({
   id: '',
   name: '',
   email: '',
-  role: '',
-  groupId: ''
+  role: ''
 })
 
 const groupForm = ref({
@@ -612,11 +856,15 @@ const groupForm = ref({
 })
 
 const editingGroup = ref(null)
+const selectedGroup = ref(null)
+const userToAdd = ref('')
+const addingUserToGroup = ref(false)
 const creatingUser = ref(false)
 const updatingUser = ref(false)
 const savingGroup = ref(false)
 const userError = ref('')
 const groupError = ref('')
+const groupUserError = ref('')
 
 // Passkey state
 const passkeySupported = ref(false)
@@ -638,6 +886,33 @@ const renameSessionForm = ref({
   name: ''
 })
 
+// Audit logs state
+const auditLogs = ref([])
+const loadingAuditLogs = ref(false)
+const auditFilters = ref({
+  userEmail: '',
+  action: '',
+  status: ''
+})
+const auditLimit = ref(50)
+
+// Role management state
+const roles = ref([])
+const loadingRoles = ref(false)
+const permissions = ref({})
+const showCreateRoleModal = ref(false)
+const showEditRoleModal = ref(false)
+const roleForm = ref({
+  id: '',
+  name: '',
+  displayName: '',
+  permissions: []
+})
+
+// Approval state
+const pendingApprovals = ref([])
+const loadingApprovals = ref(false)
+
 onMounted(async () => {
   // Initialize profile form with current user data
   profileForm.value = {
@@ -646,7 +921,10 @@ onMounted(async () => {
   }
 
   if (authStore.isAdmin) {
-    await Promise.all([loadUsers(), loadGroups()])
+    await Promise.all([loadUsers(), loadGroups(), loadRoles(), loadPermissions(), loadApprovals(), loadAuditLogs()])
+  } else {
+    // Load groups for regular users too so they can see group options
+    await loadGroups()
   }
 
   // Check passkey support
@@ -743,12 +1021,11 @@ async function createUser() {
       name: newUser.value.name,
       email: newUser.value.email,
       tempPassword: newUser.value.password,
-      role: newUser.value.role,
-      groupId: newUser.value.groupId || undefined
+      role: newUser.value.role
     })
 
     showCreateUserModal.value = false
-    newUser.value = { name: '', email: '', password: '', role: 'RESIDENT', groupId: '' }
+    newUser.value = { name: '', email: '', password: '', role: 'RESIDENT' }
     await loadUsers()
     emit(DATA_EVENTS.USER_CREATED)
   } catch (err) {
@@ -763,8 +1040,7 @@ function editUser(user) {
     id: user.id,
     name: user.name,
     email: user.email,
-    role: user.role,
-    groupId: user.groupId || ''
+    role: user.role
   }
   showEditUserModal.value = true
 }
@@ -774,22 +1050,11 @@ async function updateUser() {
   userError.value = ''
 
   try {
-    const payload = {
+    await api.patch(`/users/${editUserForm.value.id}`, {
       name: editUserForm.value.name,
       email: editUserForm.value.email,
       role: editUserForm.value.role
-    }
-
-    // If groupId is empty string, send zero ObjectID to remove group
-    // If groupId has a value, send it
-    // If groupId is undefined, don't include it (don't update)
-    if (editUserForm.value.groupId === '') {
-      payload.groupId = '000000000000000000000000'
-    } else if (editUserForm.value.groupId) {
-      payload.groupId = editUserForm.value.groupId
-    }
-
-    await api.patch(`/users/${editUserForm.value.id}`, payload)
+    })
 
     showEditUserModal.value = false
     await loadUsers()
@@ -922,6 +1187,61 @@ function closeGroupModal() {
   editingGroup.value = null
   groupForm.value = { name: '', weight: 1.0 }
   groupError.value = ''
+}
+
+function manageGroupUsers(group) {
+  selectedGroup.value = group
+  userToAdd.value = ''
+  groupUserError.value = ''
+  showManageGroupUsersModal.value = true
+}
+
+function getUsersInGroup(groupId) {
+  if (!groupId) return []
+  return users.value.filter(user => user.groupId === groupId)
+}
+
+function getAvailableUsers() {
+  if (!selectedGroup.value) return []
+  return users.value.filter(user => user.groupId !== selectedGroup.value.id)
+}
+
+async function addUserToGroup() {
+  if (!userToAdd.value || !selectedGroup.value) return
+
+  addingUserToGroup.value = true
+  groupUserError.value = ''
+
+  try {
+    await api.patch(`/users/${userToAdd.value}`, {
+      groupId: selectedGroup.value.id
+    })
+
+    await loadUsers()
+    userToAdd.value = ''
+    emit(DATA_EVENTS.USER_UPDATED, { userId: userToAdd.value })
+  } catch (err) {
+    groupUserError.value = err.response?.data?.error || 'Nie udało się dodać użytkownika do grupy'
+  } finally {
+    addingUserToGroup.value = false
+  }
+}
+
+async function removeUserFromGroup(userId) {
+  if (!confirm('Czy na pewno chcesz usunąć tego użytkownika z grupy?')) return
+
+  groupUserError.value = ''
+
+  try {
+    await api.patch(`/users/${userId}`, {
+      groupId: '000000000000000000000000' // Zero ObjectID to remove group
+    })
+
+    await loadUsers()
+    emit(DATA_EVENTS.USER_UPDATED, { userId })
+  } catch (err) {
+    groupUserError.value = err.response?.data?.error || 'Nie udało się usunąć użytkownika z grupy'
+  }
 }
 
 // Passkey functions
@@ -1143,5 +1463,241 @@ function formatDate(dateString) {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+function translateCategory(category) {
+  const translations = {
+    'users': 'Użytkownicy',
+    'bills': 'Rachunki',
+    'chores': 'Obowiązki',
+    'supplies': 'Zaopatrzenie',
+    'roles': 'Role',
+    'approvals': 'Zatwierdzenia',
+    'audit': 'Audyt'
+  }
+  return translations[category] || category
+}
+
+function translatePermission(description) {
+  const translations = {
+    // Users
+    'Create new users': 'Twórz nowych użytkowników',
+    'View user information': 'Przeglądaj informacje o użytkownikach',
+    'Update user information': 'Aktualizuj informacje o użytkownikach',
+    'Delete users': 'Usuń użytkowników',
+
+    // Bills
+    'Create new bills': 'Twórz nowe rachunki',
+    'View bills': 'Przeglądaj rachunki',
+    'Update bills': 'Aktualizuj rachunki',
+    'Delete bills': 'Usuń rachunki',
+    'Post bills (freeze allocations)': 'Opublikuj rachunki (zamroź alokacje)',
+    'Close bills': 'Zamknij rachunki',
+
+    // Chores
+    'Create new chores': 'Twórz nowe obowiązki',
+    'View chores': 'Przeglądaj obowiązki',
+    'Update chores': 'Aktualizuj obowiązki',
+    'Delete chores': 'Usuń obowiązki',
+    'Assign chores to users': 'Przypisz obowiązki do użytkowników',
+
+    // Supplies
+    'Add supply items': 'Dodaj artykuły zaopatrzeniowe',
+    'View supplies': 'Przeglądaj zaopatrzenie',
+    'Update supply items': 'Aktualizuj artykuły zaopatrzeniowe',
+    'Delete supply items': 'Usuń artykuły zaopatrzeniowe',
+
+    // Roles
+    'Create custom roles': 'Twórz niestandardowe role',
+    'View roles': 'Przeglądaj role',
+    'Update roles': 'Aktualizuj role',
+    'Delete roles': 'Usuń role',
+
+    // Approvals
+    'Review and approve/reject pending actions': 'Przeglądaj i zatwierdź/odrzuć oczekujące akcje',
+
+    // Audit
+    'View audit logs': 'Przeglądaj logi audytu'
+  }
+  return translations[description] || description
+}
+
+function translatePermissionName(name) {
+  const translations = {
+    'users.create': 'Twórz użytkowników',
+    'users.read': 'Czytaj użytkowników',
+    'users.update': 'Edytuj użytkowników',
+    'users.delete': 'Usuń użytkowników',
+    'bills.create': 'Twórz rachunki',
+    'bills.read': 'Czytaj rachunki',
+    'bills.update': 'Edytuj rachunki',
+    'bills.delete': 'Usuń rachunki',
+    'bills.post': 'Opublikuj rachunki',
+    'bills.close': 'Zamknij rachunki',
+    'chores.create': 'Twórz obowiązki',
+    'chores.read': 'Czytaj obowiązki',
+    'chores.update': 'Edytuj obowiązki',
+    'chores.delete': 'Usuń obowiązki',
+    'chores.assign': 'Przypisz obowiązki',
+    'supplies.create': 'Twórz zaopatrzenie',
+    'supplies.read': 'Czytaj zaopatrzenie',
+    'supplies.update': 'Edytuj zaopatrzenie',
+    'supplies.delete': 'Usuń zaopatrzenie',
+    'roles.create': 'Twórz role',
+    'roles.read': 'Czytaj role',
+    'roles.update': 'Edytuj role',
+    'roles.delete': 'Usuń role',
+    'approvals.review': 'Sprawdzaj zatwierdzenia',
+    'audit.read': 'Czytaj logi audytu'
+  }
+  return translations[name] || name
+}
+
+function translateAction(action) {
+  const translations = {
+    'role.create': 'Tworzenie roli',
+    'role.update': 'Aktualizacja roli',
+    'role.delete': 'Usunięcie roli',
+    'user.update': 'Aktualizacja użytkownika',
+    'chore.delete': 'Usunięcie obowiązku',
+    'chore.create': 'Tworzenie obowiązku',
+    'bill.create': 'Tworzenie rachunku',
+    'bill.update': 'Aktualizacja rachunku',
+    'supply.create': 'Tworzenie zaopatrzenia',
+    'supply.update': 'Aktualizacja zaopatrzenia'
+  }
+  return translations[action] || action
+}
+
+// Audit logs functions
+async function loadAuditLogs() {
+  loadingAuditLogs.value = true
+  try {
+    const params = new URLSearchParams({ limit: auditLimit.value.toString() })
+    if (auditFilters.value.userEmail) params.append('userEmail', auditFilters.value.userEmail)
+    if (auditFilters.value.action) params.append('action', auditFilters.value.action)
+    if (auditFilters.value.status) params.append('status', auditFilters.value.status)
+
+    const response = await api.get(`/audit/logs?${params.toString()}`)
+    auditLogs.value = response.data.logs || []
+  } catch (err) {
+    console.error('Failed to load audit logs:', err)
+  } finally {
+    loadingAuditLogs.value = false
+  }
+}
+
+// Role management functions
+async function loadRoles() {
+  loadingRoles.value = true
+  try {
+    const response = await api.get('/roles')
+    roles.value = response.data || []
+  } catch (err) {
+    console.error('Failed to load roles:', err)
+  } finally {
+    loadingRoles.value = false
+  }
+}
+
+async function loadPermissions() {
+  try {
+    const response = await api.get('/permissions')
+    permissions.value = response.data || {}
+  } catch (err) {
+    console.error('Failed to load permissions:', err)
+  }
+}
+
+function openEditRoleModal(role) {
+  roleForm.value = {
+    id: role.id,
+    name: role.name,
+    displayName: role.displayName,
+    permissions: [...role.permissions]
+  }
+  showEditRoleModal.value = true
+}
+
+async function createRole() {
+  try {
+    await api.post('/roles', {
+      name: roleForm.value.name,
+      displayName: roleForm.value.displayName,
+      permissions: roleForm.value.permissions
+    })
+    showCreateRoleModal.value = false
+    roleForm.value = { id: '', name: '', displayName: '', permissions: [] }
+    await loadRoles()
+    alert('Rola utworzona pomyślnie')
+  } catch (err) {
+    alert('Nie udało się utworzyć roli: ' + (err.response?.data?.error || err.message))
+  }
+}
+
+async function updateRole() {
+  try {
+    await api.patch(`/roles/${roleForm.value.id}`, {
+      displayName: roleForm.value.displayName,
+      permissions: roleForm.value.permissions
+    })
+    showEditRoleModal.value = false
+    roleForm.value = { id: '', name: '', displayName: '', permissions: [] }
+    await loadRoles()
+    alert('Rola zaktualizowana pomyślnie')
+  } catch (err) {
+    alert('Nie udało się zaktualizować roli: ' + (err.response?.data?.error || err.message))
+  }
+}
+
+async function deleteRole(roleId) {
+  if (!confirm('Czy na pewno chcesz usunąć tę rolę?')) return
+  try {
+    await api.delete(`/roles/${roleId}`)
+    await loadRoles()
+    alert('Rola usunięta pomyślnie')
+  } catch (err) {
+    alert('Nie udało się usunąć roli: ' + (err.response?.data?.error || err.message))
+  }
+}
+
+// Approval functions
+async function loadApprovals() {
+  loadingApprovals.value = true
+  try {
+    const response = await api.get('/approvals/pending')
+    pendingApprovals.value = response.data || []
+  } catch (err) {
+    console.error('Failed to load approvals:', err)
+  } finally {
+    loadingApprovals.value = false
+  }
+}
+
+async function approveRequest(requestId) {
+  try {
+    await api.post(`/approvals/${requestId}/approve`)
+    await loadApprovals()
+    alert('Wniosek zatwierdzony')
+  } catch (err) {
+    alert('Nie udało się zatwierdzić wniosku: ' + (err.response?.data?.error || err.message))
+  }
+}
+
+async function rejectRequest(requestId) {
+  try {
+    await api.post(`/approvals/${requestId}/reject`)
+    await loadApprovals()
+    alert('Wniosek odrzucony')
+  } catch (err) {
+    alert('Nie udało się odrzucić wniosku: ' + (err.response?.data?.error || err.message))
+  }
+}
+
+// Helper function to get role display name
+function getUserRoleDisplayName(roleName) {
+  if (!roleName) return ''
+  const role = roles.value.find(r => r.name === roleName)
+  return role ? role.displayName : roleName
 }
 </script>

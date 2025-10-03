@@ -99,9 +99,18 @@
     </div>
 
     <div class="card mt-6">
-      <div class="flex justify-between items-center mb-4">
+      <div class="space-y-3 mb-4">
         <h2 class="text-xl font-semibold">Historia pożyczek</h2>
-        <div class="flex gap-2">
+        <div>
+          <label class="block text-sm font-medium mb-2">Filtruj po użytkowniku</label>
+          <select v-model="userFilter" class="input mb-3">
+            <option value="">Wszyscy użytkownicy</option>
+            <option v-for="user in users" :key="user.id" :value="user.id">
+              {{ user.name }}
+            </option>
+          </select>
+        </div>
+        <div class="button-group grid-cols-4">
           <button
             @click="statusFilter = 'all'"
             :class="statusFilter === 'all' ? 'btn-primary' : 'btn-outline'"
@@ -118,7 +127,7 @@
             @click="statusFilter = 'partial'"
             :class="statusFilter === 'partial' ? 'btn-primary' : 'btn-outline'"
             class="btn btn-sm">
-            Częściowo spłacone
+            Częściowo
           </button>
           <button
             @click="statusFilter = 'settled'"
@@ -194,6 +203,7 @@ const loading = ref(false)
 const creatingLoan = ref(false)
 const creatingPayment = ref(false)
 const statusFilter = ref('all')
+const userFilter = ref('')
 
 const loanForm = ref({
   lenderId: '',
@@ -224,8 +234,22 @@ const openLoans = computed(() =>
 
 const filteredLoans = computed(() => {
   if (!Array.isArray(loans.value)) return []
-  if (statusFilter.value === 'all') return loans.value
-  return loans.value.filter(l => l.status === statusFilter.value)
+
+  let result = loans.value
+
+  // Filter by status
+  if (statusFilter.value !== 'all') {
+    result = result.filter(l => l.status === statusFilter.value)
+  }
+
+  // Filter by user (either lender or borrower)
+  if (userFilter.value) {
+    result = result.filter(l =>
+      l.lenderId === userFilter.value || l.borrowerId === userFilter.value
+    )
+  }
+
+  return result
 })
 
 async function loadData() {

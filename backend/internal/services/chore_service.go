@@ -519,6 +519,27 @@ func (s *ChoreService) GetUserLeaderboard(ctx context.Context) ([]UserStats, err
 	return result, nil
 }
 
+// DeleteChore deletes a chore and all its assignments
+func (s *ChoreService) DeleteChore(ctx context.Context, choreID primitive.ObjectID) error {
+	// Delete all assignments for this chore
+	_, err := s.db.Collection("chore_assignments").DeleteMany(ctx, bson.M{"chore_id": choreID})
+	if err != nil {
+		return fmt.Errorf("failed to delete chore assignments: %w", err)
+	}
+
+	// Delete the chore
+	result, err := s.db.Collection("chores").DeleteOne(ctx, bson.M{"_id": choreID})
+	if err != nil {
+		return fmt.Errorf("failed to delete chore: %w", err)
+	}
+
+	if result.DeletedCount == 0 {
+		return errors.New("chore not found")
+	}
+
+	return nil
+}
+
 func stringPtr(s string) *string {
 	return &s
 }

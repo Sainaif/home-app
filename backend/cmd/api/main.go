@@ -110,19 +110,35 @@ func main() {
 	eventService := services.NewEventService()
 	exportService := services.NewExportService(db.Database)
 	backupService := services.NewBackupService(db.Database)
+	auditService := services.NewAuditService(db.Database)
+	permissionService := services.NewPermissionService(db.Database)
+	roleService := services.NewRoleService(db.Database)
+	approvalService := services.NewApprovalService(db.Database)
+
+	// Initialize default permissions and roles
+	if err := permissionService.InitializeDefaultPermissions(context.Background()); err != nil {
+		log.Printf("Warning: Failed to initialize permissions: %v", err)
+	}
+	if err := roleService.InitializeDefaultRoles(context.Background()); err != nil {
+		log.Printf("Warning: Failed to initialize roles: %v", err)
+	}
+	log.Println("Permissions and roles initialized")
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(authService)
 	sessionHandler := handlers.NewSessionHandler(sessionService)
-	userHandler := handlers.NewUserHandler(userService)
+	userHandler := handlers.NewUserHandler(userService, auditService)
 	groupHandler := handlers.NewGroupHandler(groupService)
 	billHandler := handlers.NewBillHandler(billService, consumptionService)
 	loanHandler := handlers.NewLoanHandler(loanService, eventService)
-	choreHandler := handlers.NewChoreHandler(choreService)
+	choreHandler := handlers.NewChoreHandler(choreService, approvalService, roleService, auditService)
 	supplyHandler := handlers.NewSupplyHandler(supplyService)
 	backupHandler := handlers.NewBackupHandler(backupService)
 	eventHandler := handlers.NewEventHandler(eventService)
 	exportHandler := handlers.NewExportHandler(exportService)
+	auditHandler := handlers.NewAuditHandler(auditService)
+	roleHandler := handlers.NewRoleHandler(roleService, permissionService, auditService)
+	approvalHandler := handlers.NewApprovalHandler(approvalService)
 
 	// Authentication routes
 	auth := app.Group("/auth")
@@ -204,6 +220,7 @@ func main() {
 	chores.Post("/", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), choreHandler.CreateChore)
 	chores.Get("/", middleware.AuthMiddleware(cfg), choreHandler.GetChores)
 	chores.Get("/with-assignments", middleware.AuthMiddleware(cfg), choreHandler.GetChoresWithAssignments)
+	chores.Delete("/:id", middleware.AuthMiddleware(cfg), choreHandler.DeleteChore)
 	chores.Post("/assign", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), choreHandler.AssignChore)
 	chores.Post("/swap", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), choreHandler.SwapChoreAssignment)
 	chores.Post("/:id/rotate", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), choreHandler.RotateChore)
@@ -251,6 +268,27 @@ func main() {
 	exports := app.Group("/exports")
 	exports.Get("/bills", middleware.AuthMiddleware(cfg), exportHandler.ExportBills)
 	exports.Get("/bills/:id/allocations", middleware.AuthMiddleware(cfg), exportHandler.ExportAllocations)
+
+	// Audit log routes (ADMIN ONLY)
+	audit := app.Group("/audit")
+	audit.Get("/logs", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), auditHandler.GetLogs)
+
+	// Role and permission routes (ADMIN ONLY)
+	roles := app.Group("/roles")
+	roles.Get("/", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), roleHandler.GetAllRoles)
+	roles.Post("/", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), roleHandler.CreateRole)
+	roles.Patch("/:id", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), roleHandler.UpdateRole)
+	roles.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), roleHandler.DeleteRole)
+
+	permissions := app.Group("/permissions")
+	permissions.Get("/", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), roleHandler.GetAllPermissions)
+
+	// Approval routes (ADMIN ONLY)
+	approvals := app.Group("/approvals")
+	approvals.Get("/pending", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), approvalHandler.GetPendingRequests)
+	approvals.Get("/", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), approvalHandler.GetAllRequests)
+	approvals.Post("/:id/approve", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), approvalHandler.ApproveRequest)
+	approvals.Post("/:id/reject", middleware.AuthMiddleware(cfg), middleware.RequireRole("ADMIN"), approvalHandler.RejectRequest)
 
 	// Backup routes (ADMIN ONLY - DANGEROUS)
 	backup := app.Group("/backup")

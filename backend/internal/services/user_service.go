@@ -41,9 +41,13 @@ type UpdateUserRequest struct {
 
 // CreateUser creates a new user (ADMIN only)
 func (s *UserService) CreateUser(ctx context.Context, req CreateUserRequest) (*models.User, error) {
-	// Validate role
-	if req.Role != "ADMIN" && req.Role != "RESIDENT" {
-		return nil, errors.New("invalid role, must be ADMIN or RESIDENT")
+	// Validate role exists
+	roleCount, err := s.db.Collection("roles").CountDocuments(ctx, bson.M{"name": req.Role})
+	if err != nil {
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+	if roleCount == 0 {
+		return nil, errors.New("invalid role: role does not exist")
 	}
 
 	// Check if email already exists
@@ -145,8 +149,13 @@ func (s *UserService) UpdateUser(ctx context.Context, userID primitive.ObjectID,
 	}
 
 	if req.Role != nil {
-		if *req.Role != "ADMIN" && *req.Role != "RESIDENT" {
-			return errors.New("invalid role")
+		// Validate role exists
+		roleCount, err := s.db.Collection("roles").CountDocuments(ctx, bson.M{"name": *req.Role})
+		if err != nil {
+			return fmt.Errorf("database error: %w", err)
+		}
+		if roleCount == 0 {
+			return errors.New("invalid role: role does not exist")
 		}
 		update["role"] = *req.Role
 	}

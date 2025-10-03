@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div class="flex justify-between items-center mb-8">
+    <div class="page-header">
       <div>
         <h1 class="text-4xl font-bold gradient-text mb-2">{{ $t('bills.title') }}</h1>
         <p class="text-gray-400">Historia rachunków i alokacji kosztów</p>
@@ -131,6 +131,7 @@
               <th>{{ $t('bills.period') }}</th>
               <th>{{ $t('bills.amount') }}</th>
               <th>{{ $t('bills.totalUnits') }}</th>
+              <th>Opis</th>
               <th>{{ $t('bills.status') }}</th>
               <th v-if="authStore.isAdmin">{{ $t('common.actions') }}</th>
             </tr>
@@ -167,6 +168,9 @@
               </td>
               <td>
                 <span class="text-gray-300">{{ bill.totalUnits ? formatUnits(bill.totalUnits) + ' ' + getUnit(bill.type) : '-' }}</span>
+              </td>
+              <td>
+                <span class="text-gray-400 text-sm">{{ bill.notes || '-' }}</span>
               </td>
               <td>
                 <span :class="`badge badge-${bill.status}`">

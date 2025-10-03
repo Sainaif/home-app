@@ -10,11 +10,15 @@ import (
 )
 
 type UserHandler struct {
-	userService *services.UserService
+	userService  *services.UserService
+	auditService *services.AuditService
 }
 
-func NewUserHandler(userService *services.UserService) *UserHandler {
-	return &UserHandler{userService: userService}
+func NewUserHandler(userService *services.UserService, auditService *services.AuditService) *UserHandler {
+	return &UserHandler{
+		userService:  userService,
+		auditService: auditService,
+	}
 }
 
 // CreateUser creates a new user (ADMIN only)
@@ -116,11 +120,24 @@ func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
 		req.GroupID,
 		req.IsActive)
 
+	// Get target user before update for audit
+	targetUser, _ := h.userService.GetUser(c.Context(), userID)
+
 	if err := h.userService.UpdateUser(c.Context(), userID, req); err != nil {
+		currentEmail := c.Locals(middleware.UserEmail).(string)
+		h.auditService.LogAction(c.Context(), currentUserID, currentEmail, "", "user.update", "user", &userID, map[string]interface{}{"error": err.Error()}, c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
+
+	// Log successful update
+	currentEmail := c.Locals(middleware.UserEmail).(string)
+	details := map[string]interface{}{"targetUser": targetUser.Email}
+	if req.Role != nil {
+		details["newRole"] = *req.Role
+	}
+	h.auditService.LogAction(c.Context(), currentUserID, currentEmail, "", "user.update", "user", &userID, details, c.IP(), c.Get("User-Agent"), "success")
 
 	return c.JSON(fiber.Map{
 		"message": "User updated successfully",

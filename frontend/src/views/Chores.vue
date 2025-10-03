@@ -1,8 +1,8 @@
 <template>
   <div>
-    <div class="flex justify-between items-center mb-8">
+    <div class="page-header">
       <h1 class="text-3xl font-bold">Obowiązki domowe</h1>
-      <div class="flex gap-4">
+      <div class="button-group">
         <button @click="showLeaderboard = !showLeaderboard" class="btn btn-outline">
           {{ showLeaderboard ? 'Ukryj ranking' : 'Pokaż ranking' }}
         </button>

@@ -34,12 +34,10 @@ const props = defineProps({
   }
 })
 
-const title = computed(() =>
-  props.isUpdating ? 'Aktualizacja...' : 'Nowa wersja aplikacji'
-)
+const title = computed(() => 'Aktualizacja')
 
 const message = computed(() =>
-  props.isUpdating ? 'Strona zaraz się odświeży' : 'Wykryto nową wersję. Aktualizacja...'
+  props.isUpdating ? 'Strona za chwilę się odświeży...' : 'Wykryto nową wersję, ładowanie...'
 )
 </script>
 

@@ -159,11 +159,14 @@
                 </span>
               </div>
 
-              <!-- Last Restock Info -->
-              <div v-if="item.lastRestockedAt" class="text-sm text-gray-400">
-                {{ $t('supplies.lastRestock') }}: {{ getUserName(item.lastRestockedByUserId) }} •
-                {{ formatDate(item.lastRestockedAt) }}
-                <span v-if="item.lastRestockAmountPLN">• {{ formatMoney(item.lastRestockAmountPLN) }} PLN</span>
+              <!-- Item History -->
+              <div class="text-sm text-gray-400 space-y-1">
+                <div>{{ $t('supplies.addedBy') }}: {{ getUserName(item.addedByUserId) }} • {{ formatDate(item.addedAt) }}</div>
+                <div v-if="item.lastRestockedAt">
+                  {{ $t('supplies.lastRestock') }}: {{ getUserName(item.lastRestockedByUserId) }} •
+                  {{ formatDate(item.lastRestockedAt) }}
+                  <span v-if="item.lastRestockAmountPLN">• {{ formatMoney(item.lastRestockAmountPLN) }} PLN</span>
+                </div>
               </div>
             </div>
 

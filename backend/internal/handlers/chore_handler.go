@@ -10,11 +10,19 @@ import (
 )
 
 type ChoreHandler struct {
-	choreService *services.ChoreService
+	choreService    *services.ChoreService
+	approvalService *services.ApprovalService
+	roleService     *services.RoleService
+	auditService    *services.AuditService
 }
 
-func NewChoreHandler(choreService *services.ChoreService) *ChoreHandler {
-	return &ChoreHandler{choreService: choreService}
+func NewChoreHandler(choreService *services.ChoreService, approvalService *services.ApprovalService, roleService *services.RoleService, auditService *services.AuditService) *ChoreHandler {
+	return &ChoreHandler{
+		choreService:    choreService,
+		approvalService: approvalService,
+		roleService:     roleService,
+		auditService:    auditService,
+	}
 }
 
 // CreateChore creates a new chore (ADMIN only)
@@ -270,4 +278,82 @@ func (h *ChoreHandler) GetUserLeaderboard(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(leaderboard)
+}
+
+// DeleteChore deletes a chore (requires approval for non-admins)
+func (h *ChoreHandler) DeleteChore(c *fiber.Ctx) error {
+	id := c.Params("id")
+	choreID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid chore ID",
+		})
+	}
+
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
+	}
+
+	userRole, err := middleware.GetUserRole(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
+	}
+
+	// Check if user has permission
+	hasPermission, err := h.roleService.HasPermission(c.Context(), userRole, "chores.delete")
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to check permissions",
+		})
+	}
+
+	if !hasPermission {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "You don't have permission to delete chores",
+		})
+	}
+
+	// For ADMIN, delete directly. For others, create approval request
+	if userRole == "ADMIN" {
+		if err := h.choreService.DeleteChore(c.Context(), choreID); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": err.Error(),
+			})
+		}
+
+		// Log action
+		h.auditService.LogAction(c.Context(), userID, "", "", "chore.delete", "chore", &choreID, nil, c.IP(), c.Get("User-Agent"), "success")
+
+		return c.JSON(fiber.Map{"success": true})
+	}
+
+	// Create approval request for non-admin
+	_, err = h.approvalService.CreateApprovalRequest(
+		c.Context(),
+		userID,
+		"", // Will be filled from user object
+		"", // Will be filled from user object
+		"chore.delete",
+		"chore",
+		&choreID,
+		map[string]interface{}{
+			"choreId": choreID.Hex(),
+		},
+	)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to create approval request",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"success":        true,
+		"requiresApproval": true,
+		"message":        "Delete request submitted for admin approval",
+	})
 }

@@ -218,3 +218,55 @@ type Session struct {
 	LastUsedAt   time.Time          `bson:"last_used_at" json:"lastUsedAt"`
 	ExpiresAt    time.Time          `bson:"expires_at" json:"expiresAt"`
 }
+
+// AuditLog represents a log entry for user/admin actions
+type AuditLog struct {
+	ID          primitive.ObjectID     `bson:"_id,omitempty" json:"id"`
+	UserID      primitive.ObjectID     `bson:"user_id" json:"userId"`
+	UserEmail   string                 `bson:"user_email" json:"userEmail"`
+	UserName    string                 `bson:"user_name" json:"userName"`
+	Action      string                 `bson:"action" json:"action"`           // e.g., "user.create", "bill.post", "chore.delete"
+	ResourceType string                `bson:"resource_type" json:"resourceType"` // e.g., "user", "bill", "chore"
+	ResourceID  *primitive.ObjectID    `bson:"resource_id,omitempty" json:"resourceId,omitempty"`
+	Details     map[string]interface{} `bson:"details,omitempty" json:"details,omitempty"` // Additional context
+	IPAddress   string                 `bson:"ip_address" json:"ipAddress"`
+	UserAgent   string                 `bson:"user_agent" json:"userAgent"`
+	Status      string                 `bson:"status" json:"status"` // "success", "failure"
+	CreatedAt   time.Time              `bson:"created_at" json:"createdAt"`
+}
+
+// Permission represents a granular permission for an action
+type Permission struct {
+	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	Name        string             `bson:"name" json:"name"`               // e.g., "chores.create", "bills.post"
+	Description string             `bson:"description" json:"description"` // Human-readable description
+	Category    string             `bson:"category" json:"category"`       // e.g., "chores", "bills", "users"
+}
+
+// Role represents a role with associated permissions
+type Role struct {
+	ID          primitive.ObjectID   `bson:"_id,omitempty" json:"id"`
+	Name        string               `bson:"name" json:"name"` // e.g., "ADMIN", "RESIDENT", "CUSTOM_ROLE_1"
+	DisplayName string               `bson:"display_name" json:"displayName"`
+	IsSystem    bool                 `bson:"is_system" json:"isSystem"` // true for ADMIN/RESIDENT, false for custom roles
+	Permissions []string             `bson:"permissions" json:"permissions"` // Array of permission names
+	CreatedAt   time.Time            `bson:"created_at" json:"createdAt"`
+	UpdatedAt   time.Time            `bson:"updated_at" json:"updatedAt"`
+}
+
+// ApprovalRequest represents a pending approval for an action requiring admin approval
+type ApprovalRequest struct {
+	ID           primitive.ObjectID     `bson:"_id,omitempty" json:"id"`
+	UserID       primitive.ObjectID     `bson:"user_id" json:"userId"`
+	UserEmail    string                 `bson:"user_email" json:"userEmail"`
+	UserName     string                 `bson:"user_name" json:"userName"`
+	Action       string                 `bson:"action" json:"action"` // e.g., "chore.delete"
+	ResourceType string                 `bson:"resource_type" json:"resourceType"`
+	ResourceID   *primitive.ObjectID    `bson:"resource_id,omitempty" json:"resourceId,omitempty"`
+	Details      map[string]interface{} `bson:"details,omitempty" json:"details,omitempty"`
+	Status       string                 `bson:"status" json:"status"` // "pending", "approved", "rejected"
+	ReviewedBy   *primitive.ObjectID    `bson:"reviewed_by,omitempty" json:"reviewedBy,omitempty"`
+	ReviewedAt   *time.Time             `bson:"reviewed_at,omitempty" json:"reviewedAt,omitempty"`
+	ReviewNotes  *string                `bson:"review_notes,omitempty" json:"reviewNotes,omitempty"`
+	CreatedAt    time.Time              `bson:"created_at" json:"createdAt"`
+}

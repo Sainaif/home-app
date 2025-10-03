@@ -46,6 +46,15 @@
           </select>
         </div>
         <div>
+          <label class="block text-sm font-medium mb-2">Użytkownik</label>
+          <select v-model="filters.userId" class="input">
+            <option value="">Wszyscy użytkownicy</option>
+            <option v-for="user in users" :key="user.id" :value="user.id">
+              {{ user.name }}
+            </option>
+          </select>
+        </div>
+        <div>
           <label class="block text-sm font-medium mb-2">Sortuj</label>
           <select v-model="filters.sortBy" class="input">
             <option value="date-desc">Data (najnowsze)</option>
@@ -70,7 +79,7 @@
               {{ getBillInfo(reading.billId) }} →
             </span>
           </div>
-          <span class="text-sm text-gray-400">{{ reading.source || 'użytkownik' }}</span>
+          <span class="text-sm text-gray-400">{{ getUserName(reading.userId) }}</span>
         </div>
       </div>
     </div>
@@ -87,11 +96,13 @@ const router = useRouter()
 const draftBills = ref([])
 const allBills = ref([])
 const readings = ref([])
+const users = ref([])
 const loading = ref(false)
 const loadingReadings = ref(false)
 
 const filters = ref({
   billId: '',
+  userId: '',
   sortBy: 'date-desc'
 })
 
@@ -101,6 +112,11 @@ const filteredReadings = computed(() => {
   // Filter by bill
   if (filters.value.billId) {
     result = result.filter(r => r.billId === filters.value.billId)
+  }
+
+  // Filter by user
+  if (filters.value.userId) {
+    result = result.filter(r => r.userId === filters.value.userId)
   }
 
   // Sort
@@ -140,11 +156,15 @@ onMounted(async () => {
 
     const readingsRes = await api.get('/consumptions')
     readings.value = readingsRes.data || []
+
+    const usersRes = await api.get('/users')
+    users.value = usersRes.data || []
   } catch (err) {
     console.error('Failed to load data:', err)
     draftBills.value = []
     allBills.value = []
     readings.value = []
+    users.value = []
   } finally {
     loadingReadings.value = false
   }
@@ -194,6 +214,11 @@ function getUnit(billId) {
   if (bill.type === 'electricity') return 'kWh'
   if (bill.type === 'gas') return 'm³'
   return 'jednostek'
+}
+
+function getUserName(userId) {
+  const user = users.value.find(u => u.id === userId)
+  return user ? user.name : 'Nieznany'
 }
 
 function getBillInfo(billId) {

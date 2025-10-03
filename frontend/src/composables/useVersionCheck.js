@@ -29,6 +29,11 @@ export function useVersionCheck() {
           clearInterval(checkInterval)
           checkInterval = null
         }
+
+        // Automatically reload after showing message
+        setTimeout(() => {
+          reloadApp()
+        }, 1500)
       }
     } catch (error) {
       console.warn('[Version] Failed to check version:', error)
