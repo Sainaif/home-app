@@ -89,6 +89,20 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('permissions', JSON.stringify(permissions.value))
   }
 
+  async function validateSession() {
+    // Try to fetch current user data
+    // If the access token is expired, the API interceptor will automatically
+    // refresh it using the refresh token
+    // If the refresh token is also expired, this will throw an error
+    try {
+      await loadUser()
+      return true
+    } catch (error) {
+      // If we get here, both tokens are invalid
+      throw error
+    }
+  }
+
   return {
     accessToken,
     refreshToken,
@@ -101,6 +115,7 @@ export const useAuthStore = defineStore('auth', () => {
     refresh,
     logout,
     setTokens,
-    loadUser
+    loadUser,
+    validateSession
   }
 })
