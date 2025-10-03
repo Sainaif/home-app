@@ -77,20 +77,73 @@ func (s *AllocationService) CalculateSimpleAllocation(ctx context.Context, billI
 		return nil, errors.New("total weight is zero")
 	}
 
-	// Calculate allocation per user
-	breakdown := make([]AllocationBreakdown, 0, len(users))
+	// Group users by group or show individually
+	groupAllocations := make(map[primitive.ObjectID]struct {
+		groupID   primitive.ObjectID
+		groupName string
+		weight    float64
+		amount    float64
+	})
+	individualAllocations := []AllocationBreakdown{}
+
 	for _, u := range users {
 		weight := userWeights[u.ID]
 		amount := (weight / totalWeight) * totalAmount
 
+		if u.GroupID != nil {
+			// User is in a group - aggregate to group
+			if existing, ok := groupAllocations[*u.GroupID]; ok {
+				existing.amount += amount
+				groupAllocations[*u.GroupID] = existing
+			} else {
+				// Find group name
+				groupName := ""
+				for _, g := range groups {
+					if g.ID == *u.GroupID {
+						groupName = g.Name
+						break
+					}
+				}
+				groupAllocations[*u.GroupID] = struct {
+					groupID   primitive.ObjectID
+					groupName string
+					weight    float64
+					amount    float64
+				}{
+					groupID:   *u.GroupID,
+					groupName: groupName,
+					weight:    weight,
+					amount:    amount,
+				}
+			}
+		} else {
+			// User is not in a group - show individually with Name
+			individualAllocations = append(individualAllocations, AllocationBreakdown{
+				SubjectID:   u.ID,
+				SubjectType: "user",
+				SubjectName: u.Name,
+				Weight:      weight,
+				Amount:      utils.RoundToTwoDecimals(amount),
+			})
+		}
+	}
+
+	// Build final breakdown
+	breakdown := make([]AllocationBreakdown, 0, len(groupAllocations)+len(individualAllocations))
+
+	// Add group allocations
+	for _, ga := range groupAllocations {
 		breakdown = append(breakdown, AllocationBreakdown{
-			SubjectID:   u.ID,
-			SubjectType: "user",
-			SubjectName: u.Email,
-			Weight:      weight,
-			Amount:      utils.RoundToTwoDecimals(amount),
+			SubjectID:   ga.groupID,
+			SubjectType: "group",
+			SubjectName: ga.groupName,
+			Weight:      ga.weight,
+			Amount:      utils.RoundToTwoDecimals(ga.amount),
 		})
 	}
+
+	// Add individual allocations
+	breakdown = append(breakdown, individualAllocations...)
 
 	return breakdown, nil
 }
@@ -195,7 +248,7 @@ func (s *AllocationService) CalculateMeteredAllocation(ctx context.Context, bill
 		breakdown = append(breakdown, AllocationBreakdown{
 			SubjectID:      u.ID,
 			SubjectType:    "user",
-			SubjectName:    u.Email,
+			SubjectName:    u.Name,
 			Weight:         weight,
 			Amount:         utils.RoundToTwoDecimals(totalUserAmount),
 			PersonalAmount: floatPtr(utils.RoundToTwoDecimals(personalAmount)),

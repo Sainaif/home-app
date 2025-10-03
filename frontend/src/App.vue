@@ -206,6 +206,13 @@ function translateEvent(eventType, data) {
       resourceId: data.billId,
       resourceType: 'bill'
     },
+    'bill.posted': {
+      type: 'bill',
+      title: 'Opublikowano rachunek',
+      message: `${translateBillType(data.type)} (${data.periodEnd}) - ${formatAmount(data.amount)} PLN - gotowy do rozliczenia`,
+      resourceId: data.billId,
+      resourceType: 'bill'
+    },
     'consumption.created': {
       type: 'bill',
       title: 'Nowy odczyt',
@@ -217,6 +224,13 @@ function translateEvent(eventType, data) {
       type: 'chore',
       title: data.action === 'created' ? 'Nowy obowiązek' : 'Zaktualizowano obowiązek',
       message: data.name,
+      resourceId: data.choreId,
+      resourceType: 'chore'
+    },
+    'chore.assigned': {
+      type: 'chore',
+      title: 'Przydzielono obowiązek',
+      message: `Masz nowy obowiązek: ${data.choreName}. Termin: ${formatDueDate(data.dueDate)}`,
       resourceId: data.choreId,
       resourceType: 'chore'
     },
@@ -303,6 +317,20 @@ function translateBillType(type) {
     'inne': 'Inne'
   }
   return types[type] || type
+}
+
+function formatDueDate(dateString) {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  return date.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function formatAmount(amountString) {
+  if (!amountString) return '0.00'
+  // Parse Decimal128 JSON format or plain number
+  const cleaned = amountString.replace(/["{}$numberDecimal:]/g, '')
+  const amount = parseFloat(cleaned)
+  return amount.toFixed(2)
 }
 
 // Request browser notification permission
@@ -405,8 +433,10 @@ onMounted(async () => {
 
     // Other events show toast notifications
     eventStream.on('bill.created', handleSSEEvent)
+    eventStream.on('bill.posted', handleSSEEvent)
     eventStream.on('consumption.created', handleSSEEvent)
     eventStream.on('chore.updated', handleSSEEvent)
+    eventStream.on('chore.assigned', handleSSEEvent)
     eventStream.on('supply.item.added', handleSSEEvent)
     eventStream.on('supply.item.bought', handleSSEEvent)
     eventStream.on('supply.budget.contributed', handleSSEEvent)

@@ -12,7 +12,7 @@
         class="btn btn-outline flex items-center gap-2"
       >
         <RotateCcw class="w-4 h-4" />
-        Ponownie otwórz
+        Zmień status rachunku
       </button>
     </div>
 
@@ -43,6 +43,10 @@
             <span class="text-gray-400">Całkowite zużycie:</span>
             <span class="ml-2 font-medium">{{ formatMeterValue(bill.totalUnits) }} {{ getUnit(bill.type) }}</span>
           </div>
+          <div v-if="bill.paymentDeadline">
+            <span class="text-gray-400">Termin płatności:</span>
+            <span class="ml-2 font-medium">{{ formatDate(bill.paymentDeadline) }}</span>
+          </div>
           <div v-if="bill.reopenedAt">
             <span class="text-gray-400">Ponownie otwarty:</span>
             <span class="ml-2 font-medium">{{ formatDateTime(bill.reopenedAt) }}</span>
@@ -58,7 +62,7 @@
       <div v-if="showReopenModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" @click.self="showReopenModal = false">
         <div class="card max-w-md w-full mx-4">
           <div class="flex justify-between items-center mb-6">
-            <h2 class="text-2xl font-bold gradient-text">Ponownie otwórz rachunek</h2>
+            <h2 class="text-2xl font-bold gradient-text">Zmień status rachunku</h2>
             <button @click="showReopenModal = false" class="text-gray-400 hover:text-white">
               <X class="w-6 h-6" />
             </button>
@@ -93,7 +97,7 @@
               <button type="submit" :disabled="reopening" class="btn btn-primary flex-1 flex items-center justify-center gap-2">
                 <div v-if="reopening" class="loading-spinner"></div>
                 <RotateCcw v-else class="w-5 h-5" />
-                {{ reopening ? 'Otwieranie...' : 'Ponownie otwórz' }}
+                {{ reopening ? 'Zmiana...' : 'Zmień status' }}
               </button>
               <button type="button" @click="showReopenModal = false" class="btn btn-outline">
                 Anuluj
@@ -103,8 +107,43 @@
         </div>
       </div>
 
+      <!-- Allocation Card -->
+      <div v-if="bill.status === 'posted' || bill.status === 'closed'" class="card mb-6">
+        <h2 class="text-xl font-semibold mb-4">Alokacja kosztów</h2>
+        <div v-if="loadingAllocations" class="text-center py-4">Ładowanie alokacji...</div>
+        <div v-else-if="allocations.length === 0" class="text-center py-4 text-gray-400">Brak danych o alokacji</div>
+        <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div v-for="allocation in allocations" :key="allocation.subjectId"
+               class="bg-gray-800/50 rounded-lg p-3 border border-gray-700/50">
+            <div class="flex justify-between items-start">
+              <div>
+                <p class="font-medium text-white">{{ allocation.subjectName }}</p>
+                <p class="text-xs text-gray-400">Waga: {{ allocation.weight.toFixed(2) }}</p>
+              </div>
+              <div class="text-right">
+                <p class="font-bold text-purple-400">{{ formatMoney(allocation.amount) }} PLN</p>
+                <div v-if="allocation.units !== undefined" class="text-xs text-gray-400">
+                  {{ formatMeterValue(allocation.units) }} {{ getUnit(bill.type) }}
+                </div>
+              </div>
+            </div>
+            <div v-if="allocation.personalAmount !== undefined && allocation.sharedAmount !== undefined"
+                 class="mt-2 pt-2 border-t border-gray-700/50 text-xs text-gray-400 space-y-1">
+              <div class="flex justify-between">
+                <span>Osobiste:</span>
+                <span>{{ formatMoney(allocation.personalAmount) }} PLN</span>
+              </div>
+              <div class="flex justify-between">
+                <span>Wspólne:</span>
+                <span>{{ formatMoney(allocation.sharedAmount) }} PLN</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Readings Card -->
-      <div class="card mb-6">
+      <div v-if="bill.type === 'electricity' || (bill.type === 'inne' && bill.allocationType === 'metered')" class="card mb-6">
         <h2 class="text-xl font-semibold mb-4">Odczyty liczników</h2>
         <div v-if="loadingReadings" class="text-center py-4">Ładowanie odczytów...</div>
         <div v-else-if="readings.length === 0" class="text-center py-4 text-gray-400">Brak odczytów</div>
@@ -156,9 +195,11 @@ const billId = route.params.id
 
 const bill = ref(null)
 const readings = ref([])
+const allocations = ref([])
 const users = ref([])
 const loading = ref(false)
 const loadingReadings = ref(false)
+const loadingAllocations = ref(false)
 
 // Reopen state
 const showReopenModal = ref(false)
@@ -184,6 +225,20 @@ onMounted(async () => {
     const readingsRes = await api.get(`/consumptions?billId=${billId}`)
     readings.value = readingsRes.data || []
     loadingReadings.value = false
+
+    // Load allocations if bill is posted or closed
+    if (bill.value && (bill.value.status === 'posted' || bill.value.status === 'closed')) {
+      loadingAllocations.value = true
+      try {
+        const allocRes = await api.get(`/bills/${billId}/allocation`)
+        allocations.value = allocRes.data || []
+      } catch (err) {
+        console.error('Failed to load allocations:', err)
+        allocations.value = []
+      } finally {
+        loadingAllocations.value = false
+      }
+    }
   } catch (err) {
     console.error('Failed to load bill details:', err)
     bill.value = null

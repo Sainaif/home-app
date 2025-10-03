@@ -150,6 +150,21 @@ func (h *BillHandler) PostBill(c *fiber.Ctx) error {
 		map[string]interface{}{"bill_type": bill.Type, "old_status": "draft", "new_status": "posted"},
 		c.IP(), c.Get("User-Agent"), "success")
 
+	// Broadcast bill posted event to all users
+	billType := bill.Type
+	if bill.CustomType != nil && *bill.CustomType != "" {
+		billType = *bill.CustomType
+	}
+
+	totalAmount, _ := bill.TotalAmountPLN.MarshalJSON()
+	h.eventService.Broadcast(services.EventBillPosted, map[string]interface{}{
+		"billId":     bill.ID.Hex(),
+		"type":       billType,
+		"amount":     string(totalAmount),
+		"postedBy":   userEmail,
+		"periodEnd":  bill.PeriodEnd.Format("2006-01-02"),
+	})
+
 	return c.JSON(fiber.Map{
 		"message": "Bill posted successfully",
 	})
@@ -314,6 +329,9 @@ func (h *BillHandler) GetConsumptions(c *fiber.Ctx) error {
 
 // DeleteBill deletes a bill (ADMIN only)
 func (h *BillHandler) DeleteBill(c *fiber.Ctx) error {
+	userID := c.Locals("userId").(primitive.ObjectID)
+	userEmail := c.Locals("userEmail").(string)
+
 	id := c.Params("id")
 	billID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
@@ -322,11 +340,39 @@ func (h *BillHandler) DeleteBill(c *fiber.Ctx) error {
 		})
 	}
 
+	// Get bill details before deletion for audit trail
+	bill, err := h.billService.GetBill(c.Context(), billID)
+	if err != nil {
+		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "bill.delete", "bill", &billID,
+			map[string]interface{}{"error": "Bill not found"}, c.IP(), c.Get("User-Agent"), "failure")
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Bill not found",
+		})
+	}
+
 	if err := h.billService.DeleteBill(c.Context(), billID); err != nil {
+		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "bill.delete", "bill", &billID,
+			map[string]interface{}{
+				"billType": bill.Type,
+				"error":    err.Error(),
+			}, c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
+
+	// Log successful deletion
+	billType := bill.Type
+	if bill.CustomType != nil && *bill.CustomType != "" {
+		billType = *bill.CustomType
+	}
+	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "bill.delete", "bill", &billID,
+		map[string]interface{}{
+			"billType":   billType,
+			"periodStart": bill.PeriodStart.Format("2006-01-02"),
+			"periodEnd":   bill.PeriodEnd.Format("2006-01-02"),
+			"status":      bill.Status,
+		}, c.IP(), c.Get("User-Agent"), "success")
 
 	return c.JSON(fiber.Map{"message": "Bill deleted successfully"})
 }

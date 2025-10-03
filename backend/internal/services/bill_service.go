@@ -23,14 +23,15 @@ func NewBillService(db *mongo.Database) *BillService {
 }
 
 type CreateBillRequest struct {
-	Type           string    `json:"type"` // electricity, gas, internet, inne
-	CustomType     *string   `json:"customType,omitempty"` // required when type is "inne"
-	AllocationType *string   `json:"allocationType,omitempty"` // "simple" or "metered", required when type is "inne"
-	PeriodStart    time.Time `json:"periodStart"`
-	PeriodEnd      time.Time `json:"periodEnd"`
-	TotalAmountPLN float64   `json:"totalAmountPLN"`
-	TotalUnits     *float64  `json:"totalUnits,omitempty"`
-	Notes          *string   `json:"notes,omitempty"`
+	Type            string     `json:"type"` // electricity, gas, internet, inne
+	CustomType      *string    `json:"customType,omitempty"` // required when type is "inne"
+	AllocationType  *string    `json:"allocationType,omitempty"` // "simple" or "metered", required when type is "inne"
+	PeriodStart     time.Time  `json:"periodStart"`
+	PeriodEnd       time.Time  `json:"periodEnd"`
+	PaymentDeadline *time.Time `json:"paymentDeadline,omitempty"` // optional payment deadline
+	TotalAmountPLN  float64    `json:"totalAmountPLN"`
+	TotalUnits      *float64   `json:"totalUnits,omitempty"`
+	Notes           *string    `json:"notes,omitempty"`
 }
 
 // CreateBill creates a new bill (ADMIN only)
@@ -76,16 +77,17 @@ func (s *BillService) CreateBill(ctx context.Context, req CreateBillRequest) (*m
 	}
 
 	bill := models.Bill{
-		ID:             primitive.NewObjectID(),
-		Type:           req.Type,
-		CustomType:     req.CustomType,
-		AllocationType: allocationType,
-		PeriodStart:    req.PeriodStart,
-		PeriodEnd:      req.PeriodEnd,
-		TotalAmountPLN: amountDec,
-		Notes:          req.Notes,
-		Status:         "draft",
-		CreatedAt:      time.Now(),
+		ID:              primitive.NewObjectID(),
+		Type:            req.Type,
+		CustomType:      req.CustomType,
+		AllocationType:  allocationType,
+		PeriodStart:     req.PeriodStart,
+		PeriodEnd:       req.PeriodEnd,
+		PaymentDeadline: req.PaymentDeadline,
+		TotalAmountPLN:  amountDec,
+		Notes:           req.Notes,
+		Status:          "draft",
+		CreatedAt:       time.Now(),
 	}
 
 	if req.TotalUnits != nil {

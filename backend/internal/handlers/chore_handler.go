@@ -94,6 +94,21 @@ func (h *ChoreHandler) AssignChore(c *fiber.Ctx) error {
 		})
 	}
 
+	// Get chore and user details for notification
+	chore, _ := h.choreService.GetChore(c.Context(), req.ChoreID)
+	user, _ := h.choreService.GetUserByID(c.Context(), req.AssigneeUserID)
+
+	// Broadcast chore assignment event to the assigned user
+	if chore != nil && user != nil {
+		h.eventService.BroadcastToUser(req.AssigneeUserID, services.EventChoreAssigned, map[string]interface{}{
+			"choreId":      chore.ID.Hex(),
+			"choreName":    chore.Name,
+			"assigneeId":   user.ID.Hex(),
+			"assigneeName": user.Name,
+			"dueDate":      req.DueDate.Format(time.RFC3339),
+		})
+	}
+
 	return c.Status(fiber.StatusCreated).JSON(assignment)
 }
 

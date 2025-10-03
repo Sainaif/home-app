@@ -51,6 +51,7 @@ type Bill struct {
 	AllocationType *string             `bson:"allocation_type,omitempty" json:"allocationType,omitempty"` // simple (like gas) or metered (like electricity) - only for "inne"
 	PeriodStart    time.Time           `bson:"period_start" json:"periodStart"`
 	PeriodEnd      time.Time           `bson:"period_end" json:"periodEnd"`
+	PaymentDeadline *time.Time          `bson:"payment_deadline,omitempty" json:"paymentDeadline,omitempty"` // optional deadline for payment
 	TotalAmountPLN primitive.Decimal128 `bson:"total_amount_pln" json:"totalAmountPLN"`
 	TotalUnits     primitive.Decimal128 `bson:"total_units,omitempty" json:"totalUnits,omitempty"`
 	Notes          *string             `bson:"notes,omitempty" json:"notes,omitempty"`

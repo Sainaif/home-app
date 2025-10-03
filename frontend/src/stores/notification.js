@@ -8,8 +8,7 @@ export const useNotificationStore = defineStore('notification', () => {
     bill: true,
     chore: true,
     supply: true,
-    loan: true,
-    permission: true
+    loan: true
   })))
 
   // Computed

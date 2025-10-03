@@ -21,6 +21,7 @@
         Rachunki
       </button>
       <button
+        v-if="hasMeteredBills"
         @click="activeTab = 'readings'"
         :class="['btn', activeTab === 'readings' ? 'btn-primary' : 'btn-outline']"
         class="flex items-center gap-2">
@@ -82,6 +83,11 @@
               <label class="block text-sm font-medium mb-2">Okres do</label>
               <input v-model="newBill.periodEnd" type="date" required class="input" min="2000-01-01" max="2099-12-31" />
             </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">Termin płatności (opcjonalny)</label>
+            <input v-model="newBill.paymentDeadline" type="date" class="input" min="2000-01-01" max="2099-12-31" />
           </div>
 
           <div>
@@ -287,47 +293,49 @@
                 </td>
               </tr>
               <!-- Allocation breakdown row -->
-              <tr v-if="expandedBills[bill.id]" class="bg-gray-800/30">
-                <td colspan="7" class="p-4">
-                  <div v-if="loadingAllocations[bill.id]" class="text-center text-gray-400">
-                    Ładowanie rozliczenia...
-                  </div>
-                  <div v-else-if="billAllocations[bill.id] && billAllocations[bill.id].length > 0" class="space-y-2">
-                    <h3 class="text-sm font-semibold text-purple-400 mb-3">Rozliczenie między użytkownikami:</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      <div v-for="allocation in billAllocations[bill.id]" :key="allocation.subjectId"
-                           class="bg-gray-800/50 rounded-lg p-3 border border-gray-700/50">
-                        <div class="flex justify-between items-start">
-                          <div>
-                            <p class="font-medium text-white">{{ allocation.subjectName }}</p>
-                            <p class="text-xs text-gray-400">Waga: {{ allocation.weight.toFixed(2) }}</p>
-                          </div>
-                          <div class="text-right">
-                            <p class="font-bold text-purple-400">{{ formatMoney(allocation.amount) }} PLN</p>
-                            <div v-if="allocation.units !== undefined" class="text-xs text-gray-400">
-                              {{ formatUnits(allocation.units) }} {{ getUnit(bill.type) }}
+              <template v-for="bill in filteredBills" :key="bill.id + '-allocation'">
+                <tr v-if="expandedBills[bill.id]" class="bg-gray-800/30">
+                  <td colspan="7" class="p-4">
+                    <div v-if="loadingAllocations[bill.id]" class="text-center text-gray-400">
+                      Ładowanie rozliczenia...
+                    </div>
+                    <div v-else-if="billAllocations[bill.id] && billAllocations[bill.id].length > 0" class="space-y-2">
+                      <h3 class="text-sm font-semibold text-purple-400 mb-3">Rozliczenie między użytkownikami:</h3>
+                      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div v-for="allocation in billAllocations[bill.id]" :key="allocation.subjectId"
+                             class="bg-gray-800/50 rounded-lg p-3 border border-gray-700/50">
+                          <div class="flex justify-between items-start">
+                            <div>
+                              <p class="font-medium text-white">{{ allocation.subjectName }}</p>
+                              <p class="text-xs text-gray-400">Waga: {{ allocation.weight.toFixed(2) }}</p>
+                            </div>
+                            <div class="text-right">
+                              <p class="font-bold text-purple-400">{{ formatMoney(allocation.amount) }} PLN</p>
+                              <div v-if="allocation.units !== undefined" class="text-xs text-gray-400">
+                                {{ formatUnits(allocation.units) }} {{ getUnit(bill.type) }}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        <div v-if="allocation.personalAmount !== undefined && allocation.sharedAmount !== undefined"
-                             class="mt-2 pt-2 border-t border-gray-700/50 text-xs text-gray-400 space-y-1">
-                          <div class="flex justify-between">
-                            <span>Osobiste:</span>
-                            <span>{{ formatMoney(allocation.personalAmount) }} PLN</span>
-                          </div>
-                          <div class="flex justify-between">
-                            <span>Wspólne:</span>
-                            <span>{{ formatMoney(allocation.sharedAmount) }} PLN</span>
+                          <div v-if="allocation.personalAmount !== undefined && allocation.sharedAmount !== undefined"
+                               class="mt-2 pt-2 border-t border-gray-700/50 text-xs text-gray-400 space-y-1">
+                            <div class="flex justify-between">
+                              <span>Osobiste:</span>
+                              <span>{{ formatMoney(allocation.personalAmount) }} PLN</span>
+                            </div>
+                            <div class="flex justify-between">
+                              <span>Wspólne:</span>
+                              <span>{{ formatMoney(allocation.sharedAmount) }} PLN</span>
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                  <div v-else class="text-center text-gray-400">
-                    Brak danych o rozliczeniu
-                  </div>
-                </td>
-              </tr>
+                    <div v-else class="text-center text-gray-400">
+                      Brak danych o rozliczeniu
+                    </div>
+                  </td>
+                </tr>
+              </template>
             </tbody>
             </table>
           </div>
@@ -509,6 +517,14 @@ const filteredBills = computed(() => {
   return result
 })
 
+// Check if we have any metered bills (electricity or metered 'inne')
+const hasMeteredBills = computed(() => {
+  return bills.value.some(b =>
+    b.type === 'electricity' ||
+    (b.type === 'inne' && b.allocationType === 'metered')
+  )
+})
+
 const filteredReadings = computed(() => {
   let result = [...readings.value]
 
@@ -546,6 +562,7 @@ const newBill = ref({
   totalUnits: '',
   periodStart: '',
   periodEnd: '',
+  paymentDeadline: '',
   notes: ''
 })
 
@@ -571,7 +588,10 @@ async function loadReadingsData() {
   loadingReadings.value = true
   try {
     const billsRes = await api.get('/bills?status=posted')
-    postedBills.value = (billsRes.data || []).filter(b => b.type === 'electricity' || b.type === 'gas')
+    postedBills.value = (billsRes.data || []).filter(b =>
+      b.type === 'electricity' ||
+      (b.type === 'inne' && b.allocationType === 'metered')
+    )
 
     const allBillsRes = await api.get('/bills')
     allBills.value = allBillsRes.data || []

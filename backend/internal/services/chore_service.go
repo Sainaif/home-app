@@ -121,6 +121,19 @@ func (s *ChoreService) GetChore(ctx context.Context, choreID primitive.ObjectID)
 	return &chore, nil
 }
 
+// GetUserByID retrieves a user by ID
+func (s *ChoreService) GetUserByID(ctx context.Context, userID primitive.ObjectID) (*models.User, error) {
+	var user models.User
+	err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("user not found")
+		}
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+	return &user, nil
+}
+
 // AssignChore assigns a chore to a user (ADMIN only)
 func (s *ChoreService) AssignChore(ctx context.Context, req AssignChoreRequest) (*models.ChoreAssignment, error) {
 	// Verify chore exists and get it
@@ -542,4 +555,8 @@ func (s *ChoreService) DeleteChore(ctx context.Context, choreID primitive.Object
 
 func stringPtr(s string) *string {
 	return &s
+}
+
+func intPtr(i int) *int {
+	return &i
 }

@@ -144,8 +144,8 @@ func (h *RoleHandler) UpdateRole(c *fiber.Ctx) error {
 
 // DeleteRole deletes a custom role (ADMIN only)
 func (h *RoleHandler) DeleteRole(c *fiber.Ctx) error {
-	userID := c.Locals(middleware.UserIDKey).(primitive.ObjectID)
-	userEmail := c.Locals(middleware.UserEmail).(string)
+	userID := c.Locals("userId").(primitive.ObjectID)
+	userEmail := c.Locals("userEmail").(string)
 
 	id := c.Params("id")
 	roleID, err := primitive.ObjectIDFromHex(id)

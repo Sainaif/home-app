@@ -14,9 +14,11 @@ type EventType string
 
 const (
 	EventBillCreated        EventType = "bill.created"
+	EventBillPosted         EventType = "bill.posted"
 	EventConsumptionCreated EventType = "consumption.created"
 	EventPaymentCreated     EventType = "payment.created"
 	EventChoreUpdated       EventType = "chore.updated"
+	EventChoreAssigned      EventType = "chore.assigned"
 	EventLoanCreated        EventType = "loan.created"
 	EventLoanPaymentCreated EventType = "loan.payment.created"
 	EventLoanDeleted        EventType = "loan.deleted"

@@ -86,7 +86,7 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { useNotificationStore } from '../stores/notification'
-import { X, Check, Save, FileText, CheckSquare, ShoppingCart, DollarSign, UserPlus } from 'lucide-vue-next'
+import { X, Check, Save, FileText, CheckSquare, ShoppingCart, DollarSign } from 'lucide-vue-next'
 
 const props = defineProps({
   isOpen: Boolean
@@ -117,11 +117,6 @@ const notificationTypes = {
     label: 'Pożyczki',
     description: 'Nowe pożyczki i spłaty',
     icon: DollarSign
-  },
-  permission: {
-    label: 'Uprawnienia',
-    description: 'Zmiany w uprawnieniach',
-    icon: UserPlus
   }
 }
 
@@ -171,8 +166,7 @@ function getIconColor(type) {
     bill: 'text-blue-400',
     chore: 'text-purple-400',
     supply: 'text-green-400',
-    loan: 'text-yellow-400',
-    permission: 'text-pink-400'
+    loan: 'text-yellow-400'
   }
   return colors[type] || 'text-gray-400'
 }
