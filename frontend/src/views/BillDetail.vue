@@ -138,6 +138,15 @@
                 <span>{{ formatMoney(allocation.sharedAmount) }} PLN</span>
               </div>
             </div>
+            <!-- Mark as Paid button for current user's allocation -->
+            <div v-if="isUserAllocation(allocation) && !isUserPaid" class="mt-2 pt-2 border-t border-gray-700/50">
+              <button @click="markAsPaid(allocation.amount)" class="btn btn-primary w-full text-xs py-1">
+                Oznacz jako zapłacone
+              </button>
+            </div>
+            <div v-else-if="isUserAllocation(allocation) && isUserPaid" class="mt-2 pt-2 border-t border-gray-700/50 text-center text-xs text-green-400">
+              ✓ Zapłacone
+            </div>
           </div>
         </div>
       </div>
@@ -197,6 +206,7 @@ const bill = ref(null)
 const readings = ref([])
 const allocations = ref([])
 const users = ref([])
+const userPayments = ref([])
 const loading = ref(false)
 const loadingReadings = ref(false)
 const loadingAllocations = ref(false)
@@ -230,8 +240,12 @@ onMounted(async () => {
     if (bill.value && (bill.value.status === 'posted' || bill.value.status === 'closed')) {
       loadingAllocations.value = true
       try {
-        const allocRes = await api.get(`/bills/${billId}/allocation`)
+        const [allocRes, paymentsRes] = await Promise.all([
+          api.get(`/bills/${billId}/allocation`),
+          api.get('/payments/me')
+        ])
         allocations.value = allocRes.data || []
+        userPayments.value = paymentsRes.data || []
       } catch (err) {
         console.error('Failed to load allocations:', err)
         allocations.value = []
@@ -291,6 +305,42 @@ function formatDate(date) {
 function formatDateTime(date) {
   if (!date) return '-'
   return new Date(date).toLocaleString('pl-PL')
+}
+
+const isUserPaid = computed(() => {
+  return userPayments.value.some(p => p.billId === billId)
+})
+
+function isUserAllocation(allocation) {
+  // Check if this allocation belongs to current user (directly or through group)
+  if (allocation.subjectType === 'user' && allocation.subjectId === authStore.user?.id) {
+    return true
+  }
+  if (allocation.subjectType === 'group' && allocation.subjectId === authStore.user?.groupId) {
+    return true
+  }
+  return false
+}
+
+async function markAsPaid(amount) {
+  try {
+    // Extract numeric value from Decimal128 format
+    const amountValue = typeof amount === 'object' && amount.$numberDecimal
+      ? amount.$numberDecimal
+      : amount.toString()
+
+    await api.post('/payments/', {
+      billId,
+      amount: amountValue
+    })
+
+    // Refresh payments list to update UI
+    const paymentsRes = await api.get('/payments/me')
+    userPayments.value = paymentsRes.data || []
+  } catch (err) {
+    console.error('Failed to mark as paid:', err)
+    alert('Nie udało się zapisać płatności')
+  }
 }
 
 async function reopenBill() {

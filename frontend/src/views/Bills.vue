@@ -540,10 +540,17 @@
             </div>
           </div>
 
-          <div>
-            <label class="block text-sm font-medium mb-2">Dzień miesiąca (termin płatności)</label>
-            <input v-model.number="newRecurring.dayOfMonth" type="number" min="1" max="31" required class="input" placeholder="15" />
-            <p class="text-xs text-gray-400 mt-1">Dzień miesiąca kiedy rachunek jest płatny (1-31)</p>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium mb-2">Dzień miesiąca (termin płatności)</label>
+              <input v-model.number="newRecurring.dayOfMonth" type="number" min="1" max="31" required class="input" placeholder="15" />
+              <p class="text-xs text-gray-400 mt-1">Dzień miesiąca kiedy rachunek jest płatny (1-31)</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2">Data rozpoczęcia *</label>
+              <input v-model="newRecurring.startDate" type="date" class="input" min="2000-01-01" max="2099-12-31" required />
+              <p class="text-xs text-gray-400 mt-1">Miesiąc i rok pierwszego rachunku (wymagane)</p>
+            </div>
           </div>
 
           <div>
@@ -694,6 +701,7 @@ const newRecurring = ref({
   frequency: 'monthly',
   amount: '',
   dayOfMonth: 1,
+  startDate: '',
   allocations: [],
   notes: ''
 })
@@ -1135,6 +1143,7 @@ function closeRecurringModal() {
     frequency: 'monthly',
     amount: '',
     dayOfMonth: 1,
+    startDate: '',
     allocations: [],
     notes: ''
   }
@@ -1156,6 +1165,7 @@ async function saveRecurringTemplate() {
       frequency: newRecurring.value.frequency,
       amount: parseFloat(newRecurring.value.amount).toFixed(2),
       dayOfMonth: parseInt(newRecurring.value.dayOfMonth),
+      startDate: newRecurring.value.startDate ? new Date(newRecurring.value.startDate).toISOString() : undefined,
       allocations: newRecurring.value.allocations.map(a => {
         const alloc = {
           subjectType: a.subjectType,
@@ -1199,6 +1209,7 @@ function editRecurringTemplate(template) {
     frequency: template.frequency,
     amount: formatAmount(template.amount),
     dayOfMonth: template.dayOfMonth,
+    startDate: template.startDate ? new Date(template.startDate).toISOString().split('T')[0] : '',
     allocations: template.allocations.map(a => ({
       subjectType: a.subjectType,
       subjectId: a.subjectId,

@@ -2,12 +2,25 @@ package handlers
 
 import (
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/sainaif/holy-home/internal/models"
 	"github.com/sainaif/holy-home/internal/services"
+	"github.com/sainaif/holy-home/internal/utils"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
+
+type RecurringBillTemplateRequest struct {
+	CustomType  string                              `json:"customType"`
+	Frequency   string                              `json:"frequency"`
+	Amount      string                              `json:"amount"` // Comes as string from JSON
+	DayOfMonth  int                                 `json:"dayOfMonth"`
+	StartDate   time.Time                           `json:"startDate"` // Required
+	Allocations []models.RecurringBillAllocation    `json:"allocations"`
+	Notes       *string                             `json:"notes,omitempty"`
+}
 
 type RecurringBillHandler struct {
 	recurringBillService *services.RecurringBillService
@@ -26,14 +39,39 @@ func (h *RecurringBillHandler) CreateRecurringBillTemplate(c *fiber.Ctx) error {
 	userID := c.Locals("userId").(primitive.ObjectID)
 	userEmail := c.Locals("userEmail").(string)
 
-	var template models.RecurringBillTemplate
-	if err := c.BodyParser(&template); err != nil {
+	var req RecurringBillTemplateRequest
+	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": fmt.Sprintf("Invalid request body: %v", err),
 		})
 	}
 
-	if err := h.recurringBillService.CreateTemplate(c.Context(), &template); err != nil {
+	// Convert amount string to Decimal128
+	amountFloat, err := strconv.ParseFloat(req.Amount, 64)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fmt.Sprintf("Invalid amount: %v", err),
+		})
+	}
+	amountDecimal, err := utils.DecimalFromFloat(amountFloat)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to convert amount: %v", err),
+		})
+	}
+
+	// Build template model
+	template := &models.RecurringBillTemplate{
+		CustomType:  req.CustomType,
+		Frequency:   req.Frequency,
+		Amount:      amountDecimal,
+		DayOfMonth:  req.DayOfMonth,
+		StartDate:   req.StartDate,
+		Allocations: req.Allocations,
+		Notes:       req.Notes,
+	}
+
+	if err := h.recurringBillService.CreateTemplate(c.Context(), template); err != nil {
 		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "create_recurring_bill_template", "recurring_bill_template", nil,
 			map[string]interface{}{"custom_type": template.CustomType, "frequency": template.Frequency},
 			c.IP(), c.Get("User-Agent"), "failure")
@@ -53,9 +91,14 @@ func (h *RecurringBillHandler) CreateRecurringBillTemplate(c *fiber.Ctx) error {
 func (h *RecurringBillHandler) GetRecurringBillTemplates(c *fiber.Ctx) error {
 	templates, err := h.recurringBillService.ListTemplates(c.Context())
 	if err != nil {
+		fmt.Printf("Error listing recurring bill templates: %v\n", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": err.Error(),
 		})
+	}
+
+	if templates == nil {
+		templates = []models.RecurringBillTemplate{}
 	}
 
 	return c.JSON(templates)

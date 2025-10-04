@@ -218,6 +218,13 @@ func main() {
 	recurringBills.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequirePermission("bills.delete", getRoleService), recurringBillHandler.DeleteRecurringBillTemplate)
 	recurringBills.Post("/generate", middleware.AuthMiddleware(cfg), middleware.RequirePermission("bills.create", getRoleService), recurringBillHandler.GenerateRecurringBills)
 
+	// Payment routes
+	paymentHandler := handlers.NewPaymentHandler(db.Database, auditService, recurringBillService)
+	payments := app.Group("/payments")
+	payments.Post("/", middleware.AuthMiddleware(cfg), paymentHandler.RecordPayment)
+	payments.Get("/me", middleware.AuthMiddleware(cfg), paymentHandler.GetUserPayments)
+	payments.Get("/bill/:billId", middleware.AuthMiddleware(cfg), paymentHandler.GetBillPayments)
+
 	// Loan routes
 	loans := app.Group("/loans")
 	loans.Post("/", middleware.AuthMiddleware(cfg), loanHandler.CreateLoan)

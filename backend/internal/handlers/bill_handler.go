@@ -49,8 +49,12 @@ func (h *BillHandler) CreateBill(c *fiber.Ctx) error {
 		})
 	}
 
+	auditDetails := map[string]interface{}{"type": bill.Type, "amount": req.TotalAmountPLN, "period_start": req.PeriodStart, "period_end": req.PeriodEnd}
+	if bill.CustomType != nil {
+		auditDetails["custom_type"] = *bill.CustomType
+	}
 	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "create_bill", "bill", &bill.ID,
-		map[string]interface{}{"type": bill.Type, "amount": req.TotalAmountPLN, "period_start": req.PeriodStart, "period_end": req.PeriodEnd},
+		auditDetails,
 		c.IP(), c.Get("User-Agent"), "success")
 
 	// Broadcast event to all users
@@ -146,8 +150,12 @@ func (h *BillHandler) PostBill(c *fiber.Ctx) error {
 		})
 	}
 
+	postAuditDetails := map[string]interface{}{"bill_type": bill.Type, "old_status": "draft", "new_status": "posted"}
+	if bill.CustomType != nil {
+		postAuditDetails["custom_type"] = *bill.CustomType
+	}
 	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "post_bill", "bill", &billID,
-		map[string]interface{}{"bill_type": bill.Type, "old_status": "draft", "new_status": "posted"},
+		postAuditDetails,
 		c.IP(), c.Get("User-Agent"), "success")
 
 	// Broadcast bill posted event to all users
@@ -195,8 +203,12 @@ func (h *BillHandler) CloseBill(c *fiber.Ctx) error {
 		})
 	}
 
+	closeAuditDetails := map[string]interface{}{"bill_type": bill.Type, "old_status": "posted", "new_status": "closed"}
+	if bill.CustomType != nil {
+		closeAuditDetails["custom_type"] = *bill.CustomType
+	}
 	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "close_bill", "bill", &billID,
-		map[string]interface{}{"bill_type": bill.Type, "old_status": "posted", "new_status": "closed"},
+		closeAuditDetails,
 		c.IP(), c.Get("User-Agent"), "success")
 
 	return c.JSON(fiber.Map{

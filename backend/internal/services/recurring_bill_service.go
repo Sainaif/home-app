@@ -27,7 +27,7 @@ func NewRecurringBillService(db *mongo.Database, cfg *config.Config) *RecurringB
 	}
 }
 
-// CreateTemplate creates a new recurring bill template
+// CreateTemplate creates a new recurring bill template and generates the first bill immediately
 func (s *RecurringBillService) CreateTemplate(ctx context.Context, template *models.RecurringBillTemplate) error {
 	// Validate allocations
 	if err := s.validateAllocations(template.Allocations); err != nil {
@@ -40,8 +40,24 @@ func (s *RecurringBillService) CreateTemplate(ctx context.Context, template *mod
 	template.UpdatedAt = now
 	template.IsActive = true
 
-	// Calculate next due date based on day of month
-	template.NextDueDate = s.calculateNextDueDate(now, template.DayOfMonth, template.Frequency)
+	// Calculate first due date based on start date
+	year, month, _ := template.StartDate.Date()
+	template.NextDueDate = time.Date(year, month, template.DayOfMonth, 0, 0, 0, 0, time.UTC)
+
+	// If the calculated date is before StartDate (e.g., StartDate is Jan 31 but DayOfMonth is 15),
+	// move to next period by adding the frequency interval
+	if template.NextDueDate.Before(template.StartDate) {
+		switch template.Frequency {
+		case "monthly":
+			template.NextDueDate = template.NextDueDate.AddDate(0, 1, 0)
+		case "quarterly":
+			template.NextDueDate = template.NextDueDate.AddDate(0, 3, 0)
+		case "yearly":
+			template.NextDueDate = template.NextDueDate.AddDate(1, 0, 0)
+		default:
+			template.NextDueDate = template.NextDueDate.AddDate(0, 1, 0)
+		}
+	}
 
 	result, err := s.db.Collection("recurring_bill_templates").InsertOne(ctx, template)
 	if err != nil {
@@ -49,6 +65,12 @@ func (s *RecurringBillService) CreateTemplate(ctx context.Context, template *mod
 	}
 
 	template.ID = result.InsertedID.(primitive.ObjectID)
+
+	// Create the first bill immediately
+	if err := s.generateBillFromTemplate(ctx, template); err != nil {
+		return fmt.Errorf("failed to generate first bill: %w", err)
+	}
+
 	return nil
 }
 
@@ -220,12 +242,13 @@ func (s *RecurringBillService) generateBillFromTemplate(ctx context.Context, tem
 		}
 	}
 
-	// Update template's next due date and last generated timestamp
+	// Update template's next due date, current bill ID, and last generated timestamp
 	nextDueDate := s.calculateNextDueDate(template.NextDueDate, template.DayOfMonth, template.Frequency)
 	_, err = s.db.Collection("recurring_bill_templates").UpdateOne(
 		ctx,
 		bson.M{"_id": template.ID},
 		bson.M{"$set": bson.M{
+			"current_bill_id":    bill.ID,
 			"next_due_date":      nextDueDate,
 			"last_generated_at":  now,
 			"updated_at":         now,
@@ -275,6 +298,116 @@ func (s *RecurringBillService) calculatePeriod(dueDate time.Time, frequency stri
 	periodEnd := dueDate
 
 	return periodStart, periodEnd
+}
+
+// CheckAndGenerateNextBill checks if a bill is from a recurring template and all payments are made,
+// then generates the next bill if ready
+func (s *RecurringBillService) CheckAndGenerateNextBill(ctx context.Context, billID primitive.ObjectID) error {
+	// Find the recurring template that has this bill as its current bill
+	var template models.RecurringBillTemplate
+	err := s.db.Collection("recurring_bill_templates").FindOne(ctx, bson.M{
+		"current_bill_id": billID,
+		"is_active":       true,
+	}).Decode(&template)
+
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			// Not a recurring bill or already processed, that's okay
+			return nil
+		}
+		return err
+	}
+
+	// Get the bill to check all allocations
+	var bill models.Bill
+	err = s.db.Collection("bills").FindOne(ctx, bson.M{"_id": billID}).Decode(&bill)
+	if err != nil {
+		return err
+	}
+
+	// Only generate next bill if the current bill is posted (not draft)
+	if bill.Status != "posted" {
+		return nil
+	}
+
+	// Get all allocations for this bill
+	cursor, err := s.db.Collection("allocations").Find(ctx, bson.M{"bill_id": billID})
+	if err != nil {
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	var allocations []struct {
+		SubjectID   primitive.ObjectID   `bson:"subject_id"`
+		SubjectType string               `bson:"subject_type"`
+	}
+	if err := cursor.All(ctx, &allocations); err != nil {
+		return err
+	}
+
+	// Get all payments for this bill
+	paymentCursor, err := s.db.Collection("payments").Find(ctx, bson.M{"bill_id": billID})
+	if err != nil {
+		return err
+	}
+	defer paymentCursor.Close(ctx)
+
+	var payments []struct {
+		PayerUserID primitive.ObjectID `bson:"payer_user_id"`
+	}
+	if err := paymentCursor.All(ctx, &payments); err != nil {
+		return err
+	}
+
+	// Build a map of users who have paid
+	paidUsers := make(map[primitive.ObjectID]bool)
+	for _, payment := range payments {
+		paidUsers[payment.PayerUserID] = true
+	}
+
+	// Check if all users with allocations have paid
+	allPaid := true
+	for _, alloc := range allocations {
+		if alloc.SubjectType == "user" {
+			if !paidUsers[alloc.SubjectID] {
+				allPaid = false
+				break
+			}
+		} else if alloc.SubjectType == "group" {
+			// Get all users in this group
+			userCursor, err := s.db.Collection("users").Find(ctx, bson.M{"group_id": alloc.SubjectID})
+			if err != nil {
+				return err
+			}
+
+			var groupUsers []struct {
+				ID primitive.ObjectID `bson:"_id"`
+			}
+			if err := userCursor.All(ctx, &groupUsers); err != nil {
+				userCursor.Close(ctx)
+				return err
+			}
+			userCursor.Close(ctx)
+
+			// Check if any group member hasn't paid
+			for _, user := range groupUsers {
+				if !paidUsers[user.ID] {
+					allPaid = false
+					break
+				}
+			}
+			if !allPaid {
+				break
+			}
+		}
+	}
+
+	// If all users have paid, generate the next bill
+	if allPaid {
+		return s.generateBillFromTemplate(ctx, &template)
+	}
+
+	return nil
 }
 
 // validateAllocations validates that allocations are properly configured

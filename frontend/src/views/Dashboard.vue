@@ -111,7 +111,7 @@
                 <Users v-else class="w-5 h-5 text-gray-400" />
               </div>
               <div>
-                <p class="font-medium">{{ $t(`bills.${bill.type}`) }}</p>
+                <p class="font-medium">{{ getBillType(bill) }}</p>
                 <p class="text-xs text-gray-400">{{ formatDateRange(bill.periodStart, bill.periodEnd) }}</p>
               </div>
             </div>
@@ -381,9 +381,19 @@ async function loadPendingAllocations() {
     const billsRes = await api.get('/bills?status=posted')
     const postedBills = billsRes.data || []
 
+    // Get user's payments
+    const paymentsRes = await api.get('/payments/me')
+    const userPayments = paymentsRes.data || []
+
     // For each posted bill, get user's allocations
     const allocationsPromises = postedBills.map(async (bill) => {
       try {
+        // Check if user has already paid for this bill
+        const hasPaid = userPayments.some(p => p.billId === bill.id)
+        if (hasPaid) {
+          return null
+        }
+
         const allocRes = await api.get(`/bills/${bill.id}/allocation`)
         const allocations = allocRes.data || []
 
@@ -408,7 +418,6 @@ async function loadPendingAllocations() {
               units: userAllocation.units || 0
             }
           }
-          console.log('Mapped allocation:', mapped)
           return mapped
         }
       } catch (err) {

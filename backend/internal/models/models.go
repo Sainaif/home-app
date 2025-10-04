@@ -70,9 +70,11 @@ type RecurringBillTemplate struct {
 	Frequency         string                                `bson:"frequency" json:"frequency"` // monthly, quarterly, yearly
 	Amount            primitive.Decimal128                  `bson:"amount" json:"amount"` // fixed amount per period
 	DayOfMonth        int                                   `bson:"day_of_month" json:"dayOfMonth"` // 1-31, day when bill is due
+	StartDate         time.Time                             `bson:"start_date" json:"startDate"` // required start date for first bill
 	Allocations       []RecurringBillAllocation             `bson:"allocations" json:"allocations"` // predefined split
 	Notes             *string                               `bson:"notes,omitempty" json:"notes,omitempty"`
 	IsActive          bool                                  `bson:"is_active" json:"isActive"`
+	CurrentBillID     *primitive.ObjectID                   `bson:"current_bill_id,omitempty" json:"currentBillId,omitempty"` // ID of the current active bill
 	NextDueDate       time.Time                             `bson:"next_due_date" json:"nextDueDate"` // when next bill should be generated
 	LastGeneratedAt   *time.Time                            `bson:"last_generated_at,omitempty" json:"lastGeneratedAt,omitempty"`
 	CreatedAt         time.Time                             `bson:"created_at" json:"createdAt"`

@@ -2026,9 +2026,11 @@ function getAuditLogSummary(log) {
 
   // Bill type
   if (details.type && !details.amount) {
-    summaries.push(`Typ: ${translateBillType(details.type)}`)
+    const billType = details.custom_type || translateBillType(details.type)
+    summaries.push(`Typ: ${billType}`)
   } else if (details.bill_type && !details.old_status) {
-    summaries.push(`Typ: ${translateBillType(details.bill_type)}`)
+    const billType = details.custom_type || translateBillType(details.bill_type)
+    summaries.push(`Typ: ${billType}`)
   }
 
   // Status changes (use old_status/new_status as per backend)
