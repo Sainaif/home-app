@@ -71,8 +71,14 @@ func (s *PermissionService) InitializeDefaultPermissions(ctx context.Context) er
 		{ID: primitive.NewObjectID(), Name: "audit.read", Description: "Przeglądaj logi audytu", Category: "audit"},
 
 		// Loan management
+		{ID: primitive.NewObjectID(), Name: "loans.create", Description: "Twórz pożyczki", Category: "loans"},
 		{ID: primitive.NewObjectID(), Name: "loans.read", Description: "Przeglądaj pożyczki", Category: "loans"},
+		{ID: primitive.NewObjectID(), Name: "loans.update", Description: "Edytuj pożyczki", Category: "loans"},
 		{ID: primitive.NewObjectID(), Name: "loans.delete", Description: "Usuń pożyczki", Category: "loans"},
+		{ID: primitive.NewObjectID(), Name: "loan-payments.create", Description: "Dodaj spłaty pożyczek", Category: "loans"},
+		{ID: primitive.NewObjectID(), Name: "loan-payments.read", Description: "Przeglądaj spłaty pożyczek", Category: "loans"},
+		{ID: primitive.NewObjectID(), Name: "loan-payments.update", Description: "Edytuj spłaty pożyczek", Category: "loans"},
+		{ID: primitive.NewObjectID(), Name: "loan-payments.delete", Description: "Usuń spłaty pożyczek", Category: "loans"},
 
 		// Reading management
 		{ID: primitive.NewObjectID(), Name: "readings.delete", Description: "Usuń odczyty liczników", Category: "readings"},
@@ -148,7 +154,8 @@ func (s *RoleService) InitializeDefaultRoles(ctx context.Context) error {
 		"roles.create", "roles.read", "roles.update", "roles.delete",
 		"approvals.review",
 		"audit.read",
-		"loans.read", "loans.delete",
+		"loans.create", "loans.read", "loans.update", "loans.delete",
+		"loan-payments.create", "loan-payments.read", "loan-payments.update", "loan-payments.delete",
 		"readings.delete",
 		"backup.export", "backup.import",
 	}
@@ -157,9 +164,11 @@ func (s *RoleService) InitializeDefaultRoles(ctx context.Context) error {
 	residentPermissions := []string{
 		"users.read",
 		"groups.read",
-		"bills.read",
+		"bills.create", "bills.read", "bills.update", "bills.delete", "bills.post", "bills.close",
 		"chores.read",
 		"supplies.read", "supplies.update",
+		"loans.read",
+		"loan-payments.read",
 	}
 
 	// Upsert ADMIN role - always update permissions to include new ones

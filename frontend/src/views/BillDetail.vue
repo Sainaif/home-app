@@ -138,14 +138,22 @@
                 <span>{{ formatMoney(allocation.sharedAmount) }} PLN</span>
               </div>
             </div>
-            <!-- Mark as Paid button for current user's allocation -->
-            <div v-if="isUserAllocation(allocation) && !isUserPaid" class="mt-2 pt-2 border-t border-gray-700/50">
-              <button @click="markAsPaid(allocation.amount)" class="btn btn-primary w-full text-xs py-1">
-                Oznacz jako zapłacone
-              </button>
-            </div>
-            <div v-else-if="isUserAllocation(allocation) && isUserPaid" class="mt-2 pt-2 border-t border-gray-700/50 text-center text-xs text-green-400">
-              ✓ Zapłacone
+            <!-- Payment status for all allocations -->
+            <div v-if="allocation.subjectType === 'user'" class="mt-2 pt-2 border-t border-gray-700/50">
+              <!-- Current user's allocation - show button or paid status -->
+              <div v-if="isUserAllocation(allocation)">
+                <button v-if="!isUserPaid" @click="markAsPaid(allocation.amount)" class="btn btn-primary w-full text-xs py-1">
+                  Oznacz jako zapłacone
+                </button>
+                <div v-else class="text-center text-xs text-green-400">
+                  ✓ Zapłacone
+                </div>
+              </div>
+              <!-- Other users' allocations - show payment status only -->
+              <div v-else class="text-center text-xs">
+                <span v-if="hasAllocationBeenPaid(allocation)" class="text-green-400">✓ Zapłacone</span>
+                <span v-else class="text-yellow-400">⏳ Oczekuje na płatność</span>
+              </div>
             </div>
           </div>
         </div>
@@ -206,7 +214,7 @@ const bill = ref(null)
 const readings = ref([])
 const allocations = ref([])
 const users = ref([])
-const userPayments = ref([])
+const allPayments = ref([]) // All payments for this bill (to show who paid)
 const loading = ref(false)
 const loadingReadings = ref(false)
 const loadingAllocations = ref(false)
@@ -242,10 +250,10 @@ onMounted(async () => {
       try {
         const [allocRes, paymentsRes] = await Promise.all([
           api.get(`/bills/${billId}/allocation`),
-          api.get('/payments/me')
+          api.get(`/payments/bill/${billId}`)
         ])
         allocations.value = allocRes.data || []
-        userPayments.value = paymentsRes.data || []
+        allPayments.value = paymentsRes.data || []
       } catch (err) {
         console.error('Failed to load allocations:', err)
         allocations.value = []
@@ -308,7 +316,7 @@ function formatDateTime(date) {
 }
 
 const isUserPaid = computed(() => {
-  return userPayments.value.some(p => p.billId === billId)
+  return allPayments.value.some(p => p.payerUserId === authStore.user?.id)
 })
 
 function isUserAllocation(allocation) {
@@ -319,6 +327,15 @@ function isUserAllocation(allocation) {
   if (allocation.subjectType === 'group' && allocation.subjectId === authStore.user?.groupId) {
     return true
   }
+  return false
+}
+
+function hasAllocationBeenPaid(allocation) {
+  // Check if payment exists for this allocation
+  if (allocation.subjectType === 'user') {
+    return allPayments.value.some(p => p.payerUserId === allocation.subjectId)
+  }
+  // For groups, we don't track group payments individually
   return false
 }
 
@@ -334,9 +351,20 @@ async function markAsPaid(amount) {
       amount: amountValue
     })
 
-    // Refresh payments list to update UI
-    const paymentsRes = await api.get('/payments/me')
-    userPayments.value = paymentsRes.data || []
+    // Show success message
+    alert('Płatność zarejestrowana pomyślnie!')
+
+    // Reload bill data to show updated payment status
+    const billRes = await api.get(`/bills/${billId}`)
+    bill.value = billRes.data
+
+    // Reload allocations and payments
+    const [allocRes, paymentsRes] = await Promise.all([
+      api.get(`/bills/${billId}/allocation`),
+      api.get(`/payments/bill/${billId}`)
+    ])
+    allocations.value = allocRes.data || []
+    allPayments.value = paymentsRes.data || []
   } catch (err) {
     console.error('Failed to mark as paid:', err)
     alert('Nie udało się zapisać płatności')

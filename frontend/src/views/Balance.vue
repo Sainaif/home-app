@@ -30,9 +30,9 @@
       </div>
     </div>
 
-    <!-- Add Loan/Payment Forms (Admin Only) -->
-    <div v-if="authStore.isAdmin" class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-      <div class="card">
+    <!-- Add Loan/Payment Forms (Permission-based) -->
+    <div v-if="authStore.hasPermission('loans.create') || authStore.hasPermission('loan-payments.create')" class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+      <div v-if="authStore.hasPermission('loans.create')" class="card">
         <h2 class="text-xl font-semibold mb-4">Dodaj pożyczkę</h2>
         <form @submit.prevent="createLoan" class="space-y-4">
           <div>
@@ -67,7 +67,7 @@
         </form>
       </div>
 
-      <div class="card">
+      <div v-if="authStore.hasPermission('loan-payments.create')" class="card">
         <h2 class="text-xl font-semibold mb-4">Dodaj spłatę</h2>
         <form @submit.prevent="createPayment" class="space-y-4">
           <div>
@@ -150,7 +150,7 @@
               <th class="pb-3">Opis</th>
               <th class="pb-3">Status</th>
               <th class="pb-3">Data</th>
-              <th v-if="authStore.isAdmin" class="pb-3">Akcje</th>
+              <th v-if="authStore.hasPermission('loans.delete')" class="pb-3">Akcje</th>
             </tr>
           </thead>
           <tbody>
@@ -168,7 +168,7 @@
                 </span>
               </td>
               <td class="py-3">{{ formatDate(loan.createdAt) }}</td>
-              <td v-if="authStore.isAdmin" class="py-3">
+              <td v-if="authStore.hasPermission('loans.delete')" class="py-3">
                 <button
                   @click="confirmDeleteLoan(loan.id)"
                   class="btn btn-sm btn-secondary"
@@ -259,14 +259,14 @@ async function loadData() {
       api.get('/loans')
     ]
 
-    if (authStore.isAdmin) {
+    if (authStore.hasPermission('loans.create')) {
       requests.push(api.get('/users'))
     }
 
     const responses = await Promise.all(requests)
     balances.value = responses[0].data || []
     loans.value = responses[1].data || []
-    if (authStore.isAdmin) {
+    if (authStore.hasPermission('loans.create')) {
       users.value = responses[2].data || []
     }
   } catch (err) {

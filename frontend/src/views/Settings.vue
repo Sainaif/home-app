@@ -1705,9 +1705,13 @@ function translatePermissionName(name) {
     'approvals.review': 'Sprawdzaj zatwierdzenia',
     'audit.read': 'Czytaj logi audytu',
     'loans.create': 'Twórz pożyczki',
-    'loans.read': 'Czytaj pożyczki',
+    'loans.read': 'Przeglądaj pożyczki',
     'loans.update': 'Edytuj pożyczki',
     'loans.delete': 'Usuń pożyczki',
+    'loan-payments.create': 'Dodaj spłaty pożyczek',
+    'loan-payments.read': 'Przeglądaj spłaty pożyczek',
+    'loan-payments.update': 'Edytuj spłaty pożyczek',
+    'loan-payments.delete': 'Usuń spłaty pożyczek',
     'backup.export': 'Eksportuj kopię zapasową',
     'backup.import': 'Importuj kopię zapasową'
   }
@@ -1756,7 +1760,10 @@ function translateAction(action) {
     // Loan actions
     'loan.create': 'Tworzenie pożyczki',
     'loan.update': 'Aktualizacja pożyczki',
-    'loan.delete': 'Usunięcie pożyczki'
+    'loan.delete': 'Usunięcie pożyczki',
+    'create_loan': 'Tworzenie pożyczki',
+    'create_loan_payment': 'Dodanie spłaty pożyczki',
+    'delete_loan': 'Usunięcie pożyczki'
   }
   return translations[action] || action
 }

@@ -231,16 +231,16 @@ func main() {
 
 	// Loan routes
 	loans := app.Group("/loans")
-	loans.Post("/", middleware.AuthMiddleware(cfg), loanHandler.CreateLoan)
-	loans.Get("/", middleware.AuthMiddleware(cfg), loanHandler.GetLoans)
-	loans.Get("/balances", middleware.AuthMiddleware(cfg), loanHandler.GetBalances)
-	loans.Get("/balances/me", middleware.AuthMiddleware(cfg), loanHandler.GetMyBalance)
+	loans.Post("/", middleware.AuthMiddleware(cfg), middleware.RequirePermission("loans.create", getRoleService), loanHandler.CreateLoan)
+	loans.Get("/", middleware.AuthMiddleware(cfg), middleware.RequirePermission("loans.read", getRoleService), loanHandler.GetLoans)
+	loans.Get("/balances", middleware.AuthMiddleware(cfg), middleware.RequirePermission("loans.read", getRoleService), loanHandler.GetBalances)
+	loans.Get("/balances/me", middleware.AuthMiddleware(cfg), middleware.RequirePermission("loans.read", getRoleService), loanHandler.GetMyBalance)
 	loans.Get("/balances/user/:id", middleware.AuthMiddleware(cfg), middleware.RequirePermission("loans.read", getRoleService), loanHandler.GetUserBalance)
 	loans.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequirePermission("loans.delete", getRoleService), loanHandler.DeleteLoan)
 
 	// Loan payment routes
 	loanPayments := app.Group("/loan-payments")
-	loanPayments.Post("/", middleware.AuthMiddleware(cfg), loanHandler.CreateLoanPayment)
+	loanPayments.Post("/", middleware.AuthMiddleware(cfg), middleware.RequirePermission("loan-payments.create", getRoleService), loanHandler.CreateLoanPayment)
 
 	// Chore routes
 	chores := app.Group("/chores")

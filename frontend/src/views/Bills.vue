@@ -339,6 +339,13 @@
                               <span>{{ formatMoney(allocation.sharedAmount) }} PLN</span>
                             </div>
                           </div>
+                          <!-- Payment Status -->
+                          <div v-if="hasUserPaid(bill.id, allocation)" class="mt-2 pt-2 border-t border-gray-700/50 text-center">
+                            <span class="text-xs text-green-400">✓ Zapłacone</span>
+                          </div>
+                          <div v-else class="mt-2 pt-2 border-t border-gray-700/50 text-center">
+                            <span class="text-xs text-yellow-400">⏳ Oczekuje na płatność</span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -652,11 +659,13 @@ const activeTab = ref('bills')
 
 // Bills state
 const bills = ref([])
+const allPayments = ref([]) // Store all payments to show who paid
 const loading = ref(false)
 const showCreateModal = ref(false)
 const creating = ref(false)
 const createError = ref('')
 const billAllocations = ref({}) // Store allocations by bill ID
+const billPayments = ref({}) // Store payments by bill ID
 const loadingAllocations = ref({})
 const expandedBills = ref({})
 
@@ -1039,11 +1048,16 @@ async function loadBillAllocation(billId) {
 
   loadingAllocations.value[billId] = true
   try {
-    const response = await api.get(`/bills/${billId}/allocation`)
-    billAllocations.value[billId] = response.data
+    const [allocRes, paymentsRes] = await Promise.all([
+      api.get(`/bills/${billId}/allocation`),
+      api.get(`/payments/bill/${billId}`)
+    ])
+    billAllocations.value[billId] = allocRes.data
+    billPayments.value[billId] = paymentsRes.data || []
   } catch (err) {
     console.error('Failed to load allocation:', err)
     billAllocations.value[billId] = []
+    billPayments.value[billId] = []
   } finally {
     loadingAllocations.value[billId] = false
   }
@@ -1272,5 +1286,18 @@ function getAllocationLabel(alloc) {
   }
 
   return `${name}: ${value}`
+}
+
+function hasUserPaid(billId, allocation) {
+  if (!billPayments.value[billId]) return false
+
+  // Check if there's a payment from this user (for user allocations)
+  if (allocation.subjectType === 'user') {
+    return billPayments.value[billId].some(p => p.payerUserId === allocation.subjectId)
+  }
+
+  // For group allocations, check if any member of the group has paid
+  // Note: This is simplified - you might want more complex logic here
+  return false
 }
 </script>

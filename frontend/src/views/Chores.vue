@@ -133,7 +133,14 @@
               <option value="random">Losowo</option>
             </select>
           </div>
-          <div>
+          <div v-if="choreForm.assignmentMode === 'manual'">
+            <label class="block text-sm font-medium mb-2">Przypisz do użytkownika *</label>
+            <select v-model="choreForm.manualAssigneeId" required class="input">
+              <option value="">Wybierz użytkownika</option>
+              <option v-for="user in users" :key="user.id" :value="user.id">{{ user.name }}</option>
+            </select>
+          </div>
+          <div v-else>
             <label class="block text-sm font-medium mb-2">Przypomnienie (godziny przed)</label>
             <input v-model.number="choreForm.reminderHours" type="number" min="0" max="168" class="input" placeholder="np. 24" />
           </div>
@@ -274,6 +281,7 @@ const choreForm = ref({
   difficulty: 3,
   priority: 3,
   assignmentMode: 'auto',
+  manualAssigneeId: '',
   notificationsEnabled: true,
   reminderHours: 24
 })
@@ -431,7 +439,14 @@ async function createChore() {
     }
 
     // Auto-assign the chore based on assignment mode
-    if (choreForm.value.assignmentMode === 'auto') {
+    if (choreForm.value.assignmentMode === 'manual' && choreForm.value.manualAssigneeId) {
+      // Manual assignment - assign to selected user
+      await api.post('/chore-assignments', {
+        choreId: choreRes.data.id,
+        assigneeUserId: choreForm.value.manualAssigneeId,
+        dueDate: dueDate.toISOString()
+      })
+    } else if (choreForm.value.assignmentMode === 'auto') {
       await api.post(`/chores/${choreRes.data.id}/auto-assign`, {
         dueDate: dueDate.toISOString()
       })
@@ -455,6 +470,7 @@ async function createChore() {
       difficulty: 3,
       priority: 3,
       assignmentMode: 'auto',
+      manualAssigneeId: '',
       notificationsEnabled: true,
       reminderHours: 24
     }
