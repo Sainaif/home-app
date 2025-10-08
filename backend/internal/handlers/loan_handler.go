@@ -178,6 +178,26 @@ func (h *LoanHandler) GetUserBalance(c *fiber.Ctx) error {
 	return c.JSON(balance)
 }
 
+// GetLoanPayments retrieves all payments for a specific loan
+func (h *LoanHandler) GetLoanPayments(c *fiber.Ctx) error {
+	id := c.Params("id")
+	loanID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid loan ID",
+		})
+	}
+
+	payments, err := h.loanService.GetLoanPayments(c.Context(), loanID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(payments)
+}
+
 // DeleteLoan deletes a loan (ADMIN only)
 func (h *LoanHandler) DeleteLoan(c *fiber.Ctx) error {
 	userID, _ := middleware.GetUserID(c)

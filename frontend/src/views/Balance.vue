@@ -194,39 +194,71 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="loan in filteredLoans" :key="loan.id" class="border-b border-gray-700">
-              <td class="py-3">
-                {{ loan.fromUserName }}
-                <span v-if="loan.fromUserGroupName" class="text-xs text-purple-400 ml-1">({{ loan.fromUserGroupName }})</span>
-              </td>
-              <td class="py-3">
-                {{ loan.toUserName }}
-                <span v-if="loan.toUserGroupName" class="text-xs text-purple-400 ml-1">({{ loan.toUserGroupName }})</span>
-              </td>
-              <td class="py-3">{{ formatMoney(loan.amountPLN) }} PLN</td>
-              <td class="py-3" :class="getRemainingColorClass(loan)">
-                {{ formatMoney(loan.remainingPLN) }} PLN
-              </td>
-              <td class="py-3 text-gray-400">{{ loan.note || '-' }}</td>
-              <td class="py-3">
-                <span :class="getStatusColorClass(loan.status)">
-                  {{ translateStatus(loan.status) }}
-                </span>
-              </td>
-              <td class="py-3">{{ formatDate(loan.createdAt) }}</td>
-              <td v-if="authStore.hasPermission('loans.delete')" class="py-3">
-                <button
-                  @click="confirmDeleteLoan(loan.id)"
-                  class="btn btn-sm btn-secondary"
-                  title="Usuń pożyczkę">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3 6h18"/>
-                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
-                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
-                  </svg>
-                </button>
-              </td>
-            </tr>
+            <template v-for="loan in filteredLoans" :key="loan.id">
+              <tr class="border-b border-gray-700 hover:bg-gray-750 cursor-pointer" @click="toggleLoanExpansion(loan.id)">
+                <td class="py-3">
+                  <span class="flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 transition-transform" :class="expandedLoanId === loan.id ? 'rotate-90' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="m9 18 6-6-6-6"/>
+                    </svg>
+                    {{ loan.fromUserName }}
+                    <span v-if="loan.fromUserGroupName" class="text-xs text-purple-400 ml-1">({{ loan.fromUserGroupName }})</span>
+                  </span>
+                </td>
+                <td class="py-3">
+                  {{ loan.toUserName }}
+                  <span v-if="loan.toUserGroupName" class="text-xs text-purple-400 ml-1">({{ loan.toUserGroupName }})</span>
+                </td>
+                <td class="py-3">{{ formatMoney(loan.amountPLN) }} PLN</td>
+                <td class="py-3" :class="getRemainingColorClass(loan)">
+                  {{ formatMoney(loan.remainingPLN) }} PLN
+                </td>
+                <td class="py-3 text-gray-400">{{ loan.note || '-' }}</td>
+                <td class="py-3">
+                  <span :class="getStatusColorClass(loan.status)">
+                    {{ translateStatus(loan.status) }}
+                  </span>
+                </td>
+                <td class="py-3">{{ formatDate(loan.createdAt) }}</td>
+                <td v-if="authStore.hasPermission('loans.delete')" class="py-3" @click.stop>
+                  <button
+                    @click="confirmDeleteLoan(loan.id)"
+                    class="btn btn-sm btn-secondary"
+                    title="Usuń pożyczkę">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M3 6h18"/>
+                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                    </svg>
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="expandedLoanId === loan.id" class="border-b border-gray-700 bg-gray-800">
+                <td :colspan="authStore.hasPermission('loans.delete') ? 8 : 7" class="py-3 px-6">
+                  <div class="ml-8">
+                    <h4 class="text-sm font-semibold mb-3 text-purple-300">Historia spłat</h4>
+                    <div v-if="!loanPayments[loan.id] || loanPayments[loan.id].length === 0" class="text-gray-400 text-sm italic">
+                      Brak spłat
+                    </div>
+                    <div v-else class="space-y-2">
+                      <div v-for="payment in loanPayments[loan.id]" :key="payment.id" class="flex items-center justify-between bg-gray-750 p-3 rounded text-sm">
+                        <div class="flex items-center gap-3">
+                          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 6 9 17l-5-5"/>
+                          </svg>
+                          <span class="font-medium text-green-400">{{ formatMoney(payment.amountPLN) }} PLN</span>
+                          <span class="text-gray-400">•</span>
+                          <span class="text-gray-300">{{ formatDate(payment.paidAt) }}</span>
+                        </div>
+                        <div v-if="payment.note" class="text-gray-400 italic text-xs">
+                          {{ payment.note }}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -253,6 +285,8 @@ const userFilter = ref('')
 const sortBy = ref('createdAt')
 const sortOrder = ref('desc')
 const pageLimit = ref(50)
+const expandedLoanId = ref(null)
+const loanPayments = ref({})
 
 const loanForm = ref({
   lenderId: '',
@@ -493,6 +527,25 @@ function getRemainingColorClass(loan) {
   if (loan.status === 'settled') return 'text-green-400'
   if (loan.status === 'partial') return 'text-yellow-400'
   return 'text-red-400'
+}
+
+async function toggleLoanExpansion(loanId) {
+  if (expandedLoanId.value === loanId) {
+    expandedLoanId.value = null
+  } else {
+    expandedLoanId.value = loanId
+
+    // Load payments if not already loaded
+    if (!loanPayments.value[loanId]) {
+      try {
+        const response = await api.get(`/loans/${loanId}/payments`)
+        loanPayments.value[loanId] = response.data || []
+      } catch (err) {
+        console.error('Failed to load loan payments:', err)
+        loanPayments.value[loanId] = []
+      }
+    }
+  }
 }
 
 async function confirmDeleteLoan(loanId) {

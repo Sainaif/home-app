@@ -638,6 +638,34 @@ func (s *LoanService) getTotalPaidForLoan(ctx context.Context, loanID primitive.
 	return total, nil
 }
 
+// GetLoanPayments retrieves all payments for a specific loan
+func (s *LoanService) GetLoanPayments(ctx context.Context, loanID primitive.ObjectID) ([]models.LoanPayment, error) {
+	// Check if loan exists
+	var loan models.Loan
+	err := s.db.Collection("loans").FindOne(ctx, bson.M{"_id": loanID}).Decode(&loan)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("loan not found")
+		}
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+
+	// Get all payments for this loan, sorted by payment date (oldest first)
+	findOpts := options.Find().SetSort(bson.D{{Key: "paid_at", Value: 1}})
+	cursor, err := s.db.Collection("loan_payments").Find(ctx, bson.M{"loan_id": loanID}, findOpts)
+	if err != nil {
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var payments []models.LoanPayment
+	if err := cursor.All(ctx, &payments); err != nil {
+		return nil, fmt.Errorf("failed to decode payments: %w", err)
+	}
+
+	return payments, nil
+}
+
 func parseBalanceKey(key string) []string {
 	result := make([]string, 2)
 	parts := []rune{}
