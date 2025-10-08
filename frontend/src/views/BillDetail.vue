@@ -139,8 +139,8 @@
               </div>
             </div>
             <!-- Payment status for all allocations -->
-            <div v-if="allocation.subjectType === 'user'" class="mt-2 pt-2 border-t border-gray-700/50">
-              <!-- Current user's allocation - show button or paid status -->
+            <div class="mt-2 pt-2 border-t border-gray-700/50">
+              <!-- Current user's allocation (or current user's group allocation) - show button or paid status -->
               <div v-if="isUserAllocation(allocation)">
                 <button v-if="!isUserPaid" @click="markAsPaid(allocation.amount)" class="btn btn-primary w-full text-xs py-1">
                   Oznacz jako zapłacone
@@ -149,8 +149,8 @@
                   ✓ Zapłacone
                 </div>
               </div>
-              <!-- Other users' allocations - show payment status only -->
-              <div v-else class="text-center text-xs">
+              <!-- Other allocations - show payment status only -->
+              <div v-else-if="allocation.subjectType === 'user'" class="text-center text-xs">
                 <span v-if="hasAllocationBeenPaid(allocation)" class="text-green-400">✓ Zapłacone</span>
                 <span v-else class="text-yellow-400">⏳ Oczekuje na płatność</span>
               </div>
