@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
 
+// API client - automatically adds auth token to requests
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: {
@@ -9,7 +10,7 @@ const api = axios.create({
   timeout: 10000 // 10 second timeout
 })
 
-// Request interceptor to add auth token
+// add JWT token to every request
 api.interceptors.request.use(
   (config) => {
     const authStore = useAuthStore()
@@ -22,7 +23,7 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
-// Response interceptor to handle token refresh
+// handle 401 errors by refreshing tokens
 api.interceptors.response.use(
   (response) => response,
   async (error) => {

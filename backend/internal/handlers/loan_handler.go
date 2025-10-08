@@ -102,9 +102,22 @@ func (h *LoanHandler) CreateLoanPayment(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(payment)
 }
 
-// GetLoans retrieves all loans
+// GetLoans retrieves all loans with optional sorting and pagination
 func (h *LoanHandler) GetLoans(c *fiber.Ctx) error {
-	loans, err := h.loanService.GetLoans(c.Context())
+	// Parse query parameters
+	sortBy := c.Query("sort", "createdAt")
+	order := c.Query("order", "desc")
+	limit := c.QueryInt("limit", 0)
+	offset := c.QueryInt("offset", 0)
+
+	opts := services.GetLoansOptions{
+		SortBy: sortBy,
+		Order:  order,
+		Limit:  limit,
+		Offset: offset,
+	}
+
+	loans, err := h.loanService.GetLoansWithOptions(c.Context(), opts)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": err.Error(),
@@ -163,6 +176,26 @@ func (h *LoanHandler) GetUserBalance(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(balance)
+}
+
+// GetLoanPayments retrieves all payments for a specific loan
+func (h *LoanHandler) GetLoanPayments(c *fiber.Ctx) error {
+	id := c.Params("id")
+	loanID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid loan ID",
+		})
+	}
+
+	payments, err := h.loanService.GetLoanPayments(c.Context(), loanID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(payments)
 }
 
 // DeleteLoan deletes a loan (ADMIN only)

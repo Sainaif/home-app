@@ -18,7 +18,7 @@ const (
 	saltLen       = 16
 )
 
-// HashPassword creates an Argon2id hash of the password
+// HashPassword hashes password with Argon2id
 func HashPassword(password string) (string, error) {
 	salt := make([]byte, saltLen)
 	if _, err := rand.Read(salt); err != nil {
@@ -39,7 +39,7 @@ func HashPassword(password string) (string, error) {
 	), nil
 }
 
-// VerifyPassword checks if the provided password matches the hash
+// VerifyPassword checks if password matches the hash
 func VerifyPassword(password, encodedHash string) (bool, error) {
 	parts := strings.Split(encodedHash, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" {

@@ -8,6 +8,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+// Claims holds user data inside JWT tokens
 type Claims struct {
 	UserID primitive.ObjectID `json:"userId"`
 	Email  string             `json:"email"`
@@ -15,6 +16,7 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+// GenerateAccessToken creates short-lived token (15 min)
 func GenerateAccessToken(userID primitive.ObjectID, email, role, secret string, ttl time.Duration) (string, error) {
 	claims := &Claims{
 		UserID: userID,
@@ -30,6 +32,7 @@ func GenerateAccessToken(userID primitive.ObjectID, email, role, secret string, 
 	return token.SignedString([]byte(secret))
 }
 
+// GenerateRefreshToken creates long-lived token (30 days) for renewing access
 func GenerateRefreshToken(userID primitive.ObjectID, secret string, ttl time.Duration) (string, error) {
 	claims := &jwt.RegisteredClaims{
 		Subject:   userID.Hex(),
@@ -41,6 +44,7 @@ func GenerateRefreshToken(userID primitive.ObjectID, secret string, ttl time.Dur
 	return token.SignedString([]byte(secret))
 }
 
+// ValidateAccessToken checks if token is valid and returns user data
 func ValidateAccessToken(tokenString, secret string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -60,6 +64,7 @@ func ValidateAccessToken(tokenString, secret string) (*Claims, error) {
 	return nil, fmt.Errorf("invalid token")
 }
 
+// ValidateRefreshToken checks refresh token and gets user ID
 func ValidateRefreshToken(tokenString, secret string) (primitive.ObjectID, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
