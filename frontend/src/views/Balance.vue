@@ -10,7 +10,10 @@
         <div v-else class="space-y-3">
           <div v-for="bal in youOwe" :key="`${bal.fromUserId}-${bal.toUserId}`"
                class="flex justify-between items-center p-3 bg-gray-700 rounded">
-            <span>{{ bal.toUserName }}</span>
+            <span>
+              {{ bal.toUserName }}
+              <span v-if="bal.toUserGroupName" class="text-xs text-purple-400 ml-1">({{ bal.toUserGroupName }})</span>
+            </span>
             <span class="font-bold text-red-400">{{ formatMoney(bal.netAmount) }} PLN</span>
           </div>
         </div>
@@ -23,7 +26,10 @@
         <div v-else class="space-y-3">
           <div v-for="bal in owesYou" :key="`${bal.fromUserId}-${bal.toUserId}`"
                class="flex justify-between items-center p-3 bg-gray-700 rounded">
-            <span>{{ bal.fromUserName }}</span>
+            <span>
+              {{ bal.fromUserName }}
+              <span v-if="bal.fromUserGroupName" class="text-xs text-purple-400 ml-1">({{ bal.fromUserGroupName }})</span>
+            </span>
             <span class="font-bold text-green-400">{{ formatMoney(bal.netAmount) }} PLN</span>
           </div>
         </div>
@@ -101,6 +107,8 @@
     <div class="card mt-6">
       <div class="space-y-3 mb-4">
         <h2 class="text-xl font-semibold">Historia pożyczek</h2>
+
+        <!-- Filter by user -->
         <div>
           <label class="block text-sm font-medium mb-2">Filtruj po użytkowniku</label>
           <select v-model="userFilter" class="input mb-3">
@@ -110,6 +118,8 @@
             </option>
           </select>
         </div>
+
+        <!-- Status filter -->
         <div class="button-group grid-cols-4">
           <button
             @click="statusFilter = 'all'"
@@ -136,6 +146,36 @@
             Spłacone
           </button>
         </div>
+
+        <!-- Sorting and pagination controls -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-2">Sortuj według</label>
+            <select v-model="sortBy" @change="loadLoans" class="input">
+              <option value="createdAt">Data utworzenia</option>
+              <option value="amountPLN">Kwota</option>
+              <option value="status">Status</option>
+              <option value="remainingPLN">Pozostała kwota</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-2">Kolejność</label>
+            <select v-model="sortOrder" @change="loadLoans" class="input">
+              <option value="desc">Malejąco</option>
+              <option value="asc">Rosnąco</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-2">Wyświetl</label>
+            <select v-model="pageLimit" @change="loadLoans" class="input">
+              <option :value="10">10</option>
+              <option :value="25">25</option>
+              <option :value="50">50</option>
+              <option :value="100">100</option>
+              <option :value="0">Wszystkie</option>
+            </select>
+          </div>
+        </div>
       </div>
       <div v-if="loading" class="text-center py-8">{{ $t('common.loading') }}</div>
       <div v-else-if="filteredLoans.length === 0" class="text-center py-8 text-gray-400">Brak historii</div>
@@ -155,8 +195,14 @@
           </thead>
           <tbody>
             <tr v-for="loan in filteredLoans" :key="loan.id" class="border-b border-gray-700">
-              <td class="py-3">{{ loan.fromUserName }}</td>
-              <td class="py-3">{{ loan.toUserName }}</td>
+              <td class="py-3">
+                {{ loan.fromUserName }}
+                <span v-if="loan.fromUserGroupName" class="text-xs text-purple-400 ml-1">({{ loan.fromUserGroupName }})</span>
+              </td>
+              <td class="py-3">
+                {{ loan.toUserName }}
+                <span v-if="loan.toUserGroupName" class="text-xs text-purple-400 ml-1">({{ loan.toUserGroupName }})</span>
+              </td>
               <td class="py-3">{{ formatMoney(loan.amountPLN) }} PLN</td>
               <td class="py-3" :class="getRemainingColorClass(loan)">
                 {{ formatMoney(loan.remainingPLN) }} PLN
@@ -204,6 +250,9 @@ const creatingLoan = ref(false)
 const creatingPayment = ref(false)
 const statusFilter = ref('all')
 const userFilter = ref('')
+const sortBy = ref('createdAt')
+const sortOrder = ref('desc')
+const pageLimit = ref(50)
 
 const loanForm = ref({
   lenderId: '',
@@ -252,11 +301,31 @@ const filteredLoans = computed(() => {
   return result
 })
 
+async function loadLoans() {
+  try {
+    const params = new URLSearchParams({
+      sort: sortBy.value,
+      order: sortOrder.value,
+    })
+
+    if (pageLimit.value > 0) {
+      params.append('limit', pageLimit.value.toString())
+      params.append('offset', '0')
+    }
+
+    const response = await api.get(`/loans?${params.toString()}`)
+    loans.value = response.data || []
+  } catch (err) {
+    console.error('Failed to load loans:', err)
+    loans.value = []
+  }
+}
+
 async function loadData() {
   try {
     const requests = [
       api.get('/loans/balances/me'),
-      api.get('/loans')
+      loadLoans()
     ]
 
     if (authStore.hasPermission('loans.create')) {
@@ -265,7 +334,6 @@ async function loadData() {
 
     const responses = await Promise.all(requests)
     balances.value = responses[0].data || []
-    loans.value = responses[1].data || []
     if (authStore.hasPermission('loans.create')) {
       users.value = responses[2].data || []
     }
