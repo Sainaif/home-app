@@ -1,70 +1,73 @@
 # Holy Home - Household Management Application
 
-Personal, self-hosted household management for shared bills, utilities, loans, and chores.
+A self-hosted household management application for tracking shared bills, utilities, loans, and chores. Built with Go, Vue 3, and MongoDB.
+
+## Features
+
+- **Multi-User Support**: User management with ADMIN and RESIDENT roles
+- **Bill Management**: Track electricity, gas, internet, and custom bills
+- **Smart Cost Allocation**: Complex electricity allocation with personal usage + common area pools
+- **Consumption Tracking**: Record meter readings for accurate usage-based billing
+- **Loan Management**: Track loans between users with partial repayment support
+- **Balance Calculations**: Automatic pairwise debt netting across all users
+- **Chores**: Task assignment and tracking (backend complete, frontend in progress)
+- **Security**: JWT authentication, TOTP 2FA, Argon2id password hashing, RBAC
+- **Dark Theme**: Modern purple/pink themed UI with Tailwind CSS
+- **Polish Language**: Full Polish localization
 
 ## Project Status
 
-### ✅ Completed Components
+### ✅ Completed
 
-#### Infrastructure & Configuration
-- [x] Project directory structure (backend/, frontend/, deploy/)
-- [x] Docker Compose setup with 3 services (API, Frontend, MongoDB)
-- [x] All Dockerfiles (Go API, Vue Frontend)
-- [x] Environment configuration (`.env.example`)
-- [x] Git ignore files
+#### Infrastructure
+- [x] Docker Compose setup (API, Frontend, MongoDB)
+- [x] Environment configuration
+- [x] Health check endpoints
 
 #### Backend (Go + Fiber)
-- [x] **Core Setup**
-  - Go module initialization
-  - MongoDB connection with health checks and indexes
-  - All 10 data models (Decimal128 for money/units)
-  - Configuration management
+- [x] MongoDB connection with indexes and health checks
+- [x] 10 data models with Decimal128 for money/units
+- [x] JWT access (15m) & refresh tokens (720h)
+- [x] TOTP 2FA with QR code provisioning
+- [x] Rate limiting on sensitive endpoints
+- [x] Request ID tracking and structured JSON logging
+- [x] Complete API endpoints for:
+  - Authentication (login, refresh, 2FA)
+  - Users (CRUD, password management)
+  - Groups (CRUD with weight management)
+  - Bills (create, allocate, post, close)
+  - Consumptions (meter readings)
+  - Allocations (cost distributions)
+  - Loans and loan payments
+  - Balance calculations
+  - Chores and chore assignments
+- [x] Complex electricity allocation algorithm
+- [x] Bill lifecycle management (draft → posted → closed)
+- [x] Pairwise balance netting
 
-- [x] **Authentication & Security**
-  - JWT access & refresh tokens
-  - Argon2id password hashing
-  - TOTP 2FA with QR provisioning
-  - Admin bootstrap from environment
-  - Rate limiting for sensitive endpoints
-  - Request ID tracking for structured logging
-  - RBAC middleware (ADMIN, RESIDENT roles)
+#### Frontend (Vue 3 + Vite)
+- [x] Project setup with Pinia, Vue Router, Vue I18n
+- [x] Axios interceptors with JWT refresh
+- [x] Dark theme with Tailwind CSS
+- [x] Polish translations
+- [x] All main views:
+  - Login with 2FA support
+  - Dashboard with balance overview
+  - Bills management
+  - Consumption readings
+  - Balance & loans view
+  - Settings (users, groups, profile)
+- [x] Responsive components with Lucide icons
+- [x] ECharts integration for data visualization
 
-- [x] **API Endpoints**
-  - **Auth**: `/auth/login`, `/auth/refresh`, `/auth/enable-2fa`, `/auth/disable-2fa`
-  - **Users**: CRUD operations, password change, profile retrieval
-  - **Groups**: Create, read, update, delete with weight management
-  - **Bills**: Create, list, retrieve, allocate, post, close
-  - **Consumptions**: Record readings, retrieve by bill/user
-  - **Allocations**: View cost allocations
-  - **Loans**: Create loans, record payments, calculate balances
-
-- [x] **Business Logic**
-  - Complex electricity allocation (personal usage + common area with weights)
-  - Gas/Internet equal split
-  - Shared budget allocation
-  - Bill lifecycle (draft → posted → closed)
-  - Loan tracking with partial repayments
-  - Pairwise balance calculations
-
-### 🚧 In Progress / TODO
+### 🚧 In Progress
 
 #### Backend
-- [ ] Chores API (create, assign, rotate, mark done)
 - [ ] SSE endpoint for real-time events
 - [ ] CSV/PDF export functionality
 
-#### Frontend (Vue 3 + Vite)
-- [ ] Project initialization (Vite, Vue 3, Pinia, Router)
-- [ ] Tailwind CSS dark theme (purple #9333ea, pink #ec4899)
-- [ ] Polish i18n (src/i18n/pl.json)
-- [ ] **Views**:
-  - Login & 2FA setup
-  - Dashboard (balances, upcoming dates, chores)
-  - Bills management
-  - Readings input
-  - Balance & Loans
-  - Chores
-  - Settings (users, groups)
+#### Frontend
+- [ ] Chores view
 - [ ] SSE client for real-time updates
 - [ ] Export UI (CSV/PDF downloads)
 - [ ] PWA configuration
@@ -74,152 +77,418 @@ Personal, self-hosted household management for shared bills, utilities, loans, a
 ### Prerequisites
 - Docker & Docker Compose
 - Go 1.25+ (for local development)
-- Node.js current (for frontend development)
+- Node.js 20+ (for frontend development)
 
-### Configuration
+### Running with Docker Compose (Recommended)
 
-1. Copy `.env.example` to `.env`:
+1. Copy environment file:
 ```bash
 cp .env.example .env
 ```
 
-2. Generate admin password hash:
+2. Generate strong JWT secrets (optional, defaults provided):
 ```bash
-# Using any Argon2 tool
-# The example hash is for "ChangeMe123!"
+openssl rand -base64 32  # For JWT_SECRET
+openssl rand -base64 32  # For JWT_REFRESH_SECRET
 ```
 
-3. Update `.env` with real values:
-   - `JWT_SECRET` and `JWT_REFRESH_SECRET` (use strong random strings)
-   - `ADMIN_EMAIL` and `ADMIN_PASSWORD_HASH`
+3. Set admin credentials in `.env`:
+```env
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=YourSecurePassword123!
+```
 
-### Running with Docker Compose
-
+4. Start all services:
 ```bash
 cd deploy
 docker-compose up -d
 ```
 
-Services will be available at:
-- API: http://localhost:16162
-- Frontend: http://localhost:16161
-- Health check: http://localhost:16162/healthz
+5. Access the application:
+- **Frontend**: http://localhost:16161
+- **API**: http://localhost:16162
+- **Health check**: http://localhost:16162/healthz
+
+6. Login with admin credentials from `.env`
 
 ### Local Development
 
 #### Backend
 ```bash
 cd backend
-go mod tidy
-go run ./cmd/api
+go mod tidy              # Install dependencies
+go run ./cmd/api         # Run API (requires MongoDB and env vars)
+go test ./...            # Run tests
+go fmt ./...             # Format code
 ```
 
 #### Frontend
 ```bash
 cd frontend
-npm install
-npm run dev
+npm install              # Install dependencies
+npm run dev              # Dev server at http://localhost:5173
+npm run build            # Build for production
+npm run preview          # Preview production build
+```
+
+#### MongoDB Access
+```bash
+docker exec -it deploy-mongo-1 mongosh
+# In mongosh:
+use holyhome
+db.users.find()
+db.bills.find()
+```
+
+### Rebuilding After Changes
+```bash
+cd deploy
+docker-compose build && docker-compose up -d
+docker-compose logs -f api  # View API logs
+```
+
+## Architecture
+
+### Technology Stack
+
+**Backend**:
+- Go 1.25+ with Fiber web framework
+- MongoDB 8.0 for data persistence
+- JWT authentication with refresh tokens
+- TOTP for two-factor authentication
+
+**Frontend**:
+- Vue 3 with Composition API
+- Vite for fast builds
+- Pinia for state management
+- Vue Router for navigation
+- Vue I18n for internationalization
+- Tailwind CSS for styling
+- Axios for API calls
+- ECharts for data visualization
+- Lucide Vue for icons
+
+### Backend Structure
+
+```
+backend/
+├── cmd/api/main.go           # Application entry point
+├── internal/
+│   ├── config/               # Environment configuration
+│   ├── database/             # MongoDB connection & indexing
+│   ├── models/               # 10 data models with Decimal128
+│   ├── handlers/             # HTTP request handlers
+│   ├── services/             # Business logic layer
+│   ├── middleware/           # Auth, RBAC, rate limiting
+│   └── utils/                # JWT, crypto, decimal utilities
+└── go.mod
+```
+
+### Frontend Structure
+
+```
+frontend/src/
+├── main.js                   # App initialization
+├── App.vue                   # Root component
+├── router/index.js           # Route definitions
+├── stores/                   # Pinia stores
+├── views/                    # Page components
+├── components/               # Reusable UI components
+├── api/                      # API client
+├── locales/pl.json           # Polish translations
+└── composables/              # Composition functions
 ```
 
 ## API Documentation
 
-### Authentication
-- `POST /auth/login` - Login with email/password/TOTP
-- `POST /auth/refresh` - Refresh access token
-- `POST /auth/enable-2fa` - Enable TOTP 2FA
+Base URL: `http://localhost:16162` (Docker) or `http://localhost:3000` (local)
+
+All endpoints require JWT bearer token except `/auth/login` and `/healthz`.
+
+### Authentication (`/auth`)
+- `POST /auth/login` - Login with email/password/TOTP (optional)
+- `POST /auth/refresh` - Refresh access token using refresh token
+- `POST /auth/enable-2fa` - Enable TOTP 2FA (returns QR code)
 - `POST /auth/disable-2fa` - Disable TOTP 2FA
 
-### Users & Groups
-- `GET /users` - List all users [ADMIN]
-- `POST /users` - Create user [ADMIN]
+### Users (`/users`)
+- `GET /users` - List all users **[ADMIN]**
+- `POST /users` - Create new user **[ADMIN]**
 - `GET /users/me` - Get current user profile
 - `GET /users/:id` - Get user by ID
-- `PATCH /users/:id` - Update user [ADMIN]
+- `PATCH /users/:id` - Update user **[ADMIN]**
+- `DELETE /users/:id` - Delete user **[ADMIN]**
 - `POST /users/change-password` - Change own password
+
+### Groups (`/groups`)
 - `GET /groups` - List all groups
-- `POST /groups` - Create group [ADMIN]
+- `POST /groups` - Create group **[ADMIN]**
 - `GET /groups/:id` - Get group by ID
-- `PATCH /groups/:id` - Update group [ADMIN]
-- `DELETE /groups/:id` - Delete group [ADMIN]
+- `PATCH /groups/:id` - Update group (name, weight) **[ADMIN]**
+- `DELETE /groups/:id` - Delete group **[ADMIN]**
 
-### Bills & Consumptions
-- `POST /bills` - Create bill [ADMIN]
-- `GET /bills?type=&from=&to=` - List bills with filters
-- `GET /bills/:id` - Get bill by ID
-- `POST /bills/:id/allocate` - Allocate costs [ADMIN]
-- `POST /bills/:id/post` - Post bill (freeze allocations) [ADMIN]
-- `POST /bills/:id/close` - Close bill (immutable) [ADMIN]
-- `POST /consumptions` - Record consumption reading
-- `GET /consumptions?billId=` - Get consumptions for bill
-- `GET /allocations?billId=` - Get allocations for bill
+### Bills (`/bills`)
+- `POST /bills` - Create bill **[ADMIN]**
+- `GET /bills?type=&from=&to=&status=` - List bills with filters
+- `GET /bills/:id` - Get bill details with allocations
+- `POST /bills/:id/allocate` - Calculate cost allocations **[ADMIN]**
+- `POST /bills/:id/post` - Post bill (freeze allocations) **[ADMIN]**
+- `POST /bills/:id/close` - Close bill (make immutable) **[ADMIN]**
 
-### Loans & Balances
-- `POST /loans` - Create loan
-- `POST /loan-payments` - Record loan payment
-- `GET /balances` - Get pairwise balances
-- `GET /balances/me` - Get current user's balance
-- `GET /balances/user/:id` - Get user's balance [ADMIN]
+### Consumptions (`/consumptions`)
+- `POST /consumptions` - Record meter reading
+- `GET /consumptions?billId=&userId=` - Get consumptions by bill/user
+
+### Allocations (`/allocations`)
+- `GET /allocations?billId=&subjectId=` - Get cost allocations
+
+### Payments (`/payments`)
+- `POST /payments` - Record payment for bill
+- `GET /payments?billId=` - Get payments for bill
+
+### Loans (`/loans`, `/loan-payments`)
+- `POST /loans` - Create loan between users
+- `GET /loans?lenderId=&borrowerId=&status=` - List loans with filters
+- `POST /loan-payments` - Record loan repayment
+- `GET /loan-payments?loanId=` - Get payments for loan
+
+### Balances (`/loans/balances`)
+- `GET /loans/balances` - Get all pairwise balances **[ADMIN]**
+- `GET /loans/balances/me` - Get current user's balances
+- `GET /loans/balances/user/:id` - Get user's balances **[ADMIN]**
+
+### Chores (`/chores`, `/chore-assignments`)
+- `POST /chores` - Create chore **[ADMIN]**
+- `GET /chores` - List all chores
+- `POST /chore-assignments` - Assign chore to user **[ADMIN]**
+- `GET /chore-assignments?assigneeId=&status=` - List assignments
+- `PATCH /chore-assignments/:id` - Update assignment status
+
+See [API_EXAMPLES.md](API_EXAMPLES.md) for detailed request/response examples.
 
 ## Data Model
 
-### Collections
-- **users**: Email, password hash, role, group, TOTP secret, active status
-- **groups**: Name, weight (default 1.0)
-- **bills**: Type (electricity/gas/internet/shared), period, amount, units, status
-- **consumptions**: Bill ID, user ID, units, meter value, recorded date
-- **allocations**: Bill ID, subject (user/group), amount, units, method
-- **payments**: Bill ID, payer, amount, paid date
-- **loans**: Lender, borrower, amount, status (open/partial/settled)
-- **loan_payments**: Loan ID, amount, paid date
-- **chores**: Name
-- **chore_assignments**: Chore ID, assignee, due date, status
-- **notifications**: Channel (app), template, scheduled date, status
+MongoDB `holyhome` database with 10 collections:
 
-### Money & Units
-- All monetary values use `Decimal128` (2 decimal places, banker's rounding)
-- All units (kWh, m³) use `Decimal128` (3 decimal places)
+### Users
+- Email (unique)
+- Password hash (Argon2id)
+- Role (ADMIN, RESIDENT)
+- Group reference (optional)
+- TOTP secret (for 2FA)
+- Active status
 
-## Allocation Rules
+### Groups
+- Name
+- Weight (for cost allocation, default 1.0)
 
-### Electricity
-1. Personal usage cost = `user_units / sum_individual_units * cost_individual_pool`
-2. Common area cost = `common_pool / sum_weights * user_weight`
-3. Admin can override with custom weights
-4. `posted` status freezes allocations
-5. `closed` status makes bill immutable
+### Bills
+- Type (electricity, gas, internet, inne/custom)
+- Custom type (for "inne" category)
+- Period (month/year)
+- Total amount (Decimal128)
+- Total units (Decimal128, optional)
+- Status (draft, posted, closed)
+- Created/updated timestamps
 
-### Gas / Internet / Shared
+### Consumptions
+- Bill reference
+- User reference
+- Units consumed (Decimal128)
+- Meter value
+- Recorded date
+
+### Allocations
+- Bill reference
+- Subject (user or group ID)
+- Subject type (user/group)
+- Allocated amount (Decimal128)
+- Allocated units (Decimal128, optional)
+- Allocation method
+
+### Payments
+- Bill reference
+- Payer reference
+- Amount paid (Decimal128)
+- Payment date
+
+### Loans
+- Lender reference
+- Borrower reference
+- Amount (Decimal128)
+- Status (open, partial, settled)
+- Created date
+
+### Loan Payments
+- Loan reference
+- Amount (Decimal128)
+- Payment date
+
+### Chores
+- Name
+- Description
+
+### Chore Assignments
+- Chore reference
+- Assignee reference
+- Due date
+- Status (pending, completed)
+
+### Money & Units Precision
+- **Monetary values**: `Decimal128` with 2 decimal places, banker's rounding (for PLN)
+- **Utility units**: `Decimal128` with 3 decimal places (for kWh, m³)
+
+## Business Logic
+
+### Bill Lifecycle
+
+1. **Draft**: Initial state, allocations can be recalculated
+2. **Posted**: Allocations frozen, payments can be recorded
+3. **Closed**: Immutable, bill is finalized
+
+Transitions are one-way only: draft → posted → closed
+
+### Cost Allocation
+
+#### Electricity (Complex Algorithm)
+The most sophisticated allocation in the system:
+
+1. **Split pools**:
+   - Personal pool: Based on individual meter readings
+   - Common area pool: Shared across all residents/groups
+
+2. **Calculate personal cost**:
+   ```
+   user_personal_cost = (user_units / sum_all_individual_units) × personal_pool
+   ```
+
+3. **Calculate common area cost**:
+   ```
+   user_common_cost = (common_pool / sum_of_weights) × user_or_group_weight
+   ```
+
+4. **Total allocation**:
+   ```
+   total_cost = user_personal_cost + user_common_cost
+   ```
+
+5. **Custom weights**: Admin can override default weights for fine-tuned allocation
+
+Implementation: [backend/internal/services/bill_service.go](backend/internal/services/bill_service.go)
+
+#### Gas / Internet / Custom Bills
 - Equal split among all active users/groups
-- Optional per-usage for gas if readings exist
+- Gas can optionally use per-usage if meter readings exist
+
+#### Shared Budget ("Inne")
+- Flexible custom bills for shared expenses
+- Equal split by default
+
+### Balance Calculations
+
+Pairwise debt netting algorithm:
+
+1. Aggregate all allocations (money owed)
+2. Aggregate all payments (money paid)
+3. Aggregate all loans (money borrowed/lent)
+4. Calculate net balance between each user pair
+5. Determine who owes whom and how much
+
+Returns simplified debt graph for easy settlement.
+
+Implementation: [backend/internal/services/loan_service.go](backend/internal/services/loan_service.go)
 
 ## Security
 
-- Passwords: Argon2id (m=65536, t=3, p=1)
-- JWT: HS256 with separate secrets for access/refresh tokens
-- 2FA: TOTP (30s window, 6 digits, SHA1)
-- Rate limits: 5 login attempts per 15 minutes
-- RBAC: ADMIN (full access), RESIDENT (limited)
+### Authentication & Authorization
+- **Password hashing**: Argon2id (memory: 64MB, iterations: 3, parallelism: 1)
+- **JWT tokens**: HS256 algorithm
+  - Access token: 15 minutes lifetime
+  - Refresh token: 720 hours (30 days) lifetime
+  - Separate secrets for access/refresh
+- **Two-Factor Authentication**: TOTP (30s window, 6 digits, SHA1)
+- **Rate limiting**: 5 login attempts per 15 minutes per IP
+- **RBAC**: Two roles
+  - **ADMIN**: Full system access (user management, bill creation, allocations)
+  - **RESIDENT**: Limited access (view bills, record consumptions, own profile)
+
+### Security Best Practices
+- All passwords stored as Argon2id hashes, never in plaintext
+- JWT secrets must be strong random strings (use `openssl rand -base64 32`)
+- Admin credentials provided via environment variables only
+- HTTPS recommended for production deployments
+- MongoDB authentication enabled in production
 
 ## Logging
 
-Structured JSON logs (English) with:
-- Timestamp
-- Level (info, error, etc.)
-- Service name
-- Request ID
-- User ID
-- Route
-- Latency (ms)
-- Error details
+Structured JSON logging with the following fields:
+- `timestamp`: ISO 8601 format
+- `level`: info, warn, error, debug
+- `service`: "holy-home-api"
+- `request_id`: Unique ID for request tracing
+- `user_id`: Authenticated user (if applicable)
+- `route`: HTTP endpoint
+- `method`: HTTP method
+- `status`: HTTP status code
+- `latency_ms`: Request duration
+- `error`: Error details (if applicable)
+- `message`: Human-readable description
 
-## Next Steps
+Example log entry:
+```json
+{
+  "timestamp": "2025-01-15T10:30:45Z",
+  "level": "info",
+  "service": "holy-home-api",
+  "request_id": "abc123",
+  "user_id": "507f1f77bcf86cd799439011",
+  "route": "/bills",
+  "method": "GET",
+  "status": 200,
+  "latency_ms": 45,
+  "message": "Bills retrieved successfully"
+}
+```
 
-1. **Complete Chores API** - Task management and rotation
-2. **Build Frontend** - Vue 3 application with Polish UI
-3. **Add SSE Events** - Real-time updates for bills, chores
-4. **Export Features** - CSV and PDF generation
-5. **Testing** - Unit tests for allocation math, integration tests, E2E tests
+## Development Roadmap
+
+### Immediate Next Steps
+- [ ] Implement Chores view in frontend
+- [ ] Add SSE endpoint for real-time updates
+- [ ] Implement SSE client in frontend
+- [ ] Add CSV/PDF export functionality
+- [ ] PWA configuration for offline support
+
+### Future Enhancements
+- [ ] Recurring bills automation
+- [ ] Email notifications for due bills
+- [ ] Mobile app (React Native or Flutter)
+- [ ] Multi-currency support
+- [ ] Budget forecasting with ML
+- [ ] Receipt image upload and OCR
+- [ ] Telegram bot integration
+- [ ] Multi-household support
+
+### Testing
+- [ ] Unit tests for allocation algorithms
+- [ ] Integration tests for API endpoints
+- [ ] E2E tests for critical user flows
+- [ ] Load testing for production readiness
+
+## Contributing
+
+This is a personal project. If you'd like to contribute:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
 ## License
 
 Private project - all rights reserved.
+
+## Support
+
+For issues or questions:
+- Create an issue in the repository
+- Check [API_EXAMPLES.md](API_EXAMPLES.md) for usage examples

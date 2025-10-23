@@ -1,10 +1,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import * as echarts from 'echarts'
 
-/**
- * Composable for managing ECharts instances
- * Handles initialization, updates, and cleanup
- */
+// useChart - handles ECharts setup and updates
 export function useChart(chartRef, getOptions) {
   const chartInstance = ref(null)
 
@@ -45,6 +42,7 @@ export function useChart(chartRef, getOptions) {
     chartInstance.value?.dispose()
   })
 
+  // updateChart refreshes chart with new data
   const updateChart = (options) => {
     console.log('[useChart] updateChart called, chartInstance exists:', !!chartInstance.value)
     if (chartInstance.value) {
@@ -55,6 +53,7 @@ export function useChart(chartRef, getOptions) {
     }
   }
 
+  // showLoading shows spinner while loading data
   const showLoading = () => {
     chartInstance.value?.showLoading('default', {
       text: 'Ładowanie...',
@@ -64,6 +63,7 @@ export function useChart(chartRef, getOptions) {
     })
   }
 
+  // hideLoading removes spinner
   const hideLoading = () => {
     chartInstance.value?.hideLoading()
   }
@@ -76,11 +76,7 @@ export function useChart(chartRef, getOptions) {
   }
 }
 
-/**
- * Generate chart options for prediction forecast
- * @param {Object} data - Prediction data with historical and predicted data
- * @param {string} target - Target name (electricity, gas, etc.)
- */
+// getPredictionChartOptions creates chart config for ML predictions
 export function getPredictionChartOptions(data, target) {
   const { historicalDates, historicalValues, predictedDates, predictedValues, lowerBound, upperBound } = data
 

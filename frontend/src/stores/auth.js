@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '../api/client'
 
+// Auth store - handles login, logout, and user permissions
 export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref(localStorage.getItem('accessToken'))
   const refreshToken = ref(localStorage.getItem('refreshToken'))
@@ -11,10 +12,12 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => !!accessToken.value)
   const isAdmin = computed(() => user.value?.role === 'ADMIN')
 
+  // hasPermission checks if user has a specific permission
   const hasPermission = (permission) => {
     return permissions.value.includes(permission)
   }
 
+  // login with email and password
   async function login(email, password) {
     const response = await api.post('/auth/login', {
       email,
@@ -40,6 +43,7 @@ export const useAuthStore = defineStore('auth', () => {
     return response.data
   }
 
+  // refresh gets new access token (called automatically when token expires)
   async function refresh() {
     try {
       const response = await api.post('/auth/refresh', {
@@ -59,6 +63,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // logout clears everything
   function logout() {
     accessToken.value = null
     refreshToken.value = null
@@ -79,6 +84,7 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('refreshToken', refresh)
   }
 
+  // loadUser fetches current user info from API
   async function loadUser() {
     const userResponse = await api.get('/users/me', {
       headers: { Authorization: `Bearer ${accessToken.value}` }
@@ -89,11 +95,8 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('permissions', JSON.stringify(permissions.value))
   }
 
+  // validateSession checks if tokens are still valid
   async function validateSession() {
-    // Try to fetch current user data
-    // If the access token is expired, the API interceptor will automatically
-    // refresh it using the refresh token
-    // If the refresh token is also expired, this will throw an error
     try {
       await loadUser()
       return true

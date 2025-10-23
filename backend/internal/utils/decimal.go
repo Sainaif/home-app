@@ -7,12 +7,12 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// DecimalFromFloat converts float64 to Decimal128
+// DecimalFromFloat converts float to Decimal128 for MongoDB
 func DecimalFromFloat(f float64) (primitive.Decimal128, error) {
 	return primitive.ParseDecimal128(fmt.Sprintf("%.2f", f))
 }
 
-// DecimalToFloat converts Decimal128 to float64
+// DecimalToFloat converts Decimal128 back to float for math
 func DecimalToFloat(d primitive.Decimal128) (float64, error) {
 	s := d.String()
 	var f float64
@@ -20,7 +20,7 @@ func DecimalToFloat(d primitive.Decimal128) (float64, error) {
 	return f, err
 }
 
-// RoundBankers implements banker's rounding (round half to even)
+// RoundBankers does banker's rounding (round half to even)
 func RoundBankers(value float64, decimals int) float64 {
 	multiplier := math.Pow(10, float64(decimals))
 	rounded := value * multiplier
@@ -40,12 +40,12 @@ func RoundBankers(value float64, decimals int) float64 {
 	return math.Ceil(rounded) / multiplier
 }
 
-// RoundPLN rounds to 2 decimal places (PLN)
+// RoundPLN rounds money to 2 decimals
 func RoundPLN(value float64) float64 {
 	return RoundBankers(value, 2)
 }
 
-// RoundUnits rounds to 3 decimal places (kWh/m³)
+// RoundUnits rounds kWh/m³ to 3 decimals
 func RoundUnits(value float64) float64 {
 	return RoundBankers(value, 3)
 }

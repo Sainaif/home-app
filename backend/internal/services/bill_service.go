@@ -34,7 +34,7 @@ type CreateBillRequest struct {
 	Notes           *string    `json:"notes,omitempty"`
 }
 
-// CreateBill creates a new bill (ADMIN only)
+// CreateBill creates a new bill in the database
 func (s *BillService) CreateBill(ctx context.Context, req CreateBillRequest) (*models.Bill, error) {
 	// Validate bill type
 	validTypes := map[string]bool{"electricity": true, "gas": true, "internet": true, "inne": true}
@@ -106,7 +106,7 @@ func (s *BillService) CreateBill(ctx context.Context, req CreateBillRequest) (*m
 	return &bill, nil
 }
 
-// GetBills retrieves bills with optional filtering
+// GetBills gets all bills, can filter by type and dates
 func (s *BillService) GetBills(ctx context.Context, billType *string, from *time.Time, to *time.Time) ([]models.Bill, error) {
 	filter := bson.M{}
 
@@ -139,7 +139,7 @@ func (s *BillService) GetBills(ctx context.Context, billType *string, from *time
 	return bills, nil
 }
 
-// GetBill retrieves a single bill
+// GetBill gets a single bill by ID
 func (s *BillService) GetBill(ctx context.Context, billID primitive.ObjectID) (*models.Bill, error) {
 	var bill models.Bill
 	err := s.db.Collection("bills").FindOne(ctx, bson.M{"_id": billID}).Decode(&bill)
@@ -152,17 +152,17 @@ func (s *BillService) GetBill(ctx context.Context, billID primitive.ObjectID) (*
 	return &bill, nil
 }
 
-// PostBill changes bill status to posted
+// PostBill marks bill as posted (freezes allocations)
 func (s *BillService) PostBill(ctx context.Context, billID primitive.ObjectID) error {
 	return s.updateBillStatus(ctx, billID, "draft", "posted")
 }
 
-// CloseBill changes bill status to closed (immutable)
+// CloseBill marks bill as closed (no more changes)
 func (s *BillService) CloseBill(ctx context.Context, billID primitive.ObjectID) error {
 	return s.updateBillStatus(ctx, billID, "posted", "closed")
 }
 
-// ReopenBill reopens a bill to a previous status (ADMIN only)
+// ReopenBill reverts a bill back to draft or posted status
 func (s *BillService) ReopenBill(ctx context.Context, billID primitive.ObjectID, userID primitive.ObjectID, targetStatus, reason string) error {
 	// Validate target status
 	if targetStatus != "draft" && targetStatus != "posted" {
