@@ -239,3 +239,35 @@ func (h *LoanHandler) DeleteLoan(c *fiber.Ctx) error {
 		"message": "Loan deleted successfully",
 	})
 }
+
+// CompensateLoan manually triggers group debt compensation
+func (h *LoanHandler) CompensateLoan(c *fiber.Ctx) error {
+	userID, _ := middleware.GetUserID(c)
+	userEmail := c.Locals("userEmail").(string)
+
+	result, err := h.loanService.PerformGroupCompensation(c.Context())
+	if err != nil {
+		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "compensate_loans", "loan", nil,
+			map[string]interface{}{"error": err.Error()},
+			c.IP(), c.Get("User-Agent"), "failure")
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "compensate_loans", "loan", nil,
+		map[string]interface{}{
+			"compensations_performed": result.CompensationsPerformed,
+			"total_amount":            result.TotalAmountCompensated,
+		},
+		c.IP(), c.Get("User-Agent"), "success")
+
+	// Broadcast balance updated event if compensations were performed
+	if result.CompensationsPerformed > 0 {
+		h.eventService.Broadcast(services.EventBalanceUpdated, map[string]interface{}{
+			"timestamp": primitive.NewDateTimeFromTime(time.Now()),
+		})
+	}
+
+	return c.JSON(result)
+}

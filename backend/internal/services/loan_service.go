@@ -39,6 +39,11 @@ type CreateLoanPaymentRequest struct {
 	Note      *string            `json:"note,omitempty"`
 }
 
+type CompensationResult struct {
+	CompensationsPerformed int     `json:"compensationsPerformed"`
+	TotalAmountCompensated float64 `json:"totalAmountCompensated"`
+}
+
 type Balance struct {
 	UserID primitive.ObjectID `json:"userId"`
 	Owed   float64            `json:"owed"`   // Money this user owes to others
@@ -77,6 +82,12 @@ func (s *LoanService) CreateLoan(ctx context.Context, req CreateLoanRequest) (*m
 			}
 			return nil, fmt.Errorf("database error: %w", err)
 		}
+	}
+
+	// Perform group compensation on existing loans first
+	_, err := s.PerformGroupCompensation(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("group compensation failed: %w", err)
 	}
 
 	// Check for reverse debt (borrower owes lender)
@@ -216,6 +227,209 @@ func (s *LoanService) CreateLoan(ctx context.Context, req CreateLoanRequest) (*m
 
 func getStringPtr(s string) *string {
 	return &s
+}
+
+// PerformGroupCompensation performs debt compensation for group members
+// When GroupMember1 owes External and External owes GroupMember2 (same group),
+// the debts are offset without creating internal group debt
+func (s *LoanService) PerformGroupCompensation(ctx context.Context) (*CompensationResult, error) {
+	// Get all users with their group memberships
+	usersCursor, err := s.db.Collection("users").Find(ctx, bson.M{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch users: %w", err)
+	}
+	defer usersCursor.Close(ctx)
+
+	var users []models.User
+	if err := usersCursor.All(ctx, &users); err != nil {
+		return nil, fmt.Errorf("failed to decode users: %w", err)
+	}
+
+	// Build map: userID -> groupID
+	userGroupMap := make(map[primitive.ObjectID]*primitive.ObjectID)
+	for _, user := range users {
+		userGroupMap[user.ID] = user.GroupID
+	}
+
+	// Get all open/partial loans, sorted by creation date (oldest first)
+	cursor, err := s.db.Collection("loans").Find(ctx, bson.M{
+		"status": bson.M{"$in": []string{"open", "partial"}},
+	}, options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}}))
+	if err != nil {
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var loans []models.Loan
+	if err := cursor.All(ctx, &loans); err != nil {
+		return nil, fmt.Errorf("failed to decode loans: %w", err)
+	}
+
+	// Calculate remaining amounts for each loan
+	type loanWithRemaining struct {
+		loan      models.Loan
+		remaining float64
+	}
+
+	loansWithRemaining := []loanWithRemaining{}
+	for _, loan := range loans {
+		loanAmount, _ := utils.DecimalToFloat(loan.AmountPLN)
+		totalPaid, err := s.getTotalPaidForLoan(ctx, loan.ID)
+		if err != nil {
+			return nil, err
+		}
+		remaining := loanAmount - totalPaid
+		if remaining > 0 {
+			loansWithRemaining = append(loansWithRemaining, loanWithRemaining{
+				loan:      loan,
+				remaining: remaining,
+			})
+		}
+	}
+
+	compensationsPerformed := 0
+	totalAmountCompensated := 0.0
+
+	// Find compensation opportunities
+	// Pattern: GroupMemberA owes External, External owes GroupMemberB (same group)
+	// Loan1: Lender=External, Borrower=GroupMemberA
+	// Loan2: Lender=GroupMemberB, Borrower=External
+	for i := range loansWithRemaining {
+		if loansWithRemaining[i].remaining <= 0 {
+			continue
+		}
+
+		loan1 := loansWithRemaining[i].loan
+		external := loan1.LenderID
+		groupMemberA := loan1.BorrowerID
+
+		// Check if groupMemberA is in a group
+		groupMemberAGroupID := userGroupMap[groupMemberA]
+		if groupMemberAGroupID == nil {
+			continue
+		}
+
+		// Check if external is NOT in the same group (or no group)
+		externalGroupID := userGroupMap[external]
+		if externalGroupID != nil && *externalGroupID == *groupMemberAGroupID {
+			continue
+		}
+
+		// Find loans where External is borrower and lender is in same group as GroupMemberA
+		for j := range loansWithRemaining {
+			if i == j || loansWithRemaining[j].remaining <= 0 {
+				continue
+			}
+
+			loan2 := loansWithRemaining[j].loan
+
+			// Check if External is the borrower in loan2
+			if loan2.BorrowerID != external {
+				continue
+			}
+
+			groupMemberB := loan2.LenderID
+			groupMemberBGroupID := userGroupMap[groupMemberB]
+
+			// Check if GroupMemberB is in the same group as GroupMemberA
+			if groupMemberBGroupID == nil || *groupMemberBGroupID != *groupMemberAGroupID {
+				continue
+			}
+
+			// Found a compensation opportunity!
+			compensationAmount := loansWithRemaining[i].remaining
+			if loansWithRemaining[j].remaining < compensationAmount {
+				compensationAmount = loansWithRemaining[j].remaining
+			}
+
+			// Create payments with compensation note
+			compensationNote := getStringPtr("Kompensacja grupowa")
+
+			// Payment on loan1 (GroupMemberA -> External)
+			amountDec, _ := utils.DecimalFromFloat(compensationAmount)
+			payment1 := models.LoanPayment{
+				ID:        primitive.NewObjectID(),
+				LoanID:    loan1.ID,
+				AmountPLN: amountDec,
+				PaidAt:    time.Now(),
+				Note:      compensationNote,
+			}
+
+			_, err = s.db.Collection("loan_payments").InsertOne(ctx, payment1)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create compensation payment 1: %w", err)
+			}
+
+			// Update loan1 status
+			newTotalPaid1, _ := s.getTotalPaidForLoan(ctx, loan1.ID)
+			loanAmount1, _ := utils.DecimalToFloat(loan1.AmountPLN)
+			var newStatus1 string
+			if newTotalPaid1 >= loanAmount1 {
+				newStatus1 = "settled"
+			} else {
+				newStatus1 = "partial"
+			}
+
+			_, err = s.db.Collection("loans").UpdateOne(
+				ctx,
+				bson.M{"_id": loan1.ID},
+				bson.M{"$set": bson.M{"status": newStatus1}},
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to update loan1 status: %w", err)
+			}
+
+			// Payment on loan2 (External -> GroupMemberB)
+			payment2 := models.LoanPayment{
+				ID:        primitive.NewObjectID(),
+				LoanID:    loan2.ID,
+				AmountPLN: amountDec,
+				PaidAt:    time.Now(),
+				Note:      compensationNote,
+			}
+
+			_, err = s.db.Collection("loan_payments").InsertOne(ctx, payment2)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create compensation payment 2: %w", err)
+			}
+
+			// Update loan2 status
+			newTotalPaid2, _ := s.getTotalPaidForLoan(ctx, loan2.ID)
+			loanAmount2, _ := utils.DecimalToFloat(loan2.AmountPLN)
+			var newStatus2 string
+			if newTotalPaid2 >= loanAmount2 {
+				newStatus2 = "settled"
+			} else {
+				newStatus2 = "partial"
+			}
+
+			_, err = s.db.Collection("loans").UpdateOne(
+				ctx,
+				bson.M{"_id": loan2.ID},
+				bson.M{"$set": bson.M{"status": newStatus2}},
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to update loan2 status: %w", err)
+			}
+
+			// Update remaining amounts
+			loansWithRemaining[i].remaining -= compensationAmount
+			loansWithRemaining[j].remaining -= compensationAmount
+
+			compensationsPerformed++
+			totalAmountCompensated += compensationAmount
+
+			// If loan1 is fully settled, break to outer loop
+			if loansWithRemaining[i].remaining <= 0 {
+				break
+			}
+		}
+	}
+
+	return &CompensationResult{
+		CompensationsPerformed: compensationsPerformed,
+		TotalAmountCompensated: totalAmountCompensated,
+	}, nil
 }
 
 // CreateLoanPayment records a loan repayment

@@ -241,16 +241,21 @@
                       Brak spłat
                     </div>
                     <div v-else class="space-y-2">
-                      <div v-for="payment in loanPayments[loan.id]" :key="payment.id" class="flex items-center justify-between bg-gray-750 p-3 rounded text-sm">
+                      <div v-for="payment in loanPayments[loan.id]" :key="payment.id"
+                           class="flex items-center justify-between p-3 rounded text-sm"
+                           :class="payment.note === 'Kompensacja grupowa' ? 'bg-purple-900 bg-opacity-30 border border-purple-500' : 'bg-gray-750'">
                         <div class="flex items-center gap-3">
-                          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" :class="payment.note === 'Kompensacja grupowa' ? 'text-purple-400' : 'text-green-400'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M20 6 9 17l-5-5"/>
                           </svg>
-                          <span class="font-medium text-green-400">{{ formatMoney(payment.amountPLN) }} PLN</span>
+                          <span class="font-medium" :class="payment.note === 'Kompensacja grupowa' ? 'text-purple-400' : 'text-green-400'">{{ formatMoney(payment.amountPLN) }} PLN</span>
                           <span class="text-gray-400">•</span>
                           <span class="text-gray-300">{{ formatDate(payment.paidAt) }}</span>
+                          <span v-if="payment.note === 'Kompensacja grupowa'" class="px-2 py-1 bg-purple-600 text-purple-100 text-xs rounded-full font-medium">
+                            Kompensacja
+                          </span>
                         </div>
-                        <div v-if="payment.note" class="text-gray-400 italic text-xs">
+                        <div v-if="payment.note && payment.note !== 'Kompensacja grupowa'" class="text-gray-400 italic text-xs">
                           {{ payment.note }}
                         </div>
                       </div>

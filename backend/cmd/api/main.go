@@ -232,6 +232,7 @@ func main() {
 	// Loan routes
 	loans := app.Group("/loans")
 	loans.Post("/", middleware.AuthMiddleware(cfg), middleware.RequirePermission("loans.create", getRoleService), loanHandler.CreateLoan)
+	loans.Post("/compensate", middleware.AuthMiddleware(cfg), middleware.RequirePermission("loans.create", getRoleService), loanHandler.CompensateLoan)
 	loans.Get("/", middleware.AuthMiddleware(cfg), middleware.RequirePermission("loans.read", getRoleService), loanHandler.GetLoans)
 	loans.Get("/balances", middleware.AuthMiddleware(cfg), middleware.RequirePermission("loans.read", getRoleService), loanHandler.GetBalances)
 	loans.Get("/balances/me", middleware.AuthMiddleware(cfg), middleware.RequirePermission("loans.read", getRoleService), loanHandler.GetMyBalance)
