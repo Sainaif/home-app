@@ -108,7 +108,7 @@ func main() {
 	})
 
 	// Initialize services
-	userService := services.NewUserService(db.Database)
+	userService := services.NewUserService(db.Database, cfg)
 	groupService := services.NewGroupService(db.Database)
 	billService := services.NewBillService(db.Database)
 	consumptionService := services.NewConsumptionService(db.Database)
@@ -135,9 +135,9 @@ func main() {
 	log.Println("Permissions and roles initialized")
 
 	// Initialize handlers
-	authHandler := handlers.NewAuthHandler(authService)
+	authHandler := handlers.NewAuthHandler(authService, userService, auditService)
 	sessionHandler := handlers.NewSessionHandler(sessionService)
-	userHandler := handlers.NewUserHandler(userService, auditService, roleService)
+	userHandler := handlers.NewUserHandler(userService, auditService, roleService, cfg)
 	groupHandler := handlers.NewGroupHandler(groupService, auditService)
 	billHandler := handlers.NewBillHandler(billService, consumptionService, allocationService, auditService, eventService)
 	recurringBillHandler := handlers.NewRecurringBillHandler(recurringBillService, auditService)
@@ -169,6 +169,10 @@ func main() {
 	auth.Get("/passkeys", middleware.AuthMiddleware(cfg), authHandler.ListPasskeys)
 	auth.Delete("/passkeys", middleware.AuthMiddleware(cfg), authHandler.DeletePasskey)
 
+	// Password reset routes (public)
+	auth.Get("/validate-reset-token", authHandler.ValidateResetToken)
+	auth.Post("/reset-password", middleware.RateLimitMiddleware(5, 15*time.Minute), authHandler.ResetPasswordWithToken)
+
 	// Session routes
 	sessions := app.Group("/sessions")
 	sessions.Get("/", middleware.AuthMiddleware(cfg), sessionHandler.GetSessions)
@@ -185,6 +189,7 @@ func main() {
 	users.Delete("/:id", middleware.AuthMiddleware(cfg), middleware.RequirePermission("users.delete", getRoleService), userHandler.DeleteUser)
 	users.Post("/change-password", middleware.AuthMiddleware(cfg), userHandler.ChangePassword)
 	users.Post("/:id/force-password-change", middleware.AuthMiddleware(cfg), middleware.RequirePermission("users.update", getRoleService), userHandler.ForcePasswordChange)
+	users.Post("/:id/generate-reset-link", middleware.AuthMiddleware(cfg), middleware.RequirePermission("users.update", getRoleService), userHandler.GeneratePasswordResetLink)
 
 	// Group routes
 	groups := app.Group("/groups")
@@ -325,6 +330,26 @@ func main() {
 	exports.Get("/balances", middleware.AuthMiddleware(cfg), exportHandler.ExportBalances)
 	exports.Get("/chores", middleware.AuthMiddleware(cfg), exportHandler.ExportChores)
 	exports.Get("/consumptions", middleware.AuthMiddleware(cfg), exportHandler.ExportConsumptions)
+
+	// Start password reset token cleanup job
+	go func() {
+		ticker := time.NewTicker(6 * time.Hour)
+		defer ticker.Stop()
+
+		// Run cleanup immediately on startup
+		log.Println("Running initial password reset token cleanup...")
+		if err := userService.CleanupExpiredResetTokens(context.Background()); err != nil {
+			log.Printf("Error during initial cleanup: %v", err)
+		}
+
+		// Run cleanup every 6 hours
+		for range ticker.C {
+			log.Println("Running scheduled password reset token cleanup...")
+			if err := userService.CleanupExpiredResetTokens(context.Background()); err != nil {
+				log.Printf("Error during scheduled cleanup: %v", err)
+			}
+		}
+	}()
 
 	// Start server
 	addr := fmt.Sprintf("%s:%s", cfg.App.Host, cfg.App.Port)

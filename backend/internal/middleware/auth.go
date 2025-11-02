@@ -101,6 +101,15 @@ func GetUserRole(c *fiber.Ctx) (string, error) {
 	return role, nil
 }
 
+// GetUserEmail extracts the user email from the request context
+func GetUserEmail(c *fiber.Ctx) (string, error) {
+	email, ok := c.Locals("userEmail").(string)
+	if !ok {
+		return "", fiber.ErrUnauthorized
+	}
+	return email, nil
+}
+
 // RequirePermission creates a middleware that checks for specific permissions
 // This requires the RoleService to check if the user's role has the permission
 func RequirePermission(permission string, roleServiceGetter func() interface{}) fiber.Handler {

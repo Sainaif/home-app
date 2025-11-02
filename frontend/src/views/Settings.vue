@@ -282,6 +282,13 @@
                       Zmień hasło
                     </button>
                     <button
+                      @click="openResetLinkModal(user)"
+                      class="btn btn-sm btn-primary text-xs"
+                      :disabled="user.id === authStore.user.id"
+                      title="Generuj link do resetowania hasła">
+                      Link resetowania
+                    </button>
+                    <button
                       @click="deleteUser(user)"
                       class="btn btn-sm btn-secondary"
                       :disabled="user.id === authStore.user.id || user.isActive"
@@ -749,6 +756,76 @@
       </div>
     </div>
 
+    <!-- Generate Password Reset Link Modal -->
+    <div v-if="showResetLinkModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" @click.self="closeResetLinkModal">
+      <div class="card max-w-lg w-full mx-4">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-2xl font-bold">Generuj link resetowania hasła</h2>
+          <button @click="closeResetLinkModal" class="text-gray-400 hover:text-white">
+            <X class="w-6 h-6" />
+          </button>
+        </div>
+
+        <div v-if="!generatedResetLink" class="space-y-4">
+          <p class="text-sm text-gray-400">
+            Generuj link do resetowania hasła dla użytkownika: <strong>{{ selectedUserForReset?.name }}</strong>
+          </p>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">Czas ważności linku</label>
+            <select v-model="resetLinkExpiration" class="input">
+              <option :value="15">15 minut</option>
+              <option :value="60">1 godzina</option>
+              <option :value="360">6 godzin</option>
+              <option :value="1440">24 godziny</option>
+            </select>
+          </div>
+
+          <div v-if="resetLinkError" class="text-red-500 text-sm">{{ resetLinkError }}</div>
+
+          <div class="flex gap-3">
+            <button @click="generateResetLink" :disabled="generatingResetLink" class="btn btn-primary flex-1">
+              {{ generatingResetLink ? 'Generowanie...' : 'Generuj link' }}
+            </button>
+            <button type="button" @click="closeResetLinkModal" class="btn btn-outline">
+              Anuluj
+            </button>
+          </div>
+        </div>
+
+        <div v-else class="space-y-4">
+          <p class="text-sm text-green-400 mb-4">
+            Link został wygenerowany pomyślnie!
+          </p>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">Link resetowania hasła:</label>
+            <div class="flex gap-2">
+              <input
+                :value="generatedResetLink"
+                readonly
+                class="input flex-1 text-sm"
+                ref="resetLinkInput"
+              />
+              <button @click="copyResetLinkToClipboard" class="btn btn-primary">
+                {{ resetLinkCopied ? 'Skopiowano!' : 'Kopiuj' }}
+              </button>
+            </div>
+          </div>
+
+          <p class="text-xs text-gray-400">
+            Link wygaśnie za: <strong>{{ resetLinkExpiration }} {{ resetLinkExpiration === 1 ? 'minutę' : resetLinkExpiration < 5 ? 'minuty' : 'minut' }}</strong>
+          </p>
+
+          <div class="flex gap-3">
+            <button @click="closeResetLinkModal" class="btn btn-primary flex-1">
+              Zamknij
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Create/Edit Group Modal -->
     <div v-if="showCreateGroupModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" @click.self="closeGroupModal">
       <div class="card max-w-lg w-full mx-4">
@@ -971,6 +1048,16 @@ const showCreateUserModal = ref(false)
 const showEditUserModal = ref(false)
 const showCreateGroupModal = ref(false)
 const showManageGroupUsersModal = ref(false)
+const showResetLinkModal = ref(false)
+
+// Password reset link state
+const selectedUserForReset = ref(null)
+const resetLinkExpiration = ref(60) // Default 1 hour
+const generatingResetLink = ref(false)
+const generatedResetLink = ref('')
+const resetLinkError = ref('')
+const resetLinkCopied = ref(false)
+const resetLinkInput = ref(null)
 
 // Forms
 const newUser = ref({
@@ -1259,6 +1346,59 @@ async function deleteUser(user) {
 
 function viewUserDashboard(userId) {
   router.push(`/dashboard/${userId}`)
+}
+
+// Password reset link functions
+function openResetLinkModal(user) {
+  selectedUserForReset.value = user
+  resetLinkExpiration.value = 60 // Reset to default
+  generatedResetLink.value = ''
+  resetLinkError.value = ''
+  resetLinkCopied.value = false
+  showResetLinkModal.value = true
+}
+
+function closeResetLinkModal() {
+  showResetLinkModal.value = false
+  selectedUserForReset.value = null
+  generatedResetLink.value = ''
+  resetLinkError.value = ''
+  resetLinkCopied.value = false
+}
+
+async function generateResetLink() {
+  if (!selectedUserForReset.value) return
+
+  generatingResetLink.value = true
+  resetLinkError.value = ''
+
+  try {
+    const response = await api.post(`/users/${selectedUserForReset.value.id}/generate-reset-link`, {
+      expirationMinutes: resetLinkExpiration.value
+    })
+    generatedResetLink.value = response.data.resetURL
+  } catch (err) {
+    console.error('Failed to generate reset link:', err)
+    resetLinkError.value = err.response?.data?.error || err.message || 'Nie udało się wygenerować linku'
+  } finally {
+    generatingResetLink.value = false
+  }
+}
+
+async function copyResetLinkToClipboard() {
+  try {
+    await navigator.clipboard.writeText(generatedResetLink.value)
+    resetLinkCopied.value = true
+    setTimeout(() => {
+      resetLinkCopied.value = false
+    }, 2000)
+  } catch (err) {
+    console.error('Failed to copy to clipboard:', err)
+    // Fallback: select the text
+    if (resetLinkInput.value) {
+      resetLinkInput.value.select()
+    }
+  }
 }
 
 function editGroup(group) {

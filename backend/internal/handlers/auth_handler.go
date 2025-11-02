@@ -11,12 +11,16 @@ import (
 )
 
 type AuthHandler struct {
-	authService *services.AuthService
+	authService  *services.AuthService
+	userService  *services.UserService
+	auditService *services.AuditService
 }
 
-func NewAuthHandler(authService *services.AuthService) *AuthHandler {
+func NewAuthHandler(authService *services.AuthService, userService *services.UserService, auditService *services.AuditService) *AuthHandler {
 	return &AuthHandler{
-		authService: authService,
+		authService:  authService,
+		userService:  userService,
+		auditService: auditService,
 	}
 }
 
@@ -387,5 +391,132 @@ func (h *AuthHandler) DeletePasskey(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"message": "Passkey deleted successfully",
+	})
+}
+
+// ValidateResetToken godoc
+// @Summary Validate password reset token
+// @Description Check if a password reset token is valid and not expired
+// @Tags auth
+// @Produce json
+// @Param token query string true "Reset token"
+// @Success 200 {object} map[string]interface{}
+// @Router /auth/validate-reset-token [get]
+func (h *AuthHandler) ValidateResetToken(c *fiber.Ctx) error {
+	token := c.Query("token")
+	if token == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Token is required",
+		})
+	}
+
+	// Validate the token
+	resetToken, err := h.userService.ValidateResetToken(c.Context(), token)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"valid": false,
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"valid":     true,
+		"expiresAt": resetToken.ExpiresAt,
+		"userId":    resetToken.UserID.Hex(),
+	})
+}
+
+// ResetPasswordWithToken godoc
+// @Summary Reset password with token
+// @Description Reset user password using a valid reset token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body map[string]string true "Token and new password"
+// @Success 200 {object} services.TokenResponse
+// @Router /auth/reset-password [post]
+func (h *AuthHandler) ResetPasswordWithToken(c *fiber.Ctx) error {
+	var req struct {
+		Token       string `json:"token"`
+		NewPassword string `json:"newPassword"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	// Validate inputs
+	if req.Token == "" || req.NewPassword == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Token and new password are required",
+		})
+	}
+
+	// Validate password strength (minimum 8 characters)
+	if len(req.NewPassword) < 8 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Password must be at least 8 characters long",
+		})
+	}
+
+	// Validate the token first to get user ID for audit logging
+	resetToken, err := h.userService.ValidateResetToken(c.Context(), req.Token)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	// Get user info for audit logging
+	user, err := h.userService.GetUser(c.Context(), resetToken.UserID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to retrieve user information",
+		})
+	}
+
+	// Reset the password and get JWT tokens
+	tokens, err := h.userService.ResetPasswordWithToken(c.Context(), req.Token, req.NewPassword)
+	if err != nil {
+		// Log failed attempt
+		h.auditService.LogAction(
+			c.Context(),
+			resetToken.UserID,
+			user.Email,
+			user.Name,
+			"password_reset.complete",
+			"user",
+			&resetToken.UserID,
+			map[string]interface{}{"error": err.Error()},
+			c.IP(),
+			c.Get("User-Agent"),
+			"failure",
+		)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	// Log successful password reset
+	h.auditService.LogAction(
+		c.Context(),
+		resetToken.UserID,
+		user.Email,
+		user.Name,
+		"password_reset.complete",
+		"user",
+		&resetToken.UserID,
+		map[string]interface{}{"method": "reset_token"},
+		c.IP(),
+		c.Get("User-Agent"),
+		"success",
+	)
+
+	return c.JSON(fiber.Map{
+		"accessToken":  tokens["accessToken"],
+		"refreshToken": tokens["refreshToken"],
+		"message":      "Password reset successfully",
 	})
 }
