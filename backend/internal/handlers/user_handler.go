@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/sainaif/holy-home/internal/config"
 	"github.com/sainaif/holy-home/internal/middleware"
 	"github.com/sainaif/holy-home/internal/services"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -13,13 +14,15 @@ type UserHandler struct {
 	userService  *services.UserService
 	auditService *services.AuditService
 	roleService  *services.RoleService
+	config       *config.Config
 }
 
-func NewUserHandler(userService *services.UserService, auditService *services.AuditService, roleService *services.RoleService) *UserHandler {
+func NewUserHandler(userService *services.UserService, auditService *services.AuditService, roleService *services.RoleService, cfg *config.Config) *UserHandler {
 	return &UserHandler{
 		userService:  userService,
 		auditService: auditService,
 		roleService:  roleService,
+		config:       cfg,
 	}
 }
 
@@ -125,8 +128,13 @@ func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
 	// Get target user before update for audit
 	targetUser, _ := h.userService.GetUser(c.Context(), userID)
 
+	// Get current user email for audit logging
+	currentEmail, err := middleware.GetUserEmail(c)
+	if err != nil {
+		currentEmail = "unknown"
+	}
+
 	if err := h.userService.UpdateUser(c.Context(), userID, req); err != nil {
-		currentEmail := c.Locals(middleware.UserEmail).(string)
 		h.auditService.LogAction(c.Context(), currentUserID, currentEmail, "", "user.update", "user", &userID, map[string]interface{}{"error": err.Error()}, c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
@@ -134,7 +142,6 @@ func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
 	}
 
 	// Log successful update
-	currentEmail := c.Locals(middleware.UserEmail).(string)
 	details := map[string]interface{}{"targetUser": targetUser.Email}
 	if req.Role != nil {
 		details["newRole"] = *req.Role
@@ -237,6 +244,84 @@ func (h *UserHandler) ForcePasswordChange(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"message": "User will be required to change password on next login",
+	})
+}
+
+// GeneratePasswordResetLink generates a password reset link for a user (ADMIN only)
+func (h *UserHandler) GeneratePasswordResetLink(c *fiber.Ctx) error {
+	// Get target user ID from params
+	id := c.Params("id")
+	userID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid user ID",
+		})
+	}
+
+	// Get admin user ID from context
+	adminID, err := middleware.GetUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
+	}
+
+	// Parse request body
+	var req struct {
+		ExpirationMinutes int `json:"expirationMinutes"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	// Validate expiration time (1 minute to 24 hours)
+	if req.ExpirationMinutes < 1 || req.ExpirationMinutes > 1440 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Expiration minutes must be between 1 and 1440 (24 hours)",
+		})
+	}
+
+	// Generate reset link
+	resetURL, err := h.userService.GeneratePasswordResetToken(
+		c.Context(),
+		userID,
+		adminID,
+		req.ExpirationMinutes,
+		h.config.App.BaseURL,
+	)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	// Log the action
+	adminEmail, err := middleware.GetUserEmail(c)
+	if err != nil {
+		adminEmail = "unknown"
+	}
+	h.auditService.LogAction(
+		c.Context(),
+		adminID,
+		adminEmail,
+		"",
+		"password_reset_link.generate",
+		"user",
+		&userID,
+		map[string]interface{}{
+			"expirationMinutes": req.ExpirationMinutes,
+		},
+		c.IP(),
+		c.Get("User-Agent"),
+		"success",
+	)
+
+	return c.JSON(fiber.Map{
+		"resetURL":           resetURL,
+		"expiresInMinutes":   req.ExpirationMinutes,
+		"message":            "Password reset link generated successfully",
 	})
 }
 

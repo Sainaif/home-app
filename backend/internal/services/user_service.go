@@ -11,16 +11,21 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 
+	"github.com/sainaif/holy-home/internal/config"
 	"github.com/sainaif/holy-home/internal/models"
 	"github.com/sainaif/holy-home/internal/utils"
 )
 
 type UserService struct {
-	db *mongo.Database
+	db     *mongo.Database
+	config *config.Config
 }
 
-func NewUserService(db *mongo.Database) *UserService {
-	return &UserService{db: db}
+func NewUserService(db *mongo.Database, cfg *config.Config) *UserService {
+	return &UserService{
+		db:     db,
+		config: cfg,
+	}
 }
 
 type CreateUserRequest struct {
@@ -297,6 +302,182 @@ func (s *UserService) DeleteUser(ctx context.Context, userID primitive.ObjectID)
 
 	if result.DeletedCount == 0 {
 		return fmt.Errorf("user not found")
+	}
+
+	return nil
+}
+
+// GeneratePasswordResetToken generates a password reset token for a user
+// Returns the full reset URL that should be shared with the user
+func (s *UserService) GeneratePasswordResetToken(ctx context.Context, userID primitive.ObjectID, adminID primitive.ObjectID, expirationMinutes int, baseURL string) (string, error) {
+	// Verify user exists
+	var user models.User
+	err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return "", errors.New("user not found")
+		}
+		return "", fmt.Errorf("database error: %w", err)
+	}
+
+	// Generate secure token
+	token, err := utils.GenerateSecureToken()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate token: %w", err)
+	}
+
+	// Hash the token for storage
+	tokenHash := utils.HashToken(token)
+
+	// Calculate expiration time
+	expiresAt := time.Now().Add(time.Duration(expirationMinutes) * time.Minute)
+
+	// Create reset token record
+	resetToken := models.PasswordResetToken{
+		ID:               primitive.NewObjectID(),
+		UserID:           userID,
+		TokenHash:        tokenHash,
+		ExpiresAt:        expiresAt,
+		Used:             false,
+		CreatedAt:        time.Now(),
+		CreatedByAdminID: adminID,
+	}
+
+	// Store in database
+	_, err = s.db.Collection("password_reset_tokens").InsertOne(ctx, resetToken)
+	if err != nil {
+		return "", fmt.Errorf("failed to store reset token: %w", err)
+	}
+
+	// Construct the full reset URL
+	resetURL := fmt.Sprintf("%s/reset-password?token=%s", baseURL, token)
+
+	return resetURL, nil
+}
+
+// ValidateResetToken validates a password reset token
+// Returns the token record if valid, or an error if invalid/expired/used
+func (s *UserService) ValidateResetToken(ctx context.Context, token string) (*models.PasswordResetToken, error) {
+	// Validate token format
+	if err := utils.ValidateTokenFormat(token); err != nil {
+		return nil, fmt.Errorf("invalid token format: %w", err)
+	}
+
+	// Hash the token to find it in database
+	tokenHash := utils.HashToken(token)
+
+	// Find the token in database
+	var resetToken models.PasswordResetToken
+	err := s.db.Collection("password_reset_tokens").FindOne(ctx, bson.M{
+		"token_hash": tokenHash,
+	}).Decode(&resetToken)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("invalid or expired reset token")
+		}
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+
+	// Check if token is expired
+	if time.Now().After(resetToken.ExpiresAt) {
+		return nil, errors.New("reset token has expired")
+	}
+
+	// Check if token has already been used
+	if resetToken.Used {
+		return nil, errors.New("reset token has already been used")
+	}
+
+	return &resetToken, nil
+}
+
+// ResetPasswordWithToken resets a user's password using a valid reset token
+// Returns JWT tokens for automatic login after password reset
+func (s *UserService) ResetPasswordWithToken(ctx context.Context, token string, newPassword string) (map[string]string, error) {
+	// Validate the token
+	resetToken, err := s.ValidateResetToken(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+
+	// Hash the new password
+	newHash, err := utils.HashPassword(newPassword)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash new password: %w", err)
+	}
+
+	// Update user password and clear must_change_password flag
+	now := time.Now()
+	_, err = s.db.Collection("users").UpdateOne(
+		ctx,
+		bson.M{"_id": resetToken.UserID},
+		bson.M{"$set": bson.M{
+			"password_hash":        newHash,
+			"must_change_password": false,
+		}},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update password: %w", err)
+	}
+
+	// Mark token as used
+	tokenHash := utils.HashToken(token)
+	_, err = s.db.Collection("password_reset_tokens").UpdateOne(
+		ctx,
+		bson.M{"token_hash": tokenHash},
+		bson.M{"$set": bson.M{
+			"used":    true,
+			"used_at": &now,
+		}},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to mark token as used: %w", err)
+	}
+
+	// Get user details for JWT generation
+	var user models.User
+	err = s.db.Collection("users").FindOne(ctx, bson.M{"_id": resetToken.UserID}).Decode(&user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve user: %w", err)
+	}
+
+	// Generate JWT tokens for automatic login
+	accessToken, err := utils.GenerateAccessToken(user.ID, user.Email, user.Role, s.config.JWT.Secret, s.config.JWT.AccessTTL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
+	}
+
+	refreshToken, err := utils.GenerateRefreshToken(user.ID, s.config.JWT.RefreshSecret, s.config.JWT.RefreshTTL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
+	}
+
+	return map[string]string{
+		"accessToken":  accessToken,
+		"refreshToken": refreshToken,
+	}, nil
+}
+
+// CleanupExpiredResetTokens removes expired and used tokens from the database
+// This should be called periodically (e.g., via a cron job)
+func (s *UserService) CleanupExpiredResetTokens(ctx context.Context) error {
+	now := time.Now()
+
+	// Delete tokens that are either expired or used
+	filter := bson.M{
+		"$or": []bson.M{
+			{"expires_at": bson.M{"$lt": now}},
+			{"used": true},
+		},
+	}
+
+	result, err := s.db.Collection("password_reset_tokens").DeleteMany(ctx, filter)
+	if err != nil {
+		return fmt.Errorf("failed to cleanup expired tokens: %w", err)
+	}
+
+	if result.DeletedCount > 0 {
+		log.Printf("Cleaned up %d expired/used password reset tokens", result.DeletedCount)
 	}
 
 	return nil

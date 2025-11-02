@@ -254,6 +254,18 @@ type Session struct {
 	ExpiresAt    time.Time          `bson:"expires_at" json:"expiresAt"`
 }
 
+// PasswordResetToken represents a password reset token for users
+type PasswordResetToken struct {
+	ID               primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	UserID           primitive.ObjectID `bson:"user_id" json:"userId"`
+	TokenHash        string             `bson:"token_hash" json:"-"` // SHA-256 hash of the token
+	ExpiresAt        time.Time          `bson:"expires_at" json:"expiresAt"`
+	Used             bool               `bson:"used" json:"used"`
+	UsedAt           *time.Time         `bson:"used_at,omitempty" json:"usedAt,omitempty"`
+	CreatedAt        time.Time          `bson:"created_at" json:"createdAt"`
+	CreatedByAdminID primitive.ObjectID `bson:"created_by_admin_id" json:"createdByAdminId"`
+}
+
 // AuditLog represents a log entry for user/admin actions
 type AuditLog struct {
 	ID          primitive.ObjectID     `bson:"_id,omitempty" json:"id"`
