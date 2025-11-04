@@ -100,15 +100,42 @@ func (s *UserService) CreateUser(ctx context.Context, req CreateUserRequest) (*m
 	return &user, nil
 }
 
-// GetUsers retrieves all users (ADMIN only)
-func (s *UserService) GetUsers(ctx context.Context) ([]models.User, error) {
-	cursor, err := s.db.Collection("users").Find(ctx, bson.M{})
+// UserWithGroup extends User with group name for API responses
+type UserWithGroup struct {
+	models.User `bson:",inline"`
+	GroupName   string `bson:"groupName,omitempty" json:"groupName,omitempty"`
+}
+
+// GetUsers retrieves all users with their group names (ADMIN only)
+func (s *UserService) GetUsers(ctx context.Context) ([]UserWithGroup, error) {
+	// Use aggregation pipeline to join with groups collection
+	pipeline := mongo.Pipeline{
+		// Stage 1: Lookup group information
+		{{Key: "$lookup", Value: bson.D{
+			{Key: "from", Value: "groups"},
+			{Key: "localField", Value: "group_id"},
+			{Key: "foreignField", Value: "_id"},
+			{Key: "as", Value: "groupData"},
+		}}},
+		// Stage 2: Add groupName field from the joined group
+		{{Key: "$addFields", Value: bson.D{
+			{Key: "groupName", Value: bson.D{
+				{Key: "$arrayElemAt", Value: bson.A{"$groupData.name", 0}},
+			}},
+		}}},
+		// Stage 3: Remove temporary groupData array
+		{{Key: "$project", Value: bson.D{
+			{Key: "groupData", Value: 0},
+		}}},
+	}
+
+	cursor, err := s.db.Collection("users").Aggregate(ctx, pipeline)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
 	}
 	defer cursor.Close(ctx)
 
-	var users []models.User
+	var users []UserWithGroup
 	if err := cursor.All(ctx, &users); err != nil {
 		return nil, fmt.Errorf("failed to decode users: %w", err)
 	}
