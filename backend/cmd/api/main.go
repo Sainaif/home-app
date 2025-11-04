@@ -28,6 +28,11 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	// Validate configuration security
+	if err := validateConfig(cfg); err != nil {
+		log.Fatalf("Configuration validation failed: %v", err)
+	}
+
 	// Connect to MongoDB
 	db, err := database.NewMongoDB(cfg.Mongo.URI, cfg.Mongo.Database)
 	if err != nil {
@@ -371,6 +376,90 @@ func main() {
 	}
 
 	log.Println("Server exited")
+}
+
+// validateConfig performs security validation on the configuration
+func validateConfig(cfg *config.Config) error {
+	// Validate JWT secrets
+	if cfg.JWT.Secret == "" {
+		return fmt.Errorf("JWT_SECRET is required but not set")
+	}
+	if cfg.JWT.RefreshSecret == "" {
+		return fmt.Errorf("JWT_REFRESH_SECRET is required but not set")
+	}
+
+	// Check for insecure default JWT secrets
+	insecureSecrets := []string{
+		"change-this-access-secret",
+		"change-this-refresh-secret",
+		"YOUR_ACCESS_SECRET_HERE_GENERATE_WITH_OPENSSL",
+		"YOUR_REFRESH_SECRET_HERE_GENERATE_WITH_OPENSSL",
+	}
+	for _, insecure := range insecureSecrets {
+		if cfg.JWT.Secret == insecure {
+			return fmt.Errorf("JWT_SECRET is set to an insecure default value. Generate a secure secret with: openssl rand -base64 32")
+		}
+		if cfg.JWT.RefreshSecret == insecure {
+			return fmt.Errorf("JWT_REFRESH_SECRET is set to an insecure default value. Generate a secure secret with: openssl rand -base64 32")
+		}
+	}
+
+	// JWT secrets must be different
+	if cfg.JWT.Secret == cfg.JWT.RefreshSecret {
+		return fmt.Errorf("JWT_SECRET and JWT_REFRESH_SECRET must be different")
+	}
+
+	// Validate JWT secrets are sufficiently long (at least 32 characters for security)
+	if len(cfg.JWT.Secret) < 32 {
+		return fmt.Errorf("JWT_SECRET is too short (minimum 32 characters recommended). Generate with: openssl rand -base64 32")
+	}
+	if len(cfg.JWT.RefreshSecret) < 32 {
+		return fmt.Errorf("JWT_REFRESH_SECRET is too short (minimum 32 characters recommended). Generate with: openssl rand -base64 32")
+	}
+
+	// Validate admin credentials
+	if cfg.Admin.Email == "" {
+		return fmt.Errorf("ADMIN_EMAIL is required but not set")
+	}
+	if cfg.Admin.PasswordHash == "" {
+		return fmt.Errorf("ADMIN_PASSWORD is required but not set")
+	}
+
+	// Check for insecure default admin credentials
+	insecureAdminEmails := []string{
+		"admin@example.pl",
+		"admin@example.com",
+		"admin@yourdomain.com",
+	}
+	for _, insecure := range insecureAdminEmails {
+		if cfg.Admin.Email == insecure {
+			return fmt.Errorf("ADMIN_EMAIL is set to a default value. Please set your actual email address")
+		}
+	}
+
+	// Check for weak passwords (only if it looks like plain text, i.e., short)
+	if len(cfg.Admin.PasswordHash) < 50 { // Plain text passwords are shorter than hashes
+		insecurePasswords := []string{
+			"admin123",
+			"admin",
+			"password",
+			"changeme",
+			"CHANGE_ME_STRONG_PASSWORD_12_CHARS_MIN",
+		}
+		for _, insecure := range insecurePasswords {
+			if cfg.Admin.PasswordHash == insecure {
+				return fmt.Errorf("ADMIN_PASSWORD is set to an insecure default value. Use a strong password (12+ characters, mixed case, numbers, symbols)")
+			}
+		}
+
+		// Validate password strength (minimum length)
+		if len(cfg.Admin.PasswordHash) < 12 {
+			return fmt.Errorf("ADMIN_PASSWORD is too short (minimum 12 characters required). Use a strong password with letters, numbers, and symbols")
+		}
+	}
+
+	log.Println("Configuration validation passed")
+	return nil
 }
 
 func customErrorHandler(c *fiber.Ctx, err error) error {

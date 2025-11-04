@@ -1,44 +1,115 @@
+# ============================================================================
+# Holy Home - Docker Compose Configuration (Local Development)
+# ============================================================================
+# This compose file is for local development. For production deployment,
+# see docker-compose.portainer.yml
+#
+# Prerequisites:
+#   - Create .env file with required configuration (see ../.env.example)
+#   - Set JWT secrets, admin credentials, and other required values
+#
+# Usage:
+#   docker-compose -f deploy/docker-compose.yml up -d
+# ============================================================================
+
 services:
+  # Backend API Service
   api:
     build:
       context: ../backend
       dockerfile: Dockerfile
       args:
-        - GO_VERSION=1.25
-    env_file: ../.env
+        - GO_VERSION=1.23
+
+    # Environment variables with fallback defaults
+    # IMPORTANT: Set these in your .env file or export them before running docker-compose
+    environment:
+      # Application Configuration
+      - APP_NAME=${APP_NAME:-Holy Home}
+      - APP_ENV=${APP_ENV:-development}
+      - APP_HOST=${APP_HOST:-0.0.0.0}
+      - APP_PORT=${APP_PORT:-3000}
+      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:16162}
+      - APP_DOMAIN=${APP_DOMAIN:-localhost}
+
+      # JWT Authentication (REQUIRED - no secure defaults)
+      # Generate with: openssl rand -base64 32
+      - JWT_ACCESS_TTL=${JWT_ACCESS_TTL:-15m}
+      - JWT_REFRESH_TTL=${JWT_REFRESH_TTL:-720h}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in environment}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET must be set in environment}
+
+      # Bootstrap Admin (REQUIRED for first run)
+      - ADMIN_EMAIL=${ADMIN_EMAIL:?ADMIN_EMAIL must be set in environment}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set in environment}
+
+      # Two-Factor Authentication
+      - AUTH_2FA_ENABLED=${AUTH_2FA_ENABLED:-true}
+
+      # MongoDB Configuration
+      # For development without auth: mongodb://mongo:27017
+      # For production with auth: mongodb://username:password@mongo:27017
+      - MONGO_URI=${MONGO_URI:-mongodb://mongo:27017}
+      - MONGO_DB=${MONGO_DB:-holyhome}
+
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+
     depends_on:
       mongo:
         condition: service_healthy
+
     ports:
       - "16162:3000"
+
     restart: unless-stopped
+
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
       interval: 30s
       timeout: 3s
       retries: 5
 
+  # Frontend Web Service
   frontend:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+
     depends_on:
       api:
         condition: service_started
+
     ports:
       - "16161:80"
+
     restart: unless-stopped
+
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost/"]
       interval: 30s
       timeout: 3s
       retries: 5
 
+  # MongoDB Database
   mongo:
     image: mongo:8.0
+
+    # Optional MongoDB Authentication (recommended for production)
+    # Uncomment the following lines to enable authentication:
+    # environment:
+    #   - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME:-holyhome_admin}
+    #   - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:?MONGO_PASSWORD must be set}
+    #
+    # Then update MONGO_URI in api service:
+    #   - MONGO_URI=mongodb://${MONGO_USERNAME:-holyhome_admin}:${MONGO_PASSWORD}@mongo:27017
+
     volumes:
       - mongo_data:/data/db
+
     restart: unless-stopped
+
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
       interval: 30s
@@ -47,3 +118,25 @@ services:
 
 volumes:
   mongo_data:
+    driver: local
+
+# ============================================================================
+# ENVIRONMENT VARIABLE REFERENCE:
+# ============================================================================
+# Required variables (must be set):
+#   JWT_SECRET          - Secret for access token signing
+#   JWT_REFRESH_SECRET  - Secret for refresh token signing
+#   ADMIN_EMAIL         - Initial admin account email
+#   ADMIN_PASSWORD      - Initial admin account password
+#
+# Optional variables (have defaults):
+#   APP_NAME            - Application display name
+#   APP_ENV             - Environment (development/production)
+#   APP_DOMAIN          - Domain name (important for WebAuthn)
+#   APP_BASE_URL        - Full application URL
+#   MONGO_URI           - MongoDB connection string
+#   MONGO_DB            - MongoDB database name
+#   LOG_LEVEL           - Logging verbosity (debug/info/warn/error)
+#
+# See ../.env.example for complete documentation and examples.
+# ============================================================================

@@ -1,54 +1,129 @@
+# ============================================================================
+# Holy Home - Docker Compose Configuration (Portainer / Production)
+# ============================================================================
+# This compose file is designed for deployment via Portainer or production.
+# It uses pre-built images from GitHub Container Registry.
+#
+# IMPORTANT SECURITY REQUIREMENTS:
+# 1. Set environment variables in Portainer Stack configuration
+# 2. Generate strong JWT secrets: openssl rand -base64 32
+# 3. Use a strong admin password (12+ characters)
+# 4. Update APP_DOMAIN and APP_BASE_URL to match your deployment
+# 5. Consider enabling MongoDB authentication for production
+#
+# Required Environment Variables (set in Portainer):
+#   JWT_SECRET          - Secret for access token signing (generate with openssl)
+#   JWT_REFRESH_SECRET  - Secret for refresh token signing (must be different)
+#   ADMIN_EMAIL         - Initial admin account email
+#   ADMIN_PASSWORD      - Initial admin account password (strong!)
+#
+# Optional Environment Variables:
+#   APP_DOMAIN          - Your domain (default shown, change for your deployment)
+#   APP_BASE_URL        - Full URL (default shown, change for your deployment)
+#   MONGO_USERNAME      - MongoDB username (if using authentication)
+#   MONGO_PASSWORD      - MongoDB password (if using authentication)
+# ============================================================================
+
 services:
+  # Backend API Service
   api:
     image: ghcr.io/sainaif/holy-home-api:latest
+
     # Uncomment to run as specific user (replace 1000:1000 with your UID:GID)
+    # Recommended for production to avoid running as root
     # user: "1000:1000"
+
     environment:
+      # Application Port (internal container port)
       - APP_PORT=3000
+
+      # MongoDB Configuration
+      # Default: No authentication (OK for development, not recommended for production)
+      # For production with auth: mongodb://username:password@mongo:27017
       - MONGO_URI=mongodb://mongo:27017
       - MONGO_DB=holyhome
+
+      # JWT Secrets (REQUIRED - MUST BE SET IN PORTAINER)
+      # Generate two different secrets with: openssl rand -base64 32
+      # CRITICAL: These must be kept secret and never exposed
       - JWT_SECRET=${JWT_SECRET}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+
+      # Bootstrap Admin Credentials (REQUIRED - ONLY USED ON FIRST RUN)
+      # These create the initial admin account when database is empty
+      # IMPORTANT: Use a strong password (12+ characters, mixed case, numbers, symbols)
+      # NOTE: After first login, change the password in the application settings
       - ADMIN_EMAIL=${ADMIN_EMAIL}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+
+      # Application Domain and URL (REQUIRED - UPDATE FOR YOUR DEPLOYMENT)
+      # APP_DOMAIN: Domain name without protocol/port (CRITICAL for WebAuthn/passkeys)
+      # APP_BASE_URL: Full URL including protocol
+      # CHANGE THESE: The defaults below are for a specific deployment
       - APP_DOMAIN=${APP_DOMAIN:-serwerholythighble.pl}
       - APP_BASE_URL=${APP_BASE_URL:-https://holy-home.serwerholythighble.pl}
+
     depends_on:
       mongo:
         condition: service_healthy
+
     ports:
       - "16162:3000"
+
     restart: unless-stopped
+
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
       interval: 30s
       timeout: 3s
       retries: 5
 
+  # Frontend Web Service
   frontend:
     image: ghcr.io/sainaif/holy-home-frontend:latest
+
     # Uncomment to run as specific user (replace 1000:1000 with your UID:GID)
+    # Recommended for production to avoid running as root
     # user: "1000:1000"
+
     depends_on:
       api:
         condition: service_started
+
     ports:
       - "16161:80"
+
     restart: unless-stopped
+
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost/"]
       interval: 30s
       timeout: 3s
       retries: 5
 
+  # MongoDB Database
   mongo:
     image: mongo:8.0
+
     # Uncomment to run as specific user (replace 1000:1000 with your UID:GID)
-    # Note: You may need to fix ownership of mongo_data volume first
+    # Note: You may need to fix ownership of mongo_data volume first:
+    #   sudo chown -R 1000:1000 /path/to/mongo_data
     # user: "1000:1000"
+
+    # Optional MongoDB Authentication (STRONGLY RECOMMENDED FOR PRODUCTION)
+    # Uncomment the following lines to enable authentication:
+    # environment:
+    #   - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME:-holyhome_admin}
+    #   - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:?MONGO_PASSWORD required}
+    #
+    # Then update MONGO_URI in api service above:
+    #   - MONGO_URI=mongodb://${MONGO_USERNAME:-holyhome_admin}:${MONGO_PASSWORD}@mongo:27017
+
     volumes:
       - mongo_data:/data/db
+
     restart: unless-stopped
+
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
       interval: 30s
@@ -57,3 +132,34 @@ services:
 
 volumes:
   mongo_data:
+    driver: local
+
+# ============================================================================
+# PORTAINER DEPLOYMENT GUIDE:
+# ============================================================================
+# 1. In Portainer, create a new Stack
+# 2. Paste this docker-compose content
+# 3. Add Environment Variables:
+#    Name: JWT_SECRET           Value: <generate with: openssl rand -base64 32>
+#    Name: JWT_REFRESH_SECRET   Value: <generate with: openssl rand -base64 32>
+#    Name: ADMIN_EMAIL          Value: your-email@domain.com
+#    Name: ADMIN_PASSWORD       Value: <strong-password-12+-chars>
+#    Name: APP_DOMAIN           Value: your-domain.com
+#    Name: APP_BASE_URL         Value: https://your-domain.com
+#
+# 4. Optional: Enable MongoDB authentication
+#    Name: MONGO_USERNAME       Value: holyhome_admin
+#    Name: MONGO_PASSWORD       Value: <strong-password>
+#    Then uncomment the MongoDB environment section above
+#
+# 5. Deploy the stack
+# 6. Access the application at your configured URL
+# 7. Login with ADMIN_EMAIL and ADMIN_PASSWORD
+# 8. IMPORTANT: Change the admin password immediately after first login!
+#
+# For updates:
+# - Images are automatically pulled when you update the stack
+# - Use :latest tag for automatic updates, or pin to specific versions
+# - Backend images: ghcr.io/sainaif/holy-home-api:latest
+# - Frontend images: ghcr.io/sainaif/holy-home-frontend:latest
+# ============================================================================
