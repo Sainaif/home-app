@@ -23,8 +23,8 @@ func NewBillService(db *mongo.Database) *BillService {
 }
 
 type CreateBillRequest struct {
-	Type            string     `json:"type"` // electricity, gas, internet, inne
-	CustomType      *string    `json:"customType,omitempty"` // required when type is "inne"
+	Type            string     `json:"type"`                     // electricity, gas, internet, inne
+	CustomType      *string    `json:"customType,omitempty"`     // required when type is "inne"
 	AllocationType  *string    `json:"allocationType,omitempty"` // "simple" or "metered", required when type is "inne"
 	PeriodStart     time.Time  `json:"periodStart"`
 	PeriodEnd       time.Time  `json:"periodEnd"`
@@ -321,13 +321,13 @@ func (s *BillService) DeleteBill(ctx context.Context, billID primitive.ObjectID)
 
 // PaymentStatusEntry represents payment status for a user/group
 type PaymentStatusEntry struct {
-	SubjectID      primitive.ObjectID    `json:"subjectId"`
-	SubjectType    string                `json:"subjectType"` // "user" or "group"
-	SubjectName    string                `json:"subjectName"`
-	AllocatedPLN   primitive.Decimal128  `json:"allocatedPLN"`
-	PaidPLN        primitive.Decimal128  `json:"paidPLN"`
-	RemainingPLN   primitive.Decimal128  `json:"remainingPLN"`
-	IsPaid         bool                  `json:"isPaid"`
+	SubjectID    primitive.ObjectID   `json:"subjectId"`
+	SubjectType  string               `json:"subjectType"` // "user" or "group"
+	SubjectName  string               `json:"subjectName"`
+	AllocatedPLN primitive.Decimal128 `json:"allocatedPLN"`
+	PaidPLN      primitive.Decimal128 `json:"paidPLN"`
+	RemainingPLN primitive.Decimal128 `json:"remainingPLN"`
+	IsPaid       bool                 `json:"isPaid"`
 }
 
 // GetBillPaymentStatus returns detailed payment status showing who paid and who hasn't

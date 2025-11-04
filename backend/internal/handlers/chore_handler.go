@@ -263,6 +263,7 @@ func (h *ChoreHandler) RotateChore(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusCreated).JSON(assignment)
 }
+
 // AutoAssignChore automatically assigns a chore to user with least workload (ADMIN only)
 func (h *ChoreHandler) AutoAssignChore(c *fiber.Ctx) error {
 	id := c.Params("id")
@@ -377,8 +378,8 @@ func (h *ChoreHandler) DeleteChore(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"success":        true,
+		"success":          true,
 		"requiresApproval": true,
-		"message":        "Delete request submitted for admin approval",
+		"message":          "Delete request submitted for admin approval",
 	})
 }

@@ -59,10 +59,10 @@ func (h *BillHandler) CreateBill(c *fiber.Ctx) error {
 
 	// Broadcast event to all users
 	h.eventService.Broadcast(services.EventBillCreated, map[string]interface{}{
-		"billId":     bill.ID.Hex(),
-		"type":       bill.Type,
-		"amount":     req.TotalAmountPLN,
-		"createdBy":  userEmail,
+		"billId":      bill.ID.Hex(),
+		"type":        bill.Type,
+		"amount":      req.TotalAmountPLN,
+		"createdBy":   userEmail,
 		"periodStart": req.PeriodStart,
 		"periodEnd":   req.PeriodEnd,
 	})
@@ -166,11 +166,11 @@ func (h *BillHandler) PostBill(c *fiber.Ctx) error {
 
 	totalAmount, _ := bill.TotalAmountPLN.MarshalJSON()
 	h.eventService.Broadcast(services.EventBillPosted, map[string]interface{}{
-		"billId":     bill.ID.Hex(),
-		"type":       billType,
-		"amount":     string(totalAmount),
-		"postedBy":   userEmail,
-		"periodEnd":  bill.PeriodEnd.Format("2006-01-02"),
+		"billId":    bill.ID.Hex(),
+		"type":      billType,
+		"amount":    string(totalAmount),
+		"postedBy":  userEmail,
+		"periodEnd": bill.PeriodEnd.Format("2006-01-02"),
 	})
 
 	return c.JSON(fiber.Map{
@@ -380,7 +380,7 @@ func (h *BillHandler) DeleteBill(c *fiber.Ctx) error {
 	}
 	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "bill.delete", "bill", &billID,
 		map[string]interface{}{
-			"billType":   billType,
+			"billType":    billType,
 			"periodStart": bill.PeriodStart.Format("2006-01-02"),
 			"periodEnd":   bill.PeriodEnd.Format("2006-01-02"),
 			"status":      bill.Status,

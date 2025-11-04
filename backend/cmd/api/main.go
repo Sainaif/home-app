@@ -51,11 +51,11 @@ func main() {
 
 	// Initialize Fiber app
 	app := fiber.New(fiber.Config{
-		AppName:           cfg.App.Name,
-		ErrorHandler:      customErrorHandler,
+		AppName:                 cfg.App.Name,
+		ErrorHandler:            customErrorHandler,
 		EnableTrustedProxyCheck: true,
-		TrustedProxies:    []string{"172.20.0.0/16", "10.0.0.0/8", "127.0.0.1"},
-		ProxyHeader:       fiber.HeaderXForwardedFor,
+		TrustedProxies:          []string{"172.20.0.0/16", "10.0.0.0/8", "127.0.0.1"},
+		ProxyHeader:             fiber.HeaderXForwardedFor,
 	})
 
 	// Global Middleware
@@ -85,9 +85,9 @@ func main() {
 	})
 
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
-		AllowMethods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization, Idempotency-Key, X-Request-ID",
+		AllowOrigins:  "*",
+		AllowMethods:  "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+		AllowHeaders:  "Origin, Content-Type, Accept, Authorization, Idempotency-Key, X-Request-ID",
 		ExposeHeaders: "Cache-Control, Pragma, Expires",
 	}))
 

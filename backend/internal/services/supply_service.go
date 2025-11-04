@@ -300,9 +300,9 @@ func (s *SupplyService) RestockItem(ctx context.Context, itemID, userID primitiv
 	update := bson.M{
 		"$inc": bson.M{"current_quantity": quantityToAdd},
 		"$set": bson.M{
-			"last_restocked_at":        now,
+			"last_restocked_at":         now,
 			"last_restocked_by_user_id": userID,
-			"needs_refund":             needsRefund,
+			"needs_refund":              needsRefund,
 		},
 	}
 
@@ -666,8 +666,8 @@ func (s *SupplyService) GetStats(ctx context.Context) (map[string]interface{}, e
 	}
 
 	return map[string]interface{}{
-		"byCategory":           categoryStats,
-		"byUser":               userStats,
-		"recentContributions":  recentContributions,
+		"byCategory":          categoryStats,
+		"byUser":              userStats,
+		"recentContributions": recentContributions,
 	}, nil
 }

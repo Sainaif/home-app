@@ -155,7 +155,7 @@ func (s *RecurringBillService) GenerateBillsFromTemplates(ctx context.Context) e
 
 	// Find all active templates where next_due_date <= now
 	cursor, err := s.db.Collection("recurring_bill_templates").Find(ctx, bson.M{
-		"is_active": true,
+		"is_active":     true,
 		"next_due_date": bson.M{"$lte": now},
 	})
 	if err != nil {
@@ -256,10 +256,10 @@ func (s *RecurringBillService) generateBillFromTemplate(ctx context.Context, tem
 		ctx,
 		bson.M{"_id": template.ID},
 		bson.M{"$set": bson.M{
-			"current_bill_id":    bill.ID,
-			"next_due_date":      nextDueDate,
-			"last_generated_at":  now,
-			"updated_at":         now,
+			"current_bill_id":   bill.ID,
+			"next_due_date":     nextDueDate,
+			"last_generated_at": now,
+			"updated_at":        now,
 		}},
 	)
 
@@ -346,8 +346,8 @@ func (s *RecurringBillService) CheckAndGenerateNextBill(ctx context.Context, bil
 	defer cursor.Close(ctx)
 
 	var allocations []struct {
-		SubjectID   primitive.ObjectID   `bson:"subject_id"`
-		SubjectType string               `bson:"subject_type"`
+		SubjectID   primitive.ObjectID `bson:"subject_id"`
+		SubjectType string             `bson:"subject_type"`
 	}
 	if err := cursor.All(ctx, &allocations); err != nil {
 		return err

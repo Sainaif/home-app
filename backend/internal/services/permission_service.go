@@ -299,9 +299,9 @@ func (s *RoleService) UpdateRole(ctx context.Context, roleID primitive.ObjectID,
 
 	update := bson.M{
 		"$set": bson.M{
-			"permissions": permissions,
+			"permissions":  permissions,
 			"display_name": displayName,
-			"updated_at":  time.Now(),
+			"updated_at":   time.Now(),
 		},
 	}
 

@@ -27,8 +27,8 @@ type CreateChoreRequest struct {
 	Description          *string `json:"description,omitempty"`
 	Frequency            string  `json:"frequency"` // daily, weekly, monthly, custom, irregular
 	CustomInterval       *int    `json:"customInterval,omitempty"`
-	Difficulty           int     `json:"difficulty"` // 1-5
-	Priority             int     `json:"priority"` // 1-5
+	Difficulty           int     `json:"difficulty"`     // 1-5
+	Priority             int     `json:"priority"`       // 1-5
 	AssignmentMode       string  `json:"assignmentMode"` // manual, round_robin, random
 	NotificationsEnabled bool    `json:"notificationsEnabled"`
 	ReminderHours        *int    `json:"reminderHours,omitempty"`
@@ -389,14 +389,15 @@ func (s *ChoreService) GetChoresWithAssignments(ctx context.Context) ([]ChoreWit
 
 	return result, nil
 }
+
 // UserStats represents user statistics for chores
 type UserStats struct {
-	UserID           primitive.ObjectID `json:"userId"`
-	UserName         string             `json:"userName"`
-	TotalPoints      int                `json:"totalPoints"`
-	CompletedChores  int                `json:"completedChores"`
-	OnTimeRate       float64            `json:"onTimeRate"`
-	PendingChores    int                `json:"pendingChores"`
+	UserID          primitive.ObjectID `json:"userId"`
+	UserName        string             `json:"userName"`
+	TotalPoints     int                `json:"totalPoints"`
+	CompletedChores int                `json:"completedChores"`
+	OnTimeRate      float64            `json:"onTimeRate"`
+	PendingChores   int                `json:"pendingChores"`
 }
 
 // AutoAssignChore automatically assigns a chore to the user with least workload

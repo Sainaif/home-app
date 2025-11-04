@@ -52,9 +52,9 @@ type LoginRequest struct {
 }
 
 type TokenResponse struct {
-	Access            string `json:"access"`
-	Refresh           string `json:"refresh"`
-	MustChangePassword bool  `json:"mustChangePassword"`
+	Access             string `json:"access"`
+	Refresh            string `json:"refresh"`
+	MustChangePassword bool   `json:"mustChangePassword"`
 }
 
 // Login authenticates a user and returns JWT tokens
@@ -110,8 +110,8 @@ func (s *AuthService) Login(ctx context.Context, req LoginRequest, ipAddress, us
 	}
 
 	return &TokenResponse{
-		Access:            accessToken,
-		Refresh:           refreshToken,
+		Access:             accessToken,
+		Refresh:            refreshToken,
 		MustChangePassword: user.MustChangePassword,
 	}, nil
 }
@@ -407,11 +407,11 @@ func (s *AuthService) FinishPasskeyLogin(ctx context.Context, email string, resp
 	_, err = s.db.Collection("users").UpdateOne(
 		ctx,
 		bson.M{
-			"_id": user.ID,
+			"_id":                    user.ID,
 			"passkey_credentials.id": credential.ID,
 		},
 		bson.M{"$set": bson.M{
-			"passkey_credentials.$.sign_count": credential.Authenticator.SignCount,
+			"passkey_credentials.$.sign_count":   credential.Authenticator.SignCount,
 			"passkey_credentials.$.last_used_at": now,
 		}},
 	)
@@ -522,11 +522,11 @@ func (s *AuthService) FinishPasskeyDiscoverableLogin(ctx context.Context, respon
 	_, err = s.db.Collection("users").UpdateOne(
 		ctx,
 		bson.M{
-			"_id": user.ID,
+			"_id":                    user.ID,
 			"passkey_credentials.id": credential.ID,
 		},
 		bson.M{"$set": bson.M{
-			"passkey_credentials.$.sign_count": credential.Authenticator.SignCount,
+			"passkey_credentials.$.sign_count":   credential.Authenticator.SignCount,
 			"passkey_credentials.$.last_used_at": now,
 		}},
 	)

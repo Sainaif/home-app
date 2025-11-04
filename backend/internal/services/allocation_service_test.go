@@ -89,7 +89,7 @@ func TestGroupAggregationLogic(t *testing.T) {
 		// Each should have 1/3 cost, but group should show 2/3 total
 
 		totalAmount := 300.0
-		expectedGroupShare := 200.0 // 2/3 of 300
+		expectedGroupShare := 200.0      // 2/3 of 300
 		expectedIndividualShare := 100.0 // 1/3 of 300
 
 		groupID := primitive.NewObjectID()

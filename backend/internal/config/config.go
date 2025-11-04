@@ -7,12 +7,12 @@ import (
 )
 
 type Config struct {
-	App       AppConfig
-	JWT       JWTConfig
-	Admin     AdminConfig
-	Auth      AuthConfig
-	Mongo     MongoConfig
-	Logging   LogConfig
+	App     AppConfig
+	JWT     JWTConfig
+	Admin   AdminConfig
+	Auth    AuthConfig
+	Mongo   MongoConfig
+	Logging LogConfig
 }
 
 type AppConfig struct {
@@ -25,10 +25,10 @@ type AppConfig struct {
 }
 
 type JWTConfig struct {
-	AccessTTL       time.Duration
-	RefreshTTL      time.Duration
-	Secret          string
-	RefreshSecret   string
+	AccessTTL     time.Duration
+	RefreshTTL    time.Duration
+	Secret        string
+	RefreshSecret string
 }
 
 type AdminConfig struct {

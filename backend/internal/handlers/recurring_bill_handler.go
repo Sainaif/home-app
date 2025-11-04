@@ -13,13 +13,13 @@ import (
 )
 
 type RecurringBillTemplateRequest struct {
-	CustomType  string                              `json:"customType"`
-	Frequency   string                              `json:"frequency"`
-	Amount      string                              `json:"amount"` // Comes as string from JSON
-	DayOfMonth  int                                 `json:"dayOfMonth"`
-	StartDate   time.Time                           `json:"startDate"` // Required
-	Allocations []models.RecurringBillAllocation    `json:"allocations"`
-	Notes       *string                             `json:"notes,omitempty"`
+	CustomType  string                           `json:"customType"`
+	Frequency   string                           `json:"frequency"`
+	Amount      string                           `json:"amount"` // Comes as string from JSON
+	DayOfMonth  int                              `json:"dayOfMonth"`
+	StartDate   time.Time                        `json:"startDate"` // Required
+	Allocations []models.RecurringBillAllocation `json:"allocations"`
+	Notes       *string                          `json:"notes,omitempty"`
 }
 
 type RecurringBillHandler struct {

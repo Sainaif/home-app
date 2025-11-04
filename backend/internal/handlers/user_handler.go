@@ -319,9 +319,9 @@ func (h *UserHandler) GeneratePasswordResetLink(c *fiber.Ctx) error {
 	)
 
 	return c.JSON(fiber.Map{
-		"resetURL":           resetURL,
-		"expiresInMinutes":   req.ExpirationMinutes,
-		"message":            "Password reset link generated successfully",
+		"resetURL":         resetURL,
+		"expiresInMinutes": req.ExpirationMinutes,
+		"message":          "Password reset link generated successfully",
 	})
 }
 

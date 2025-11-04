@@ -22,21 +22,21 @@ func NewBackupService(db *mongo.Database) *BackupService {
 
 // BackupData represents a complete system backup
 type BackupData struct {
-	Version          string                   `json:"version"`
-	ExportedAt       time.Time                `json:"exportedAt"`
-	Users            []models.User            `json:"users"`
-	Groups           []models.Group           `json:"groups"`
-	Bills            []models.Bill            `json:"bills"`
-	Consumptions     []models.Consumption     `json:"consumptions"`
-	Payments         []models.Payment         `json:"payments"`
-	Loans            []models.Loan            `json:"loans"`
-	LoanPayments     []models.LoanPayment     `json:"loanPayments"`
-	Chores           []models.Chore           `json:"chores"`
-	ChoreAssignments []models.ChoreAssignment `json:"choreAssignments"`
-	ChoreSettings    *models.ChoreSettings    `json:"choreSettings,omitempty"`
-	Notifications    []models.Notification    `json:"notifications"`
-	SupplySettings   *models.SupplySettings   `json:"supplySettings,omitempty"`
-	SupplyItems      []models.SupplyItem      `json:"supplyItems"`
+	Version             string                      `json:"version"`
+	ExportedAt          time.Time                   `json:"exportedAt"`
+	Users               []models.User               `json:"users"`
+	Groups              []models.Group              `json:"groups"`
+	Bills               []models.Bill               `json:"bills"`
+	Consumptions        []models.Consumption        `json:"consumptions"`
+	Payments            []models.Payment            `json:"payments"`
+	Loans               []models.Loan               `json:"loans"`
+	LoanPayments        []models.LoanPayment        `json:"loanPayments"`
+	Chores              []models.Chore              `json:"chores"`
+	ChoreAssignments    []models.ChoreAssignment    `json:"choreAssignments"`
+	ChoreSettings       *models.ChoreSettings       `json:"choreSettings,omitempty"`
+	Notifications       []models.Notification       `json:"notifications"`
+	SupplySettings      *models.SupplySettings      `json:"supplySettings,omitempty"`
+	SupplyItems         []models.SupplyItem         `json:"supplyItems"`
 	SupplyContributions []models.SupplyContribution `json:"supplyContributions"`
 }
 

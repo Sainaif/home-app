@@ -46,8 +46,8 @@ type CompensationResult struct {
 
 type Balance struct {
 	UserID primitive.ObjectID `json:"userId"`
-	Owed   float64            `json:"owed"`   // Money this user owes to others
-	Owing  float64            `json:"owing"`  // Money others owe to this user
+	Owed   float64            `json:"owed"`  // Money this user owes to others
+	Owing  float64            `json:"owing"` // Money others owe to this user
 }
 
 type PairwiseBalance struct {

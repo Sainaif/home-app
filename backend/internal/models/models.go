@@ -45,51 +45,51 @@ type Group struct {
 
 // Bill represents a utility bill or shared expense
 type Bill struct {
-	ID                    primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
-	Type                  string              `bson:"type" json:"type"` // electricity, gas, internet, inne
-	CustomType            *string             `bson:"custom_type,omitempty" json:"customType,omitempty"` // used when Type is "inne"
-	AllocationType        *string             `bson:"allocation_type,omitempty" json:"allocationType,omitempty"` // simple (like gas) or metered (like electricity) - only for "inne"
-	PeriodStart           time.Time           `bson:"period_start" json:"periodStart"`
-	PeriodEnd             time.Time           `bson:"period_end" json:"periodEnd"`
-	PaymentDeadline       *time.Time          `bson:"payment_deadline,omitempty" json:"paymentDeadline,omitempty"` // optional deadline for payment
-	TotalAmountPLN        primitive.Decimal128 `bson:"total_amount_pln" json:"totalAmountPLN"`
-	TotalUnits            primitive.Decimal128 `bson:"total_units,omitempty" json:"totalUnits,omitempty"`
-	Notes                 *string             `bson:"notes,omitempty" json:"notes,omitempty"`
-	Status                string              `bson:"status" json:"status"` // draft, posted, closed
-	ReopenedAt            *time.Time          `bson:"reopened_at,omitempty" json:"reopenedAt,omitempty"`
-	ReopenReason          *string             `bson:"reopen_reason,omitempty" json:"reopenReason,omitempty"`
-	ReopenedBy            *primitive.ObjectID `bson:"reopened_by,omitempty" json:"reopenedBy,omitempty"`
-	RecurringTemplateID   *primitive.ObjectID `bson:"recurring_template_id,omitempty" json:"recurringTemplateId,omitempty"` // link to recurring template if generated
-	CreatedAt             time.Time           `bson:"created_at" json:"createdAt"`
+	ID                  primitive.ObjectID   `bson:"_id,omitempty" json:"id"`
+	Type                string               `bson:"type" json:"type"`                                          // electricity, gas, internet, inne
+	CustomType          *string              `bson:"custom_type,omitempty" json:"customType,omitempty"`         // used when Type is "inne"
+	AllocationType      *string              `bson:"allocation_type,omitempty" json:"allocationType,omitempty"` // simple (like gas) or metered (like electricity) - only for "inne"
+	PeriodStart         time.Time            `bson:"period_start" json:"periodStart"`
+	PeriodEnd           time.Time            `bson:"period_end" json:"periodEnd"`
+	PaymentDeadline     *time.Time           `bson:"payment_deadline,omitempty" json:"paymentDeadline,omitempty"` // optional deadline for payment
+	TotalAmountPLN      primitive.Decimal128 `bson:"total_amount_pln" json:"totalAmountPLN"`
+	TotalUnits          primitive.Decimal128 `bson:"total_units,omitempty" json:"totalUnits,omitempty"`
+	Notes               *string              `bson:"notes,omitempty" json:"notes,omitempty"`
+	Status              string               `bson:"status" json:"status"` // draft, posted, closed
+	ReopenedAt          *time.Time           `bson:"reopened_at,omitempty" json:"reopenedAt,omitempty"`
+	ReopenReason        *string              `bson:"reopen_reason,omitempty" json:"reopenReason,omitempty"`
+	ReopenedBy          *primitive.ObjectID  `bson:"reopened_by,omitempty" json:"reopenedBy,omitempty"`
+	RecurringTemplateID *primitive.ObjectID  `bson:"recurring_template_id,omitempty" json:"recurringTemplateId,omitempty"` // link to recurring template if generated
+	CreatedAt           time.Time            `bson:"created_at" json:"createdAt"`
 }
 
 // RecurringBillTemplate represents a template for auto-generating bills
 type RecurringBillTemplate struct {
-	ID                primitive.ObjectID                    `bson:"_id,omitempty" json:"id"`
-	CustomType        string                                `bson:"custom_type" json:"customType"` // name of the bill (e.g., "Netflix", "Rent")
-	Frequency         string                                `bson:"frequency" json:"frequency"` // monthly, quarterly, yearly
-	Amount            primitive.Decimal128                  `bson:"amount" json:"amount"` // fixed amount per period
-	DayOfMonth        int                                   `bson:"day_of_month" json:"dayOfMonth"` // 1-31, day when bill is due
-	StartDate         time.Time                             `bson:"start_date" json:"startDate"` // required start date for first bill
-	Allocations       []RecurringBillAllocation             `bson:"allocations" json:"allocations"` // predefined split
-	Notes             *string                               `bson:"notes,omitempty" json:"notes,omitempty"`
-	IsActive          bool                                  `bson:"is_active" json:"isActive"`
-	CurrentBillID     *primitive.ObjectID                   `bson:"current_bill_id,omitempty" json:"currentBillId,omitempty"` // ID of the current active bill
-	NextDueDate       time.Time                             `bson:"next_due_date" json:"nextDueDate"` // when next bill should be generated
-	LastGeneratedAt   *time.Time                            `bson:"last_generated_at,omitempty" json:"lastGeneratedAt,omitempty"`
-	CreatedAt         time.Time                             `bson:"created_at" json:"createdAt"`
-	UpdatedAt         time.Time                             `bson:"updated_at" json:"updatedAt"`
+	ID              primitive.ObjectID        `bson:"_id,omitempty" json:"id"`
+	CustomType      string                    `bson:"custom_type" json:"customType"`  // name of the bill (e.g., "Netflix", "Rent")
+	Frequency       string                    `bson:"frequency" json:"frequency"`     // monthly, quarterly, yearly
+	Amount          primitive.Decimal128      `bson:"amount" json:"amount"`           // fixed amount per period
+	DayOfMonth      int                       `bson:"day_of_month" json:"dayOfMonth"` // 1-31, day when bill is due
+	StartDate       time.Time                 `bson:"start_date" json:"startDate"`    // required start date for first bill
+	Allocations     []RecurringBillAllocation `bson:"allocations" json:"allocations"` // predefined split
+	Notes           *string                   `bson:"notes,omitempty" json:"notes,omitempty"`
+	IsActive        bool                      `bson:"is_active" json:"isActive"`
+	CurrentBillID   *primitive.ObjectID       `bson:"current_bill_id,omitempty" json:"currentBillId,omitempty"` // ID of the current active bill
+	NextDueDate     time.Time                 `bson:"next_due_date" json:"nextDueDate"`                         // when next bill should be generated
+	LastGeneratedAt *time.Time                `bson:"last_generated_at,omitempty" json:"lastGeneratedAt,omitempty"`
+	CreatedAt       time.Time                 `bson:"created_at" json:"createdAt"`
+	UpdatedAt       time.Time                 `bson:"updated_at" json:"updatedAt"`
 }
 
 // RecurringBillAllocation represents predefined cost split for recurring bills
 type RecurringBillAllocation struct {
-	SubjectType     string                `bson:"subject_type" json:"subjectType"` // user or group
-	SubjectID       primitive.ObjectID    `bson:"subject_id" json:"subjectId"` // user ID or group ID
-	AllocationType  string                `bson:"allocation_type" json:"allocationType"` // "percentage", "fraction", "fixed"
-	Percentage      *float64              `bson:"percentage,omitempty" json:"percentage,omitempty"` // 0-100, for percentage type
-	FractionNum     *int                  `bson:"fraction_numerator,omitempty" json:"fractionNumerator,omitempty"` // numerator for fraction (e.g., 1 in 1/3)
-	FractionDenom   *int                  `bson:"fraction_denominator,omitempty" json:"fractionDenominator,omitempty"` // denominator for fraction (e.g., 3 in 1/3)
-	FixedAmount     *primitive.Decimal128 `bson:"fixed_amount,omitempty" json:"fixedAmount,omitempty"` // fixed PLN amount
+	SubjectType    string                `bson:"subject_type" json:"subjectType"`                                     // user or group
+	SubjectID      primitive.ObjectID    `bson:"subject_id" json:"subjectId"`                                         // user ID or group ID
+	AllocationType string                `bson:"allocation_type" json:"allocationType"`                               // "percentage", "fraction", "fixed"
+	Percentage     *float64              `bson:"percentage,omitempty" json:"percentage,omitempty"`                    // 0-100, for percentage type
+	FractionNum    *int                  `bson:"fraction_numerator,omitempty" json:"fractionNumerator,omitempty"`     // numerator for fraction (e.g., 1 in 1/3)
+	FractionDenom  *int                  `bson:"fraction_denominator,omitempty" json:"fractionDenominator,omitempty"` // denominator for fraction (e.g., 3 in 1/3)
+	FixedAmount    *primitive.Decimal128 `bson:"fixed_amount,omitempty" json:"fixedAmount,omitempty"`                 // fixed PLN amount
 }
 
 // Consumption represents individual usage readings
@@ -97,7 +97,7 @@ type Consumption struct {
 	ID          primitive.ObjectID    `bson:"_id,omitempty" json:"id"`
 	BillID      primitive.ObjectID    `bson:"bill_id" json:"billId"`
 	SubjectType string                `bson:"subject_type" json:"subjectType"` // "user" or "group"
-	SubjectID   primitive.ObjectID    `bson:"subject_id" json:"subjectId"` // user ID or group ID
+	SubjectID   primitive.ObjectID    `bson:"subject_id" json:"subjectId"`     // user ID or group ID
 	Units       primitive.Decimal128  `bson:"units" json:"units"`
 	MeterValue  *primitive.Decimal128 `bson:"meter_value,omitempty" json:"meterValue,omitempty"`
 	RecordedAt  time.Time             `bson:"recorded_at" json:"recordedAt"`
@@ -138,41 +138,41 @@ type LoanPayment struct {
 
 // Chore represents a household task
 type Chore struct {
-	ID                 primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Name               string             `bson:"name" json:"name"`
-	Description        *string            `bson:"description,omitempty" json:"description,omitempty"`
-	Frequency          string             `bson:"frequency" json:"frequency"` // daily, weekly, monthly, custom, irregular
-	CustomInterval     *int               `bson:"custom_interval,omitempty" json:"customInterval,omitempty"` // days for custom frequency
-	Difficulty         int                `bson:"difficulty" json:"difficulty"` // 1-5 scale
-	Priority           int                `bson:"priority" json:"priority"` // 1-5 scale
-	AssignmentMode     string             `bson:"assignment_mode" json:"assignmentMode"` // manual, round_robin, random
-	NotificationsEnabled bool             `bson:"notifications_enabled" json:"notificationsEnabled"`
-	ReminderHours      *int               `bson:"reminder_hours,omitempty" json:"reminderHours,omitempty"` // hours before due
-	IsActive           bool               `bson:"is_active" json:"isActive"`
-	CreatedAt          time.Time          `bson:"created_at" json:"createdAt"`
+	ID                   primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	Name                 string             `bson:"name" json:"name"`
+	Description          *string            `bson:"description,omitempty" json:"description,omitempty"`
+	Frequency            string             `bson:"frequency" json:"frequency"`                                // daily, weekly, monthly, custom, irregular
+	CustomInterval       *int               `bson:"custom_interval,omitempty" json:"customInterval,omitempty"` // days for custom frequency
+	Difficulty           int                `bson:"difficulty" json:"difficulty"`                              // 1-5 scale
+	Priority             int                `bson:"priority" json:"priority"`                                  // 1-5 scale
+	AssignmentMode       string             `bson:"assignment_mode" json:"assignmentMode"`                     // manual, round_robin, random
+	NotificationsEnabled bool               `bson:"notifications_enabled" json:"notificationsEnabled"`
+	ReminderHours        *int               `bson:"reminder_hours,omitempty" json:"reminderHours,omitempty"` // hours before due
+	IsActive             bool               `bson:"is_active" json:"isActive"`
+	CreatedAt            time.Time          `bson:"created_at" json:"createdAt"`
 }
 
 // ChoreAssignment represents a chore assigned to a user
 type ChoreAssignment struct {
-	ID             primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
-	ChoreID        primitive.ObjectID  `bson:"chore_id" json:"choreId"`
-	AssigneeUserID primitive.ObjectID  `bson:"assignee_user_id" json:"assigneeUserId"`
-	DueDate        time.Time           `bson:"due_date" json:"dueDate"`
-	Status         string              `bson:"status" json:"status"` // pending, in_progress, done, overdue
-	CompletedAt    *time.Time          `bson:"completed_at,omitempty" json:"completedAt,omitempty"`
-	Points         int                 `bson:"points" json:"points"` // points earned for completion
-	IsOnTime       bool                `bson:"is_on_time" json:"isOnTime"` // completed before due date
+	ID             primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	ChoreID        primitive.ObjectID `bson:"chore_id" json:"choreId"`
+	AssigneeUserID primitive.ObjectID `bson:"assignee_user_id" json:"assigneeUserId"`
+	DueDate        time.Time          `bson:"due_date" json:"dueDate"`
+	Status         string             `bson:"status" json:"status"` // pending, in_progress, done, overdue
+	CompletedAt    *time.Time         `bson:"completed_at,omitempty" json:"completedAt,omitempty"`
+	Points         int                `bson:"points" json:"points"`       // points earned for completion
+	IsOnTime       bool               `bson:"is_on_time" json:"isOnTime"` // completed before due date
 }
 
 // ChoreSettings represents global chore system settings
 type ChoreSettings struct {
-	ID                     primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	DefaultAssignmentMode  string             `bson:"default_assignment_mode" json:"defaultAssignmentMode"` // round_robin, random, manual
-	GlobalNotifications    bool               `bson:"global_notifications" json:"globalNotifications"`
-	DefaultReminderHours   int                `bson:"default_reminder_hours" json:"defaultReminderHours"`
-	PointsEnabled          bool               `bson:"points_enabled" json:"pointsEnabled"`
-	PointsMultiplier       float64            `bson:"points_multiplier" json:"pointsMultiplier"` // base points = difficulty * multiplier
-	UpdatedAt              time.Time          `bson:"updated_at" json:"updatedAt"`
+	ID                    primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	DefaultAssignmentMode string             `bson:"default_assignment_mode" json:"defaultAssignmentMode"` // round_robin, random, manual
+	GlobalNotifications   bool               `bson:"global_notifications" json:"globalNotifications"`
+	DefaultReminderHours  int                `bson:"default_reminder_hours" json:"defaultReminderHours"`
+	PointsEnabled         bool               `bson:"points_enabled" json:"pointsEnabled"`
+	PointsMultiplier      float64            `bson:"points_multiplier" json:"pointsMultiplier"` // base points = difficulty * multiplier
+	UpdatedAt             time.Time          `bson:"updated_at" json:"updatedAt"`
 }
 
 // Notification represents an in-app notification
@@ -190,8 +190,8 @@ type Notification struct {
 type SupplySettings struct {
 	ID                    primitive.ObjectID   `bson:"_id,omitempty" json:"id"`
 	WeeklyContributionPLN primitive.Decimal128 `bson:"weekly_contribution_pln" json:"weeklyContributionPLN"` // per person
-	ContributionDay       string               `bson:"contribution_day" json:"contributionDay"` // monday, tuesday, etc
-	CurrentBudgetPLN      primitive.Decimal128 `bson:"current_budget_pln" json:"currentBudgetPLN"` // grows over time
+	ContributionDay       string               `bson:"contribution_day" json:"contributionDay"`              // monday, tuesday, etc
+	CurrentBudgetPLN      primitive.Decimal128 `bson:"current_budget_pln" json:"currentBudgetPLN"`           // grows over time
 	LastContributionAt    time.Time            `bson:"last_contribution_at" json:"lastContributionAt"`
 	IsActive              bool                 `bson:"is_active" json:"isActive"`
 	CreatedAt             time.Time            `bson:"created_at" json:"createdAt"`
@@ -200,20 +200,20 @@ type SupplySettings struct {
 
 // SupplyItem represents a household supply with inventory tracking
 type SupplyItem struct {
-	ID                     primitive.ObjectID    `bson:"_id,omitempty" json:"id"`
-	Name                   string                `bson:"name" json:"name"`
-	Category               string                `bson:"category" json:"category"` // groceries, cleaning, toiletries, other
-	CurrentQuantity        int                   `bson:"current_quantity" json:"currentQuantity"` // How much is in stock now
-	MinQuantity            int                   `bson:"min_quantity" json:"minQuantity"` // Threshold for low stock warning
-	Unit                   string                `bson:"unit" json:"unit"` // pcs, kg, L, bottles, boxes, etc.
-	Priority               int                   `bson:"priority" json:"priority"` // 1-5 (1=low, 5=urgent)
-	AddedByUserID          primitive.ObjectID    `bson:"added_by_user_id" json:"addedByUserId"`
-	AddedAt                time.Time             `bson:"added_at" json:"addedAt"`
-	LastRestockedAt        *time.Time            `bson:"last_restocked_at,omitempty" json:"lastRestockedAt,omitempty"`
-	LastRestockedByUserID  *primitive.ObjectID   `bson:"last_restocked_by_user_id,omitempty" json:"lastRestockedByUserId,omitempty"`
-	LastRestockAmountPLN   *primitive.Decimal128 `bson:"last_restock_amount_pln,omitempty" json:"lastRestockAmountPLN,omitempty"`
-	NeedsRefund            bool                  `bson:"needs_refund" json:"needsRefund"` // If last restock awaits reimbursement
-	Notes                  *string               `bson:"notes,omitempty" json:"notes,omitempty"`
+	ID                    primitive.ObjectID    `bson:"_id,omitempty" json:"id"`
+	Name                  string                `bson:"name" json:"name"`
+	Category              string                `bson:"category" json:"category"`                // groceries, cleaning, toiletries, other
+	CurrentQuantity       int                   `bson:"current_quantity" json:"currentQuantity"` // How much is in stock now
+	MinQuantity           int                   `bson:"min_quantity" json:"minQuantity"`         // Threshold for low stock warning
+	Unit                  string                `bson:"unit" json:"unit"`                        // pcs, kg, L, bottles, boxes, etc.
+	Priority              int                   `bson:"priority" json:"priority"`                // 1-5 (1=low, 5=urgent)
+	AddedByUserID         primitive.ObjectID    `bson:"added_by_user_id" json:"addedByUserId"`
+	AddedAt               time.Time             `bson:"added_at" json:"addedAt"`
+	LastRestockedAt       *time.Time            `bson:"last_restocked_at,omitempty" json:"lastRestockedAt,omitempty"`
+	LastRestockedByUserID *primitive.ObjectID   `bson:"last_restocked_by_user_id,omitempty" json:"lastRestockedByUserId,omitempty"`
+	LastRestockAmountPLN  *primitive.Decimal128 `bson:"last_restock_amount_pln,omitempty" json:"lastRestockAmountPLN,omitempty"`
+	NeedsRefund           bool                  `bson:"needs_refund" json:"needsRefund"` // If last restock awaits reimbursement
+	Notes                 *string               `bson:"notes,omitempty" json:"notes,omitempty"`
 }
 
 // SupplyContribution represents a budget contribution
@@ -233,7 +233,7 @@ type SupplyItemHistory struct {
 	ID            primitive.ObjectID    `bson:"_id,omitempty" json:"id"`
 	SupplyItemID  primitive.ObjectID    `bson:"supply_item_id" json:"supplyItemId"`
 	UserID        primitive.ObjectID    `bson:"user_id" json:"userId"`
-	Action        string                `bson:"action" json:"action"` // add, remove, restock, purchase, adjust
+	Action        string                `bson:"action" json:"action"`                // add, remove, restock, purchase, adjust
 	QuantityDelta int                   `bson:"quantity_delta" json:"quantityDelta"` // +/- amount changed
 	OldQuantity   int                   `bson:"old_quantity" json:"oldQuantity"`
 	NewQuantity   int                   `bson:"new_quantity" json:"newQuantity"`
@@ -247,7 +247,7 @@ type Session struct {
 	ID           primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	UserID       primitive.ObjectID `bson:"user_id" json:"userId"`
 	RefreshToken string             `bson:"refresh_token" json:"-"` // Hashed token
-	Name         string             `bson:"name" json:"name"`        // User-friendly name (e.g., "Chrome on Windows")
+	Name         string             `bson:"name" json:"name"`       // User-friendly name (e.g., "Chrome on Windows")
 	IPAddress    string             `bson:"ip_address" json:"ipAddress"`
 	UserAgent    string             `bson:"user_agent" json:"userAgent"`
 	CreatedAt    time.Time          `bson:"created_at" json:"createdAt"`
@@ -269,18 +269,18 @@ type PasswordResetToken struct {
 
 // AuditLog represents a log entry for user/admin actions
 type AuditLog struct {
-	ID          primitive.ObjectID     `bson:"_id,omitempty" json:"id"`
-	UserID      primitive.ObjectID     `bson:"user_id" json:"userId"`
-	UserEmail   string                 `bson:"user_email" json:"userEmail"`
-	UserName    string                 `bson:"user_name" json:"userName"`
-	Action      string                 `bson:"action" json:"action"`           // e.g., "user.create", "bill.post", "chore.delete"
-	ResourceType string                `bson:"resource_type" json:"resourceType"` // e.g., "user", "bill", "chore"
-	ResourceID  *primitive.ObjectID    `bson:"resource_id,omitempty" json:"resourceId,omitempty"`
-	Details     map[string]interface{} `bson:"details,omitempty" json:"details,omitempty"` // Additional context
-	IPAddress   string                 `bson:"ip_address" json:"ipAddress"`
-	UserAgent   string                 `bson:"user_agent" json:"userAgent"`
-	Status      string                 `bson:"status" json:"status"` // "success", "failure"
-	CreatedAt   time.Time              `bson:"created_at" json:"createdAt"`
+	ID           primitive.ObjectID     `bson:"_id,omitempty" json:"id"`
+	UserID       primitive.ObjectID     `bson:"user_id" json:"userId"`
+	UserEmail    string                 `bson:"user_email" json:"userEmail"`
+	UserName     string                 `bson:"user_name" json:"userName"`
+	Action       string                 `bson:"action" json:"action"`              // e.g., "user.create", "bill.post", "chore.delete"
+	ResourceType string                 `bson:"resource_type" json:"resourceType"` // e.g., "user", "bill", "chore"
+	ResourceID   *primitive.ObjectID    `bson:"resource_id,omitempty" json:"resourceId,omitempty"`
+	Details      map[string]interface{} `bson:"details,omitempty" json:"details,omitempty"` // Additional context
+	IPAddress    string                 `bson:"ip_address" json:"ipAddress"`
+	UserAgent    string                 `bson:"user_agent" json:"userAgent"`
+	Status       string                 `bson:"status" json:"status"` // "success", "failure"
+	CreatedAt    time.Time              `bson:"created_at" json:"createdAt"`
 }
 
 // Permission represents a granular permission for an action
@@ -293,13 +293,13 @@ type Permission struct {
 
 // Role represents a role with associated permissions
 type Role struct {
-	ID          primitive.ObjectID   `bson:"_id,omitempty" json:"id"`
-	Name        string               `bson:"name" json:"name"` // e.g., "ADMIN", "RESIDENT", "CUSTOM_ROLE_1"
-	DisplayName string               `bson:"display_name" json:"displayName"`
-	IsSystem    bool                 `bson:"is_system" json:"isSystem"` // true for ADMIN/RESIDENT, false for custom roles
-	Permissions []string             `bson:"permissions" json:"permissions"` // Array of permission names
-	CreatedAt   time.Time            `bson:"created_at" json:"createdAt"`
-	UpdatedAt   time.Time            `bson:"updated_at" json:"updatedAt"`
+	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	Name        string             `bson:"name" json:"name"` // e.g., "ADMIN", "RESIDENT", "CUSTOM_ROLE_1"
+	DisplayName string             `bson:"display_name" json:"displayName"`
+	IsSystem    bool               `bson:"is_system" json:"isSystem"`      // true for ADMIN/RESIDENT, false for custom roles
+	Permissions []string           `bson:"permissions" json:"permissions"` // Array of permission names
+	CreatedAt   time.Time          `bson:"created_at" json:"createdAt"`
+	UpdatedAt   time.Time          `bson:"updated_at" json:"updatedAt"`
 }
 
 // ApprovalRequest represents a pending approval for an action requiring admin approval

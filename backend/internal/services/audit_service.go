@@ -32,18 +32,18 @@ func (s *AuditService) LogAction(
 	status string,
 ) error {
 	log := models.AuditLog{
-		ID:          primitive.NewObjectID(),
-		UserID:      userID,
-		UserEmail:   userEmail,
-		UserName:    userName,
-		Action:      action,
+		ID:           primitive.NewObjectID(),
+		UserID:       userID,
+		UserEmail:    userEmail,
+		UserName:     userName,
+		Action:       action,
 		ResourceType: resourceType,
-		ResourceID:  resourceID,
-		Details:     details,
-		IPAddress:   ipAddress,
-		UserAgent:   userAgent,
-		Status:      status,
-		CreatedAt:   time.Now(),
+		ResourceID:   resourceID,
+		Details:      details,
+		IPAddress:    ipAddress,
+		UserAgent:    userAgent,
+		Status:       status,
+		CreatedAt:    time.Now(),
 	}
 
 	_, err := s.db.Collection("audit_logs").InsertOne(ctx, log)

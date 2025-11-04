@@ -14,9 +14,9 @@ import (
 type ContextKey string
 
 const (
-	UserIDKey  ContextKey = "userId"
-	UserEmail  ContextKey = "userEmail"
-	UserRole   ContextKey = "userRole"
+	UserIDKey ContextKey = "userId"
+	UserEmail ContextKey = "userEmail"
+	UserRole  ContextKey = "userRole"
 )
 
 // AuthMiddleware validates JWT tokens

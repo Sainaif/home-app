@@ -81,15 +81,15 @@ func (s *UserService) CreateUser(ctx context.Context, req CreateUserRequest) (*m
 	}
 
 	user := models.User{
-		ID:                primitive.NewObjectID(),
-		Email:             req.Email,
-		Name:              name,
-		PasswordHash:      passwordHash,
-		Role:              req.Role,
-		GroupID:           req.GroupID,
-		IsActive:          true,
+		ID:                 primitive.NewObjectID(),
+		Email:              req.Email,
+		Name:               name,
+		PasswordHash:       passwordHash,
+		Role:               req.Role,
+		GroupID:            req.GroupID,
+		IsActive:           true,
 		MustChangePassword: true, // Force password change on first login
-		CreatedAt:         time.Now(),
+		CreatedAt:          time.Now(),
 	}
 
 	_, err = s.db.Collection("users").InsertOne(ctx, user)
@@ -234,7 +234,7 @@ func (s *UserService) ChangePassword(ctx context.Context, userID primitive.Objec
 		ctx,
 		bson.M{"_id": userID},
 		bson.M{"$set": bson.M{
-			"password_hash": newHash,
+			"password_hash":        newHash,
 			"must_change_password": false,
 		}},
 	)

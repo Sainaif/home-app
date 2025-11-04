@@ -75,10 +75,10 @@ func NewWebAuthn(rpID, rpOrigin, rpName string) (*webauthn.WebAuthn, error) {
 	// Add additional localhost origins for development
 	if rpID == "localhost" {
 		origins = append(origins,
-			"http://localhost:16161",  // Frontend
-			"http://localhost:16162",  // API
-			"http://localhost:3000",   // Local API
-			"http://localhost:5173",   // Vite dev server
+			"http://localhost:16161", // Frontend
+			"http://localhost:16162", // API
+			"http://localhost:3000",  // Local API
+			"http://localhost:5173",  // Vite dev server
 		)
 	}
 
@@ -186,7 +186,7 @@ func ConvertWebAuthnCredential(cred *webauthn.Credential, name string) models.Pa
 		CreatedAt:       now,
 		LastUsedAt:      now,
 		// Store backup flags from registration to prevent inconsistency errors
-		BackupEligible:  cred.Flags.BackupEligible,
-		BackupState:     cred.Flags.BackupState,
+		BackupEligible: cred.Flags.BackupEligible,
+		BackupState:    cred.Flags.BackupState,
 	}
 }

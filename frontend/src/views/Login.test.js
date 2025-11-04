@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
+import { createI18n } from 'vue-i18n'
 import Login from './Login.vue'
 import { useAuthStore } from '../stores/auth'
 
@@ -12,6 +13,24 @@ vi.mock('../composables/usePasskey', () => ({
     loginWithConditionalUI: vi.fn()
   })
 }))
+
+// Create mock i18n
+const i18n = createI18n({
+  legacy: false,
+  locale: 'pl',
+  messages: {
+    pl: {
+      auth: {
+        email: 'Email',
+        password: 'Hasło',
+        loginButton: 'Zaloguj'
+      },
+      common: {
+        loading: 'Ładowanie'
+      }
+    }
+  }
+})
 
 // Create mock router
 const router = createRouter({
@@ -42,7 +61,7 @@ describe('Login Component', () => {
   it('should render login form', () => {
     wrapper = mount(Login, {
       global: {
-        plugins: [router],
+        plugins: [router, i18n],
         stubs: {
           'lucide-vue-next': true
         }
@@ -57,7 +76,7 @@ describe('Login Component', () => {
   it('should bind email and password inputs correctly', async () => {
     wrapper = mount(Login, {
       global: {
-        plugins: [router],
+        plugins: [router, i18n],
         stubs: {
           'lucide-vue-next': true
         }
@@ -77,7 +96,7 @@ describe('Login Component', () => {
   it('should call authStore.login on form submit', async () => {
     wrapper = mount(Login, {
       global: {
-        plugins: [router],
+        plugins: [router, i18n],
         stubs: {
           'lucide-vue-next': true
         }
@@ -100,7 +119,7 @@ describe('Login Component', () => {
   it('should navigate to home on successful login', async () => {
     wrapper = mount(Login, {
       global: {
-        plugins: [router],
+        plugins: [router, i18n],
         stubs: {
           'lucide-vue-next': true
         }
@@ -128,7 +147,7 @@ describe('Login Component', () => {
   it('should display error message on login failure', async () => {
     wrapper = mount(Login, {
       global: {
-        plugins: [router],
+        plugins: [router, i18n],
         stubs: {
           'lucide-vue-next': true
         }
@@ -158,7 +177,7 @@ describe('Login Component', () => {
   it('should disable submit button while loading', async () => {
     wrapper = mount(Login, {
       global: {
-        plugins: [router],
+        plugins: [router, i18n],
         stubs: {
           'lucide-vue-next': true
         }
