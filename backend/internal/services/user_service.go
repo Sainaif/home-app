@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/sainaif/holy-home/internal/config"
 	"github.com/sainaif/holy-home/internal/models"
@@ -46,6 +48,12 @@ type UpdateUserRequest struct {
 
 // CreateUser creates a new user (ADMIN only)
 func (s *UserService) CreateUser(ctx context.Context, req CreateUserRequest) (*models.User, error) {
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if email == "" {
+		return nil, errors.New("email is required")
+	}
+	req.Email = email
+
 	// Validate role exists
 	roleCount, err := s.db.Collection("roles").CountDocuments(ctx, bson.M{"name": req.Role})
 	if err != nil {
@@ -55,8 +63,9 @@ func (s *UserService) CreateUser(ctx context.Context, req CreateUserRequest) (*m
 		return nil, errors.New("invalid role: role does not exist")
 	}
 
-	// Check if email already exists
-	count, err := s.db.Collection("users").CountDocuments(ctx, bson.M{"email": req.Email})
+	// Check if email already exists (case-insensitive)
+	countOpts := options.Count().SetCollation(caseInsensitiveEmailCollation)
+	count, err := s.db.Collection("users").CountDocuments(ctx, bson.M{"email": req.Email}, countOpts)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
 	}
@@ -75,7 +84,7 @@ func (s *UserService) CreateUser(ctx context.Context, req CreateUserRequest) (*m
 	}
 
 	// Use provided name, or fallback to email if empty
-	name := req.Name
+	name := strings.TrimSpace(req.Name)
 	if name == "" {
 		name = req.Email
 	}
@@ -162,18 +171,27 @@ func (s *UserService) UpdateUser(ctx context.Context, userID primitive.ObjectID,
 	unset := bson.M{}
 
 	if req.Email != nil {
-		// Check if new email already exists
-		count, err := s.db.Collection("users").CountDocuments(ctx, bson.M{
-			"email": *req.Email,
+		normalizedEmail := strings.ToLower(strings.TrimSpace(*req.Email))
+		if normalizedEmail == "" {
+			return errors.New("email cannot be empty")
+		}
+		if !strings.Contains(normalizedEmail, "@") {
+			return errors.New("invalid email format")
+		}
+
+		countOpts := options.Count().SetCollation(caseInsensitiveEmailCollation)
+		countFilter := bson.M{
+			"email": normalizedEmail,
 			"_id":   bson.M{"$ne": userID},
-		})
+		}
+		count, err := s.db.Collection("users").CountDocuments(ctx, countFilter, countOpts)
 		if err != nil {
 			return fmt.Errorf("database error: %w", err)
 		}
 		if count > 0 {
 			return errors.New("email already in use")
 		}
-		update["email"] = *req.Email
+		update["email"] = normalizedEmail
 	}
 
 	if req.Name != nil {
@@ -435,7 +453,7 @@ func (s *UserService) ResetPasswordWithToken(ctx context.Context, token string, 
 
 	// Update user password and clear must_change_password flag
 	now := time.Now()
-	_, err = s.db.Collection("users").UpdateOne(
+	updateResult, err := s.db.Collection("users").UpdateOne(
 		ctx,
 		bson.M{"_id": resetToken.UserID},
 		bson.M{"$set": bson.M{
@@ -446,10 +464,13 @@ func (s *UserService) ResetPasswordWithToken(ctx context.Context, token string, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to update password: %w", err)
 	}
+	if updateResult.MatchedCount == 0 {
+		return nil, errors.New("user not found for password reset")
+	}
 
 	// Mark token as used
 	tokenHash := utils.HashToken(token)
-	_, err = s.db.Collection("password_reset_tokens").UpdateOne(
+	tokenUpdateResult, err := s.db.Collection("password_reset_tokens").UpdateOne(
 		ctx,
 		bson.M{"token_hash": tokenHash},
 		bson.M{"$set": bson.M{
@@ -460,12 +481,24 @@ func (s *UserService) ResetPasswordWithToken(ctx context.Context, token string, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to mark token as used: %w", err)
 	}
+	if tokenUpdateResult.MatchedCount == 0 {
+		return nil, errors.New("reset token record not found")
+	}
 
 	// Get user details for JWT generation
 	var user models.User
 	err = s.db.Collection("users").FindOne(ctx, bson.M{"_id": resetToken.UserID}).Decode(&user)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve user: %w", err)
+	}
+
+	// Double-check that the stored password matches what we just set
+	valid, err := utils.VerifyPassword(newPassword, user.PasswordHash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify updated password: %w", err)
+	}
+	if !valid {
+		return nil, errors.New("password update verification failed")
 	}
 
 	// Generate JWT tokens for automatic login

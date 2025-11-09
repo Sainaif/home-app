@@ -82,15 +82,35 @@
           <span>{{ error }}</span>
         </div>
 
-        <div v-if="success" class="flex items-center gap-2 p-4 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400">
-          <CheckCircle class="w-5 h-5" />
-          <div>
-            <p class="font-medium">Hasło zostało zmienione!</p>
-            <p class="text-sm mt-1">Za chwilę zostaniesz przekierowany do panelu...</p>
+        <div v-if="success" class="space-y-3">
+          <div class="flex items-center gap-2 p-4 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400">
+            <CheckCircle class="w-5 h-5" />
+            <div class="flex-1">
+              <p class="font-medium">Hasło zostało zmienione!</p>
+              <p class="text-sm mt-1">Możesz teraz przejść do panelu.</p>
+            </div>
           </div>
+
+          <button
+            type="button"
+            @click="copyPassword"
+            class="btn btn-outline w-full flex items-center justify-center gap-2"
+          >
+            <Copy class="w-5 h-5" />
+            {{ passwordCopied ? 'Skopiowano!' : 'Skopiuj hasło' }}
+          </button>
+
+          <button
+            type="button"
+            @click="goToDashboard"
+            class="btn btn-primary w-full"
+          >
+            Przejdź do panelu
+          </button>
         </div>
 
         <button
+          v-if="!success"
           type="submit"
           :disabled="loading || !passwordsMatch || newPassword.length < 8"
           class="btn btn-primary w-full flex items-center justify-center gap-2"
@@ -101,6 +121,7 @@
         </button>
 
         <button
+          v-if="!success"
           type="button"
           @click="goToLogin"
           class="btn btn-outline w-full"
@@ -117,7 +138,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../api/client'
-import { Key, Lock, AlertCircle, CheckCircle } from 'lucide-vue-next'
+import { Key, Lock, AlertCircle, CheckCircle, Copy } from 'lucide-vue-next'
 
 const router = useRouter()
 const route = useRoute()
@@ -131,6 +152,7 @@ const validatingToken = ref(true)
 const error = ref('')
 const tokenError = ref('')
 const success = ref(false)
+const passwordCopied = ref(false)
 
 const passwordsMatch = computed(() => {
   if (!confirmPassword.value) return true
@@ -220,21 +242,33 @@ async function handleResetPassword() {
     // Store the tokens
     authStore.setTokens(response.data.accessToken, response.data.refreshToken)
 
-    // Fetch user profile
-    await authStore.fetchUser()
+    // Load user profile
+    await authStore.loadUser()
 
     success.value = true
-
-    // Redirect to dashboard after 2 seconds
-    setTimeout(() => {
-      router.push('/')
-    }, 2000)
   } catch (err) {
     console.error('Password reset failed:', err)
     error.value = err.response?.data?.error || 'Nie udało się zresetować hasła'
   } finally {
     loading.value = false
   }
+}
+
+function copyPassword() {
+  if (newPassword.value) {
+    navigator.clipboard.writeText(newPassword.value).then(() => {
+      passwordCopied.value = true
+      setTimeout(() => {
+        passwordCopied.value = false
+      }, 2000)
+    }).catch(err => {
+      console.error('Failed to copy password:', err)
+    })
+  }
+}
+
+function goToDashboard() {
+  router.push('/')
 }
 
 function goToLogin() {

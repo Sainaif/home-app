@@ -174,7 +174,7 @@ describe('Auth Store', () => {
 
       expect(result).toBe(true)
       expect(api.post).toHaveBeenCalledWith('/auth/refresh', {
-        refresh_token: 'old-refresh-token'
+        refreshToken: 'old-refresh-token'
       })
       expect(authStore.accessToken).toBe('new-access-token')
       expect(authStore.refreshToken).toBe('new-refresh-token')

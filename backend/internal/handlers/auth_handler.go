@@ -62,7 +62,8 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 // @Router /auth/refresh [post]
 func (h *AuthHandler) Refresh(c *fiber.Ctx) error {
 	var req struct {
-		RefreshToken string `json:"refreshToken"`
+		RefreshToken       string `json:"refreshToken"`
+		LegacyRefreshToken string `json:"refresh_token"`
 	}
 
 	if err := c.BodyParser(&req); err != nil {
@@ -71,7 +72,18 @@ func (h *AuthHandler) Refresh(c *fiber.Ctx) error {
 		})
 	}
 
-	tokens, err := h.authService.RefreshTokens(c.Context(), req.RefreshToken, c.IP(), c.Get("User-Agent"))
+	refreshToken := req.RefreshToken
+	if refreshToken == "" {
+		refreshToken = req.LegacyRefreshToken
+	}
+
+	if refreshToken == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Refresh token is required",
+		})
+	}
+
+	tokens, err := h.authService.RefreshTokens(c.Context(), refreshToken, c.IP(), c.Get("User-Agent"))
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": err.Error(),
