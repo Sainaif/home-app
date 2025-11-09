@@ -220,8 +220,8 @@ async function handleResetPassword() {
     // Store the tokens
     authStore.setTokens(response.data.accessToken, response.data.refreshToken)
 
-    // Fetch user profile
-    await authStore.fetchUser()
+    // Load user profile
+    await authStore.loadUser()
 
     success.value = true
 
