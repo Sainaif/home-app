@@ -62,7 +62,7 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 // @Router /auth/refresh [post]
 func (h *AuthHandler) Refresh(c *fiber.Ctx) error {
 	var req struct {
-		RefreshToken      string `json:"refreshToken"`
+		RefreshToken       string `json:"refreshToken"`
 		LegacyRefreshToken string `json:"refresh_token"`
 	}
 
