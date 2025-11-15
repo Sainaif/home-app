@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
@@ -59,9 +61,15 @@ type TokenResponse struct {
 
 // Login authenticates a user and returns JWT tokens
 func (s *AuthService) Login(ctx context.Context, req LoginRequest, ipAddress, userAgent string) (*TokenResponse, error) {
+	email := strings.TrimSpace(req.Email)
+	if email == "" {
+		return nil, errors.New("invalid credentials")
+	}
+
 	// Find user by email
 	var user models.User
-	err := s.db.Collection("users").FindOne(ctx, bson.M{"email": req.Email}).Decode(&user)
+	findOpts := options.FindOne().SetCollation(caseInsensitiveEmailCollation)
+	err := s.db.Collection("users").FindOne(ctx, bson.M{"email": email}, findOpts).Decode(&user)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, errors.New("invalid credentials")
@@ -314,9 +322,15 @@ func (s *AuthService) BeginPasskeyLogin(ctx context.Context, email string) (*pro
 		return nil, errors.New("WebAuthn not initialized")
 	}
 
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return nil, errors.New("user not found")
+	}
+
 	// Find user by email
 	var user models.User
-	err := s.db.Collection("users").FindOne(ctx, bson.M{"email": email}).Decode(&user)
+	findOpts := options.FindOne().SetCollation(caseInsensitiveEmailCollation)
+	err := s.db.Collection("users").FindOne(ctx, bson.M{"email": email}, findOpts).Decode(&user)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, errors.New("user not found")
@@ -373,9 +387,15 @@ func (s *AuthService) FinishPasskeyLogin(ctx context.Context, email string, resp
 		return nil, errors.New("WebAuthn not initialized")
 	}
 
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return nil, errors.New("invalid credentials")
+	}
+
 	// Find user by email
 	var user models.User
-	err := s.db.Collection("users").FindOne(ctx, bson.M{"email": email}).Decode(&user)
+	findOpts := options.FindOne().SetCollation(caseInsensitiveEmailCollation)
+	err := s.db.Collection("users").FindOne(ctx, bson.M{"email": email}, findOpts).Decode(&user)
 	if err != nil {
 		return nil, errors.New("invalid credentials")
 	}
@@ -618,10 +638,12 @@ func (s *AuthService) BootstrapAdmin(ctx context.Context) error {
 		passwordHash = hashed
 	}
 
+	adminEmail := strings.ToLower(strings.TrimSpace(s.cfg.Admin.Email))
+
 	// Create admin user from config
 	admin := models.User{
 		ID:           primitive.NewObjectID(),
-		Email:        s.cfg.Admin.Email,
+		Email:        adminEmail,
 		PasswordHash: passwordHash,
 		Role:         "ADMIN",
 		IsActive:     true,
