@@ -323,8 +323,33 @@ function formatDateTime(date) {
   return new Date(date).toLocaleString('pl-PL')
 }
 
+const PAYMENT_MATCH_EPSILON = 0.01
+
+const userAllocation = computed(() => {
+  if (!allocations.value || allocations.value.length === 0 || !authStore.user) {
+    return null
+  }
+
+  const currentUserId = authStore.user.id
+  const currentGroupId = authStore.user.groupId
+
+  return allocations.value.find(allocation => {
+    if (allocation.subjectType === 'user' && allocation.subjectId === currentUserId) {
+      return true
+    }
+    if (allocation.subjectType === 'group' && currentGroupId && allocation.subjectId === currentGroupId) {
+      return true
+    }
+    return false
+  }) || null
+})
+
 const isUserPaid = computed(() => {
-  return allPayments.value.some(p => p.payerUserId === authStore.user?.id)
+  if (!userAllocation.value) {
+    return false
+  }
+
+  return hasAllocationBeenPaid(userAllocation.value)
 })
 
 function isUserAllocation(allocation) {
@@ -339,12 +364,63 @@ function isUserAllocation(allocation) {
 }
 
 function hasAllocationBeenPaid(allocation) {
-  // Check if payment exists for this allocation
-  if (allocation.subjectType === 'user') {
-    return allPayments.value.some(p => p.payerUserId === allocation.subjectId)
+  const targetAmount = Number(allocation.amount || 0)
+  if (!targetAmount) {
+    return false
   }
-  // For groups, we don't track group payments individually
-  return false
+
+  const paidAmount = getPaidAmountForAllocation(allocation)
+  return paidAmount + PAYMENT_MATCH_EPSILON >= targetAmount
+}
+
+function getPaidAmountForAllocation(allocation) {
+  const memberIds = allocation.subjectType === 'group'
+    ? getGroupMemberIds(allocation.subjectId)
+    : [allocation.subjectId]
+
+  if (!memberIds.length) {
+    return 0
+  }
+
+  return sumPaymentsForUsers(memberIds)
+}
+
+function getGroupMemberIds(groupId) {
+  if (!groupId) {
+    return []
+  }
+  return users.value
+    .filter(user => user.groupId === groupId)
+    .map(user => user.id)
+}
+
+function sumPaymentsForUsers(userIds) {
+  if (!userIds.length || !Array.isArray(allPayments.value)) {
+    return 0
+  }
+
+  return allPayments.value.reduce((total, payment) => {
+    if (userIds.includes(payment.payerUserId)) {
+      total += decimalToNumber(payment.amountPLN)
+    }
+    return total
+  }, 0)
+}
+
+function decimalToNumber(value) {
+  if (value == null) {
+    return 0
+  }
+  if (typeof value === 'number') {
+    return value
+  }
+  if (typeof value === 'string') {
+    return parseFloat(value)
+  }
+  if (typeof value === 'object' && value.$numberDecimal) {
+    return parseFloat(value.$numberDecimal)
+  }
+  return 0
 }
 
 async function markAsPaid(amount) {

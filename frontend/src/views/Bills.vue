@@ -1306,16 +1306,48 @@ function getAllocationLabel(alloc) {
   return `${name}: ${value}`
 }
 
+const PAYMENT_MATCH_EPSILON = 0.01
+
 function hasUserPaid(billId, allocation) {
-  if (!billPayments.value[billId]) return false
+  const payments = billPayments.value[billId]
+  if (!payments || !payments.length) return false
 
-  // Check if there's a payment from this user (for user allocations)
-  if (allocation.subjectType === 'user') {
-    return billPayments.value[billId].some(p => p.payerUserId === allocation.subjectId)
+  const targetAmount = Number(allocation.amount || 0)
+  if (!targetAmount) return false
+
+  const subjectIds = allocation.subjectType === 'group'
+    ? getGroupMemberIds(allocation.subjectId)
+    : [allocation.subjectId]
+
+  if (!subjectIds.length) return false
+
+  const paidAmount = sumPaymentsForUsers(payments, subjectIds)
+  return paidAmount + PAYMENT_MATCH_EPSILON >= targetAmount
+}
+
+function getGroupMemberIds(groupId) {
+  if (!groupId) return []
+  return users.value
+    .filter(user => user.groupId === groupId)
+    .map(user => user.id)
+}
+
+function sumPaymentsForUsers(payments, userIds) {
+  return payments.reduce((total, payment) => {
+    if (userIds.includes(payment.payerUserId)) {
+      total += decimalToNumber(payment.amountPLN)
+    }
+    return total
+  }, 0)
+}
+
+function decimalToNumber(value) {
+  if (value == null) return 0
+  if (typeof value === 'number') return value
+  if (typeof value === 'string') return parseFloat(value)
+  if (typeof value === 'object' && value.$numberDecimal) {
+    return parseFloat(value.$numberDecimal)
   }
-
-  // For group allocations, check if any member of the group has paid
-  // Note: This is simplified - you might want more complex logic here
-  return false
+  return 0
 }
 </script>
