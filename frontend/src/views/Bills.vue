@@ -1008,10 +1008,15 @@ async function deleteBill(billId) {
 async function submitReading() {
   loadingReading.value = true
   try {
+    const units = parseFloat(form.value.meterReading)
+    if (isNaN(units) || units <= 0) {
+      throw new Error('Podaj dodatnią wartość zużycia')
+    }
+
     await api.post('/consumptions', {
       billId: form.value.billId,
-      meterValue: parseFloat(form.value.meterReading),
-      units: 0,
+      units,
+      meterValue: units,
       recordedAt: new Date(form.value.readingDate).toISOString()
     })
 
@@ -1019,6 +1024,7 @@ async function submitReading() {
     await loadReadingsData()
   } catch (err) {
     console.error('Failed to submit reading:', err)
+    alert('Nie udało się zapisać odczytu: ' + (err.response?.data?.error || err.message))
   } finally {
     loadingReading.value = false
   }

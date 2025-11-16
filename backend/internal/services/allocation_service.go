@@ -214,10 +214,17 @@ func (s *AllocationService) CalculateMeteredAllocation(ctx context.Context, bill
 
 		if units <= 0 && c.MeterValue != nil {
 			derivedUnits, derr := s.deriveUnitsFromMeter(ctx, c)
-			if derr != nil {
+			switch {
+			case derr == nil:
+				units = derivedUnits
+			case errors.Is(derr, ErrNoPreviousReading):
+				fallback, ferr := utils.DecimalToFloat(*c.MeterValue)
+				if ferr == nil {
+					units = fallback
+				}
+			default:
 				return nil, derr
 			}
-			units = derivedUnits
 		}
 
 		if units <= 0 {

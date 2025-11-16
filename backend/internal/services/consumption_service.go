@@ -15,6 +15,8 @@ import (
 	"github.com/sainaif/holy-home/internal/utils"
 )
 
+var ErrNoPreviousReading = errors.New("no previous meter reading found")
+
 type ConsumptionService struct {
 	db *mongo.Database
 }
@@ -74,10 +76,14 @@ func (s *ConsumptionService) CreateConsumption(ctx context.Context, req CreateCo
 		}
 
 		computedUnits, err := s.calculateUnitsFromMeter(ctx, subjectID, subjectType, *req.MeterValue, req.RecordedAt)
-		if err != nil {
+		switch {
+		case err == nil:
+			unitsValue = computedUnits
+		case errors.Is(err, ErrNoPreviousReading):
+			unitsValue = *req.MeterValue
+		default:
 			return nil, err
 		}
-		unitsValue = computedUnits
 	}
 
 	unitsDec, err := utils.DecimalFromFloat(unitsValue)
@@ -251,14 +257,13 @@ func (s *ConsumptionService) calculateUnitsFromMeter(ctx context.Context, subjec
 	err := s.db.Collection("consumptions").FindOne(ctx, filter, opts).Decode(&previous)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			// No previous reading - treat this as baseline with zero consumption
-			return 0, nil
+			return 0, ErrNoPreviousReading
 		}
 		return 0, fmt.Errorf("failed to fetch previous reading: %w", err)
 	}
 
 	if previous.MeterValue == nil {
-		return 0, nil
+		return 0, ErrNoPreviousReading
 	}
 
 	prevValue, err := utils.DecimalToFloat(*previous.MeterValue)

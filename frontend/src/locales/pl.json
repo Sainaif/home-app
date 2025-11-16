@@ -47,7 +47,7 @@
   "readings": {
     "title": "Odczyty licznika",
     "addReading": "Dodaj odczyt",
-    "meterReading": "Wartość licznika",
+    "meterReading": "Zużycie (kWh)",
     "date": "Data",
     "bill": "Rachunek",
     "submit": "Zapisz"
