@@ -8,6 +8,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/sainaif/holy-home/internal/models"
 	"github.com/sainaif/holy-home/internal/utils"
@@ -210,6 +211,19 @@ func (s *AllocationService) CalculateMeteredAllocation(ctx context.Context, bill
 		if err != nil {
 			continue
 		}
+
+		if units <= 0 && c.MeterValue != nil {
+			derivedUnits, derr := s.deriveUnitsFromMeter(ctx, c)
+			if derr != nil {
+				return nil, derr
+			}
+			units = derivedUnits
+		}
+
+		if units <= 0 {
+			continue
+		}
+
 		subjectUnits[c.SubjectID] += units // Aggregate units per subject (group or user)
 		totalConsumedUnits += units
 	}
@@ -465,4 +479,49 @@ func (s *AllocationService) getConsumptionsForBill(ctx context.Context, billID p
 
 func floatPtr(f float64) *float64 {
 	return &f
+}
+
+// deriveUnitsFromMeter calculates usage delta when only meter readings were stored (legacy data)
+func (s *AllocationService) deriveUnitsFromMeter(ctx context.Context, consumption models.Consumption) (float64, error) {
+	if consumption.MeterValue == nil {
+		return 0, nil
+	}
+
+	currentValue, err := utils.DecimalToFloat(*consumption.MeterValue)
+	if err != nil {
+		return 0, fmt.Errorf("invalid meter value: %w", err)
+	}
+
+	filter := bson.M{
+		"subject_id":   consumption.SubjectID,
+		"subject_type": consumption.SubjectType,
+		"meter_value":  bson.M{"$ne": nil},
+		"recorded_at":  bson.M{"$lt": consumption.RecordedAt},
+	}
+	opts := options.FindOne().SetSort(bson.D{{Key: "recorded_at", Value: -1}})
+
+	var previous models.Consumption
+	err = s.db.Collection("consumptions").FindOne(ctx, filter, opts).Decode(&previous)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to fetch previous reading: %w", err)
+	}
+
+	if previous.MeterValue == nil {
+		return 0, nil
+	}
+
+	prevValue, err := utils.DecimalToFloat(*previous.MeterValue)
+	if err != nil {
+		return 0, fmt.Errorf("invalid previous meter value: %w", err)
+	}
+
+	units := currentValue - prevValue
+	if units < 0 {
+		return 0, errors.New("meter reading cannot be lower than previous reading")
+	}
+
+	return units, nil
 }
