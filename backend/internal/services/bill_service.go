@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -15,11 +16,12 @@ import (
 )
 
 type BillService struct {
-	db *mongo.Database
+	db                  *mongo.Database
+	notificationService *NotificationService
 }
 
-func NewBillService(db *mongo.Database) *BillService {
-	return &BillService{db: db}
+func NewBillService(db *mongo.Database, notificationService *NotificationService) *BillService {
+	return &BillService{db: db, notificationService: notificationService}
 }
 
 type CreateBillRequest struct {
@@ -35,7 +37,7 @@ type CreateBillRequest struct {
 }
 
 // CreateBill creates a new bill in the database
-func (s *BillService) CreateBill(ctx context.Context, req CreateBillRequest) (*models.Bill, error) {
+func (s *BillService) CreateBill(ctx context.Context, req CreateBillRequest, creatorID primitive.ObjectID) (*models.Bill, error) {
 	// Validate bill type
 	validTypes := map[string]bool{"electricity": true, "gas": true, "internet": true, "inne": true}
 	if !validTypes[req.Type] {
@@ -101,6 +103,27 @@ func (s *BillService) CreateBill(ctx context.Context, req CreateBillRequest) (*m
 	_, err = s.db.Collection("bills").InsertOne(ctx, bill)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bill: %w", err)
+	}
+
+	// Create a notification for all users except the creator
+	users, err := s.getAllActiveUsers(ctx)
+	if err != nil {
+		log.Printf("failed to get all active users: %v", err)
+	} else {
+		for _, user := range users {
+			if user.ID != creatorID {
+				now := time.Now()
+				notification := &models.Notification{
+					UserID:       &user.ID,
+					Channel:      "app",
+					TemplateID:   "bill",
+					ScheduledFor: now,
+					SentAt:       &now,
+					Status:       "sent",
+				}
+				s.notificationService.CreateNotification(ctx, notification)
+			}
+		}
 	}
 
 	return &bill, nil

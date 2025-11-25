@@ -183,6 +183,7 @@ type Notification struct {
 	ScheduledFor time.Time           `bson:"scheduled_for" json:"scheduledFor"`
 	SentAt       *time.Time          `bson:"sent_at,omitempty" json:"sentAt,omitempty"`
 	Status       string              `bson:"status" json:"status"` // queued, sent
+	Read         bool                `bson:"read" json:"read"`
 	UserID       *primitive.ObjectID `bson:"user_id,omitempty" json:"userId,omitempty"`
 }
 
@@ -317,4 +318,13 @@ type ApprovalRequest struct {
 	ReviewedAt   *time.Time             `bson:"reviewed_at,omitempty" json:"reviewedAt,omitempty"`
 	ReviewNotes  *string                `bson:"review_notes,omitempty" json:"reviewNotes,omitempty"`
 	CreatedAt    time.Time              `bson:"created_at" json:"createdAt"`
+}
+
+// NotificationPreference represents a user's notification preferences
+type NotificationPreference struct {
+	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	UserID      primitive.ObjectID `bson:"user_id" json:"userId"`
+	Preferences map[string]bool    `bson:"preferences" json:"preferences"`
+	AllEnabled  bool               `bson:"all_enabled" json:"allEnabled"`
+	UpdatedAt   time.Time          `bson:"updated_at" json:"updatedAt"`
 }

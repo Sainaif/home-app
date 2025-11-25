@@ -1,137 +1,96 @@
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { defineStore } from 'pinia';
+import { ref, computed } from 'vue';
+import apiClient from '../api';
 
 export const useNotificationStore = defineStore('notification', () => {
-  // Load from localStorage
-  const history = ref(JSON.parse(localStorage.getItem('notificationHistory') || '[]'))
-  const preferences = ref(JSON.parse(localStorage.getItem('notificationPreferences') || JSON.stringify({
+  const history = ref([]);
+  const preferences = ref({
     bill: true,
     chore: true,
     supply: true,
-    loan: true
-  })))
+    loan: true,
+  });
 
-  // Computed
-  const unreadCount = computed(() => history.value.filter(n => !n.read).length)
+  const unreadCount = computed(() => history.value.filter((n) => !n.read).length);
 
-  const unreadNotifications = computed(() => history.value.filter(n => !n.read))
+  async function fetchNotifications() {
+    try {
+      const response = await apiClient.get('/notifications');
+      history.value = response.data;
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error);
+    }
+  }
 
-  const readNotifications = computed(() => history.value.filter(n => n.read))
+  async function markAsRead(id) {
+    try {
+      await apiClient.post(`/notifications/${id}/read`);
+      const notification = history.value.find((n) => n.id === id);
+      if (notification) {
+        notification.read = true;
+      }
+    } catch (error) {
+      console.error('Failed to mark notification as read:', error);
+    }
+  }
 
-  // Actions
+  async function markAllAsRead() {
+    try {
+      await apiClient.post('/notifications/read-all');
+      history.value.forEach((n) => (n.read = true));
+    } catch (error) {
+      console.error('Failed to mark all notifications as read:', error);
+    }
+  }
+
   function addNotification(notification) {
-    const newNotification = {
-      id: Date.now() + Math.random(),
-      timestamp: new Date().toISOString(),
-      read: false,
-      ...notification
-    }
-
-    // Add to beginning of array
-    history.value.unshift(newNotification)
-
-    // Limit to 50 notifications
-    if (history.value.length > 50) {
-      history.value = history.value.slice(0, 50)
-    }
-
-    // Cleanup old notifications (older than 7 days)
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-    history.value = history.value.filter(n =>
-      new Date(n.timestamp) > sevenDaysAgo
-    )
-
-    saveHistory()
-    return newNotification
+    history.value.unshift(notification);
   }
 
-  function markAsRead(id) {
-    const notification = history.value.find(n => n.id === id)
-    if (notification) {
-      notification.read = true
-      saveHistory()
+  async function subscribe() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      return;
+    }
+
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: import.meta.env.VITE_VAPID_PUBLIC_KEY,
+    });
+
+    await apiClient.post('/web-push/subscribe', subscription);
+  }
+
+  async function fetchPreferences() {
+    try {
+      const response = await apiClient.get('/notifications/preferences');
+      preferences.value = response.data;
+    } catch (error) {
+      console.error('Failed to fetch preferences:', error);
     }
   }
 
-  function markAllAsRead() {
-    history.value.forEach(n => n.read = true)
-    saveHistory()
-  }
-
-  function clearHistory() {
-    history.value = []
-    saveHistory()
-  }
-
-  function togglePreference(type) {
-    preferences.value[type] = !preferences.value[type]
-    savePreferences()
-  }
-
-  function setPreference(type, value) {
-    preferences.value[type] = value
-    savePreferences()
-  }
-
-  function enableAll() {
-    Object.keys(preferences.value).forEach(key => {
-      preferences.value[key] = true
-    })
-    savePreferences()
-  }
-
-  function disableAll() {
-    Object.keys(preferences.value).forEach(key => {
-      preferences.value[key] = false
-    })
-    savePreferences()
-  }
-
-  function shouldShowNotification(type) {
-    return preferences.value[type] !== false
-  }
-
-  function saveHistory() {
-    localStorage.setItem('notificationHistory', JSON.stringify(history.value))
-  }
-
-  function savePreferences() {
-    localStorage.setItem('notificationPreferences', JSON.stringify(preferences.value))
-  }
-
-  function getNotificationById(id) {
-    return history.value.find(n => n.id === id)
-  }
-
-  function removeNotification(id) {
-    const index = history.value.findIndex(n => n.id === id)
-    if (index !== -1) {
-      history.value.splice(index, 1)
-      saveHistory()
+  async function updatePreferences(newPreferences) {
+    try {
+      const response = await apiClient.put('/notifications/preferences', newPreferences);
+      preferences.value = response.data;
+    } catch (error) {
+      console.error('Failed to update preferences:', error);
     }
   }
+
+  fetchPreferences();
 
   return {
-    // State
     history,
     preferences,
-
-    // Computed
     unreadCount,
-    unreadNotifications,
-    readNotifications,
-
-    // Actions
+    fetchNotifications,
     addNotification,
     markAsRead,
     markAllAsRead,
-    clearHistory,
-    togglePreference,
-    setPreference,
-    enableAll,
-    disableAll,
-    shouldShowNotification,
-    getNotificationById,
-    removeNotification
-  }
-})
+    subscribe,
+    fetchPreferences,
+    updatePreferences,
+  };
+});

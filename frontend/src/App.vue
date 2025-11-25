@@ -424,6 +424,7 @@ onMounted(async () => {
 
     // Request browser notification permission
     await requestNotificationPermission()
+    await notificationStore.subscribe()
 
     // Connect to event stream and listen for all events
     eventStream.connect()
@@ -432,6 +433,7 @@ onMounted(async () => {
     eventStream.on('permissions.updated', handlePermissionUpdate)
 
     // Other events show toast notifications
+    eventStream.on('notification.created', handleSSEEvent)
     eventStream.on('bill.created', handleSSEEvent)
     eventStream.on('bill.posted', handleSSEEvent)
     eventStream.on('consumption.created', handleSSEEvent)
