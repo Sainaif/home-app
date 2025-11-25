@@ -45,12 +45,6 @@
                 <option value="permission">Uprawnienia</option>
               </select>
 
-              <button
-                @click="confirmClearHistory"
-                class="btn btn-outline btn-sm"
-                title="Wyczyść historię">
-                <Trash2 class="w-4 h-4" />
-              </button>
             </div>
           </div>
 
@@ -111,7 +105,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotificationStore } from '../stores/notification'
 import { X, Bell, CheckCheck, Trash2, Settings, FileText, CheckSquare, ShoppingCart, DollarSign, UserPlus } from 'lucide-vue-next'
@@ -132,6 +126,12 @@ const filteredNotifications = computed(() => {
     return notificationStore.history
   }
   return notificationStore.history.filter(n => n.type === filterType.value)
+})
+
+watch(() => props.isOpen, (isOpen) => {
+  if (isOpen) {
+    notificationStore.fetchNotifications()
+  }
 })
 
 function close() {
@@ -156,12 +156,6 @@ function handleNotificationClick(notification) {
       router.push(route)
       close()
     }
-  }
-}
-
-function confirmClearHistory() {
-  if (confirm('Czy na pewno chcesz wyczyścić całą historię powiadomień?')) {
-    notificationStore.clearHistory()
   }
 }
 

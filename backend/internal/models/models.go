@@ -318,3 +318,12 @@ type ApprovalRequest struct {
 	ReviewNotes  *string                `bson:"review_notes,omitempty" json:"reviewNotes,omitempty"`
 	CreatedAt    time.Time              `bson:"created_at" json:"createdAt"`
 }
+
+// NotificationPreference represents a user's notification preferences
+type NotificationPreference struct {
+	ID           primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	UserID       primitive.ObjectID `bson:"user_id" json:"userId"`
+	Preferences  map[string]bool    `bson:"preferences" json:"preferences"`
+	AllEnabled   bool               `bson:"all_enabled" json:"allEnabled"`
+	UpdatedAt    time.Time          `bson:"updated_at" json:"updatedAt"`
+}

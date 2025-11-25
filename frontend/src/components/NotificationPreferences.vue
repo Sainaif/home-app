@@ -120,11 +120,6 @@ const notificationTypes = {
   }
 }
 
-// Watch for changes to store preferences
-watch(() => notificationStore.preferences, (newPrefs) => {
-  localPreferences.value = { ...newPrefs }
-}, { deep: true })
-
 // Watch for modal opening to reset local state
 watch(() => props.isOpen, (isOpen) => {
   if (isOpen) {
@@ -149,11 +144,7 @@ function disableAll() {
 }
 
 function save() {
-  // Save to store
-  Object.keys(localPreferences.value).forEach(key => {
-    notificationStore.setPreference(key, localPreferences.value[key])
-  })
-
+  notificationStore.updatePreferences(localPreferences.value)
   emit('close')
 }
 

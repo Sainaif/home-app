@@ -28,6 +28,7 @@ const (
 	EventSupplyBudgetGrew   EventType = "supply.budget.contributed"
 	EventSupplyBudgetLow    EventType = "supply.budget.low"
 	EventPermissionsUpdated EventType = "permissions.updated"
+	EventNotificationCreated EventType = "notification.created"
 )
 
 // Event represents a server-sent event

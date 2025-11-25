@@ -115,14 +115,17 @@ func main() {
 	// Initialize services
 	userService := services.NewUserService(db.Database, cfg)
 	groupService := services.NewGroupService(db.Database)
-	billService := services.NewBillService(db.Database)
+	eventService := services.NewEventService()
+	webPushService := services.NewWebPushService(db.Database)
+	notificationPreferenceService := services.NewNotificationPreferenceService(db.Database)
+	notificationService := services.NewNotificationService(db.Database, eventService, webPushService, notificationPreferenceService, cfg)
+	billService := services.NewBillService(db.Database, notificationService)
 	consumptionService := services.NewConsumptionService(db.Database)
 	allocationService := services.NewAllocationService(db.Database)
 	loanService := services.NewLoanService(db.Database)
 	choreService := services.NewChoreService(db.Database)
 	supplyService := services.NewSupplyService(db.Database)
 	recurringBillService := services.NewRecurringBillService(db.Database, cfg)
-	eventService := services.NewEventService()
 	exportService := services.NewExportService(db.Database)
 	backupService := services.NewBackupService(db.Database)
 	auditService := services.NewAuditService(db.Database)
@@ -155,6 +158,9 @@ func main() {
 	auditHandler := handlers.NewAuditHandler(auditService)
 	roleHandler := handlers.NewRoleHandler(roleService, permissionService, auditService, eventService, userService)
 	approvalHandler := handlers.NewApprovalHandler(approvalService)
+	notificationHandler := handlers.NewNotificationHandler(notificationService)
+	webPushHandler := handlers.NewWebPushHandler(webPushService)
+	notificationPreferenceHandler := handlers.NewNotificationPreferenceHandler(notificationPreferenceService)
 
 	// Helper function to provide RoleService to middleware
 	getRoleService := func() interface{} { return roleService }
@@ -327,6 +333,20 @@ func main() {
 	approvals.Get("/", middleware.AuthMiddleware(cfg), middleware.RequirePermission("approvals.review", getRoleService), approvalHandler.GetAllRequests)
 	approvals.Post("/:id/approve", middleware.AuthMiddleware(cfg), middleware.RequirePermission("approvals.review", getRoleService), approvalHandler.ApproveRequest)
 	approvals.Post("/:id/reject", middleware.AuthMiddleware(cfg), middleware.RequirePermission("approvals.review", getRoleService), approvalHandler.RejectRequest)
+
+	// Notification routes
+	notifications := app.Group("/notifications")
+	notifications.Get("/", middleware.AuthMiddleware(cfg), notificationHandler.GetNotifications)
+	notifications.Post("/:id/read", middleware.AuthMiddleware(cfg), notificationHandler.MarkNotificationAsRead)
+	notifications.Post("/read-all", middleware.AuthMiddleware(cfg), notificationHandler.MarkAllNotificationsAsRead)
+	notifications.Get("/preferences", middleware.AuthMiddleware(cfg), notificationPreferenceHandler.GetPreferences)
+	notifications.Put("/preferences", middleware.AuthMiddleware(cfg), notificationPreferenceHandler.UpdatePreferences)
+
+	// Web push routes
+	webPush := app.Group("/web-push")
+	webPush.Post("/subscribe", middleware.AuthMiddleware(cfg), webPushHandler.CreateSubscription)
+	webPush.Get("/subscriptions", middleware.AuthMiddleware(cfg), webPushHandler.GetSubscriptions)
+	webPush.Delete("/unsubscribe", middleware.AuthMiddleware(cfg), webPushHandler.DeleteSubscription)
 
 	// Backup routes
 	backup := app.Group("/backup")
