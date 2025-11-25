@@ -39,7 +39,7 @@ func (h *BillHandler) CreateBill(c *fiber.Ctx) error {
 		})
 	}
 
-	bill, err := h.billService.CreateBill(c.Context(), req)
+	bill, err := h.billService.CreateBill(c.Context(), req, userID)
 	if err != nil {
 		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "create_bill", "bill", nil,
 			map[string]interface{}{"type": req.Type, "amount": req.TotalAmountPLN},

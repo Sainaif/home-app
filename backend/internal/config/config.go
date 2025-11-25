@@ -13,6 +13,12 @@ type Config struct {
 	Auth    AuthConfig
 	Mongo   MongoConfig
 	Logging LogConfig
+	VAPID   VAPIDConfig
+}
+
+type VAPIDConfig struct {
+	PublicKey  string
+	PrivateKey string
 }
 
 type AppConfig struct {
@@ -90,6 +96,10 @@ func Load() (*Config, error) {
 		Logging: LogConfig{
 			Level:  getEnv("LOG_LEVEL", "info"),
 			Format: getEnv("LOG_FORMAT", "json"),
+		},
+		VAPID: VAPIDConfig{
+			PublicKey:  getEnv("VAPID_PUBLIC_KEY", ""),
+			PrivateKey: getEnv("VAPID_PRIVATE_KEY", ""),
 		},
 	}, nil
 }

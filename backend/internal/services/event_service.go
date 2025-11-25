@@ -13,21 +13,22 @@ import (
 type EventType string
 
 const (
-	EventBillCreated        EventType = "bill.created"
-	EventBillPosted         EventType = "bill.posted"
-	EventConsumptionCreated EventType = "consumption.created"
-	EventPaymentCreated     EventType = "payment.created"
-	EventChoreUpdated       EventType = "chore.updated"
-	EventChoreAssigned      EventType = "chore.assigned"
-	EventLoanCreated        EventType = "loan.created"
-	EventLoanPaymentCreated EventType = "loan.payment.created"
-	EventLoanDeleted        EventType = "loan.deleted"
-	EventBalanceUpdated     EventType = "balance.updated"
-	EventSupplyItemAdded    EventType = "supply.item.added"
-	EventSupplyItemBought   EventType = "supply.item.bought"
-	EventSupplyBudgetGrew   EventType = "supply.budget.contributed"
-	EventSupplyBudgetLow    EventType = "supply.budget.low"
-	EventPermissionsUpdated EventType = "permissions.updated"
+	EventBillCreated         EventType = "bill.created"
+	EventBillPosted          EventType = "bill.posted"
+	EventConsumptionCreated  EventType = "consumption.created"
+	EventPaymentCreated      EventType = "payment.created"
+	EventChoreUpdated        EventType = "chore.updated"
+	EventChoreAssigned       EventType = "chore.assigned"
+	EventLoanCreated         EventType = "loan.created"
+	EventLoanPaymentCreated  EventType = "loan.payment.created"
+	EventLoanDeleted         EventType = "loan.deleted"
+	EventBalanceUpdated      EventType = "balance.updated"
+	EventSupplyItemAdded     EventType = "supply.item.added"
+	EventSupplyItemBought    EventType = "supply.item.bought"
+	EventSupplyBudgetGrew    EventType = "supply.budget.contributed"
+	EventSupplyBudgetLow     EventType = "supply.budget.low"
+	EventPermissionsUpdated  EventType = "permissions.updated"
+	EventNotificationCreated EventType = "notification.created"
 )
 
 // Event represents a server-sent event
