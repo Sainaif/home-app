@@ -155,6 +155,12 @@ func main() {
 	auditHandler := handlers.NewAuditHandler(auditService)
 	roleHandler := handlers.NewRoleHandler(roleService, permissionService, auditService, eventService, userService)
 	approvalHandler := handlers.NewApprovalHandler(approvalService)
+	ocrService := services.NewOCRService()
+	ocrHandler := handlers.NewOCRHandler(ocrService)
+
+	// OCR endpoint
+
+	app.Post("/ocr", ocrHandler.HandleOCR)
 
 	// Helper function to provide RoleService to middleware
 	getRoleService := func() interface{} { return roleService }

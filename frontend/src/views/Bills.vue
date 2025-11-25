@@ -53,6 +53,35 @@
         </div>
 
         <form @submit.prevent="createBill" class="space-y-4">
+          <!-- OCR Upload Section -->
+          <div class="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+            <div class="flex items-center justify-between mb-2">
+              <label class="block text-sm font-medium">Zeskanuj fakturę (OCR)</label>
+              <span v-if="ocrProcessing" class="text-xs text-blue-400">Przetwarzanie...</span>
+              <span v-else-if="ocrSuccess" class="text-xs text-green-400">✓ Zeskanowano</span>
+            </div>
+            <div class="flex gap-2">
+              <input
+                ref="fileInput"
+                type="file"
+                accept="image/*"
+                @change="handleFileUpload"
+                class="hidden"
+              />
+              <button
+                type="button"
+                @click="$refs.fileInput.click()"
+                :disabled="ocrProcessing"
+                class="btn btn-outline flex-1 flex items-center justify-center gap-2"
+              >
+                <Upload class="w-4 h-4" />
+                {{ ocrProcessing ? 'Skanowanie...' : 'Wybierz plik' }}
+              </button>
+            </div>
+            <p class="text-xs text-gray-400 mt-2">Automatycznie wypełni formularz danymi z faktury</p>
+            <div v-if="ocrError" class="mt-2 text-xs text-red-400">{{ ocrError }}</div>
+          </div>
+
           <div>
             <label class="block text-sm font-medium mb-2">Typ</label>
             <select v-model="newBill.type" required class="input">
@@ -657,7 +686,7 @@ import { useAuthStore } from '../stores/auth'
 import api from '../api/client'
 import {
   Plus, FileX, Zap, Flame, Wifi, Calendar, Receipt, Gauge,
-  Send, Check, X, AlertCircle, Trash2, ChevronDown, ChevronUp
+  Send, Check, X, AlertCircle, Trash2, ChevronDown, ChevronUp, Upload
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -855,6 +884,12 @@ const newBill = ref({
   notes: ''
 })
 
+// OCR state
+const fileInput = ref(null)
+const ocrProcessing = ref(false)
+const ocrSuccess = ref(false)
+const ocrError = ref('')
+
 onMounted(async () => {
   await loadBills()
   await loadReadingsData()
@@ -900,6 +935,114 @@ async function loadReadingsData() {
     users.value = []
   } finally {
     loadingReadings.value = false
+  }
+}
+
+async function handleFileUpload(event) {
+  const file = event.target.files[0]
+  if (!file) return
+
+  ocrProcessing.value = true
+  ocrSuccess.value = false
+  ocrError.value = ''
+
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const response = await api.post('/ocr', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+
+    const ocrData = response.data
+
+    // Set bill type automatically
+    if (ocrData.bill_type) {
+      const validTypes = ['electricity', 'gas', 'internet', 'inne']
+      if (validTypes.includes(ocrData.bill_type)) {
+        newBill.value.type = ocrData.bill_type
+        // Set allocation type for custom bills
+        if (ocrData.bill_type === 'inne' && ocrData.units) {
+          newBill.value.allocationType = 'metered'
+        }
+      }
+    }
+
+    // Parse and fill the form with OCR data
+    if (ocrData.total_brutto) {
+      // Extract numeric value from string like "909,78 zł"
+      const amountMatch = ocrData.total_brutto.match(/[\d,\.]+/)
+      if (amountMatch) {
+        const amount = amountMatch[0].replace(',', '.')
+        newBill.value.totalAmountPLN = parseFloat(amount)
+      }
+    }
+
+    // Extract units/consumption
+    if (ocrData.units) {
+      // Extract numeric value from string like "150 kWh" or "100 m³"
+      const unitsMatch = ocrData.units.match(/[\d,\.]+/)
+      if (unitsMatch) {
+        const units = unitsMatch[0].replace(',', '.')
+        newBill.value.totalUnits = parseFloat(units)
+      }
+    }
+
+    // Parse billing period dates (format: DD.MM.YYYY)
+    if (ocrData.period_from) {
+      const dateParts = ocrData.period_from.split('.')
+      if (dateParts.length === 3) {
+        const [day, month, year] = dateParts
+        newBill.value.periodStart = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+      }
+    } else if (ocrData.date) {
+      // Fallback to invoice date if period_from not found
+      const dateParts = ocrData.date.split('.')
+      if (dateParts.length === 3) {
+        const [day, month, year] = dateParts
+        newBill.value.periodStart = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+      }
+    }
+
+    if (ocrData.period_to) {
+      const dateParts = ocrData.period_to.split('.')
+      if (dateParts.length === 3) {
+        const [day, month, year] = dateParts
+        newBill.value.periodEnd = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+      }
+    }
+
+    if (ocrData.deadline) {
+      const deadlineParts = ocrData.deadline.split('.')
+      if (deadlineParts.length === 3) {
+        const [day, month, year] = deadlineParts
+        newBill.value.paymentDeadline = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+      }
+    }
+
+    // Add invoice info to notes
+    if (ocrData.invoice_number || ocrData.sellers_name) {
+      let notesText = ''
+      if (ocrData.sellers_name) notesText += `Sprzedawca: ${ocrData.sellers_name}\n`
+      if (ocrData.invoice_number) notesText += `Nr faktury: ${ocrData.invoice_number}`
+      newBill.value.notes = notesText.trim()
+    }
+
+    ocrSuccess.value = true
+    setTimeout(() => {
+      ocrSuccess.value = false
+    }, 3000)
+  } catch (err) {
+    console.error('OCR error:', err)
+    ocrError.value = err.response?.data?.error || 'Nie udało się przetworzyć faktury'
+  } finally {
+    ocrProcessing.value = false
+    // Reset file input
+    if (fileInput.value) {
+      fileInput.value.value = ''
+    }
   }
 }
 

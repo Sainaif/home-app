@@ -1,11 +1,13 @@
 # syntax=docker/dockerfile:1
 
-ARG GO_VERSION=1.25
+ARG GO_VERSION=1.23
 FROM golang:${GO_VERSION}-alpine AS builder
 
 WORKDIR /src
 RUN apk add --no-cache git ca-certificates tzdata build-base
 COPY go.mod go.sum ./
+# Allow Go to automatically download the required toolchain version
+ENV GOTOOLCHAIN=auto
 RUN go mod download
 COPY . .
 # Build static binary
