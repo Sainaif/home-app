@@ -1377,6 +1377,24 @@ W Go używamy `time.Time`, MongoDB przechowuje jako ISODate (UTC).
 - Role i uprawnienia: administrator decyduje, kto może tworzyć, edytować lub usuwać dane (np. rachunki czy zadania), więc przypadkowe zmiany są zablokowane.
 - Aktualizacje na żywo: lista rachunków, zadań czy pożyczek odświeża się automatycznie bez przeładowania strony.
 
+### 7.0.1. Dlaczego to robimy
+- Rachunki i odczyty: żeby każdy płacił sprawiedliwie za realne zużycie, bez ręcznych kalkulacji i kłótni o kwoty.
+- Płatności: żeby od razu było widać, kto już zapłacił, a kto zalega – koniec z przypominaniem na czacie.
+- OCR/AI: żeby nie przepisywać faktur ręcznie; zdjęcie faktury wystarcza, resztę wypełnia system.
+- Pożyczki i kompensacje: żeby rozliczenia „kto komu i ile” nie gubiły się w wiadomościach; salda są wyliczane automatycznie.
+- Obowiązki domowe: żeby zadania były przydzielone, terminy jasne, a punktacja motywowała do rzetelności.
+- Zakupy i zapasy: żeby nie zabrakło podstaw (papier, mydło, kawa) i żeby wiadomo było, kto pokrył koszt.
+- Powiadomienia: żeby ważne zmiany (nowy rachunek, zadanie, dług) nie umknęły w natłoku codziennych spraw.
+- Role i uprawnienia: żeby tylko uprawnione osoby mogły edytować lub usuwać dane – mniej ryzyka przypadkowych zmian.
+- Aktualizacje na żywo: żeby każdy widział ten sam, aktualny stan bez odświeżania strony.
+
+### 7.0.2. Dla kogo to robimy
+- Administrator mieszkania (owner/admin grupy): ustawia domowników, role i uprawnienia, pilnuje porządku w systemie.
+- Skarbnik / osoba od rachunków: dodaje faktury, dzieli koszty, śledzi płatności i wysyła przypomnienia.
+- Domownik: dodaje odczyty liczników, potwierdza płatności, zgłasza zakupy, odbiera zadania domowe i widzi swój bilans.
+- Osoba robiąca zakupy: rejestruje wydatki i uzupełnia stany zapasów, żeby grupa wiedziała, co już jest, a czego brakuje.
+- Gość / nowy lokator: szybko dołącza do rozliczeń i widzi, ile ma zapłacić, bez ręcznego liczenia „kto komu i ile”.
+
 ### 7.1. Proces rozliczania rachunku za prąd
 
 **Diagram sekwencji:** Zobacz plik `diagram_sekwencja_bill_allocation.xml`
