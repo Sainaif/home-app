@@ -1365,6 +1365,18 @@ W Go używamy `time.Time`, MongoDB przechowuje jako ISODate (UTC).
 
 ## 7. FUNKCJONALNOŚCI - SZCZEGÓŁOWY OPIS
 
+### 7.0. Co potrafi aplikacja
+- Tworzenie rachunków: wpisujesz dane faktury, a system sam dzieli koszt na domowników i pokazuje, kto ile ma zapłacić.
+- Dodawanie odczytów liczników: wpisujesz stan licznika (prąd/gaz/woda), system przelicza zużycie i uwzględnia je w rachunku.
+- Potwierdzanie płatności: odhaczysz, że zapłaciłeś swoją część, a status rachunku aktualizuje się dla wszystkich.
+- Skanowanie faktur (OCR/AI): robisz zdjęcie lub wgrywasz plik, a pola rachunku uzupełniają się automatycznie.
+- Pożyczki między domownikami: zapisujesz, kto komu pożyczył i ile; salda liczą się automatycznie, a długi można skompensować jednym kliknięciem.
+- Obowiązki domowe: tworzysz zadania, przydzielasz osoby i terminy, widzisz kto jest na bieżąco, a kto zalega.
+- Zakupy i zapasy: prowadzisz listę produktów i budżet, zgłaszasz zakupy i zużycia, aby każdy widział stan wspólnych zapasów.
+- Powiadomienia w aplikacji: dostajesz informację o nowych rachunkach, zadaniach, brakach w zapasach czy zmianach salda pożyczek.
+- Role i uprawnienia: administrator decyduje, kto może tworzyć, edytować lub usuwać dane (np. rachunki czy zadania), więc przypadkowe zmiany są zablokowane.
+- Aktualizacje na żywo: lista rachunków, zadań czy pożyczek odświeża się automatycznie bez przeładowania strony.
+
 ### 7.1. Proces rozliczania rachunku za prąd
 
 **Diagram sekwencji:** Zobacz plik `diagram_sekwencja_bill_allocation.xml`
