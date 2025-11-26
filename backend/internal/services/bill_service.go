@@ -329,6 +329,12 @@ func (s *BillService) DeleteBill(ctx context.Context, billID primitive.ObjectID)
 		return fmt.Errorf("failed to delete payments: %w", err)
 	}
 
+	// Delete all allocations
+	_, err = s.db.Collection("allocations").DeleteMany(ctx, bson.M{"bill_id": billID})
+	if err != nil {
+		return fmt.Errorf("failed to delete allocations: %w", err)
+	}
+
 	// Delete the bill
 	result, err := s.db.Collection("bills").DeleteOne(ctx, bson.M{"_id": billID})
 	if err != nil {
