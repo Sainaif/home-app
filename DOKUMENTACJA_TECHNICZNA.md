@@ -2802,10 +2802,16 @@ classDiagram
         +string status
         +Date due_date
         +ObjectID created_by
+        +Create() error
+        +Update(data) error
+        +DeleteDraft() error
         +Post() error
         +Close() error
         +Reopen() error
+        +AddConsumption(consumption) error
+        +AddPayment(payment) error
         +AllocateCosts() error
+        +CalculatePricePerUnit() Decimal128
     }
 
     class BillAllocation {
@@ -2814,7 +2820,8 @@ classDiagram
         +ObjectID user_id
         +float allocated_units
         +Decimal128 allocated_amount_pln
-        +Calculate() error
+        +Calculate(bill) error
+        +Save() error
     }
 
     class Consumption {
@@ -2826,6 +2833,8 @@ classDiagram
         +Date recorded_at
         +string source
         +bool is_valid
+        +Record() error
+        +UpdateMeter(value) error
         +MarkInvalid() error
     }
 
@@ -2837,6 +2846,8 @@ classDiagram
         +Date paid_at
         +string method
         +string reference
+        +Record() error
+        +Validate() bool
     }
 
     %% Skanowanie faktur (OCR + AI)
