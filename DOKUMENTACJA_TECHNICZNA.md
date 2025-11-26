@@ -3364,8 +3364,8 @@ erDiagram
     users ||--o{ user_groups : "należy do"
     users ||--o{ sessions : "ma"
     users ||--o{ audit_logs : "wykonuje"
-    users ||--o{ loans_as_lender : "pożycza"
-    users ||--o{ loans_as_borrower : "pożycza od"
+    users ||--o{ loans : "udziela (lender)"
+    users ||--o{ loans : "zaciąga (borrower)"
     users ||--o{ notifications : "otrzymuje"
 
     groups ||--o{ user_groups : "zawiera"
