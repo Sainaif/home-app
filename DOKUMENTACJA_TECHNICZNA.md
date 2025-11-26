@@ -2758,11 +2758,11 @@ classDiagram
         +ObjectID group_id
         +bool is_active
         +bool must_change_password
-        +array passkey_credentials
-        +Login(email, password) bool
-        +ChangePassword(oldPass, newPass) error
+        +Credential[] passkey_credentials
+        +Login(email: string, password: string) bool
+        +ChangePassword(oldPass: string, newPass: string) error
         +Enable2FA() string
-        +ValidateTotp(code) bool
+        +ValidateTotp(code: string) bool
     }
 
     class Group {
@@ -2777,9 +2777,9 @@ classDiagram
         +string name
         +string display_name
         +bool is_system
-        +[]string permissions
-        +HasPermission(perm) bool
-        +AddPermission(perm) error
+        +string[] permissions
+        +HasPermission(perm: string) bool
+        +AddPermission(perm: string) error
     }
 
     class Permission {
@@ -2803,13 +2803,13 @@ classDiagram
         +Date due_date
         +ObjectID created_by
         +Create() error
-        +Update(data) error
+        +Update(data: BillData) error
         +DeleteDraft() error
         +Post() error
         +Close() error
         +Reopen() error
-        +AddConsumption(consumption) error
-        +AddPayment(payment) error
+        +AddConsumption(consumption: Consumption) error
+        +AddPayment(payment: Payment) error
         +AllocateCosts() error
         +CalculatePricePerUnit() Decimal128
     }
@@ -2820,7 +2820,7 @@ classDiagram
         +ObjectID user_id
         +float allocated_units
         +Decimal128 allocated_amount_pln
-        +Calculate(bill) error
+        +Calculate(bill: Bill) error
         +Save() error
     }
 
@@ -2834,7 +2834,7 @@ classDiagram
         +string source
         +bool is_valid
         +Record() error
-        +UpdateMeter(value) error
+        +UpdateMeter(value: float) error
         +MarkInvalid() error
     }
 
