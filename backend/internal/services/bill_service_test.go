@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -89,4 +90,43 @@ func TestDeleteBill_DeletesAllocations(t *testing.T) {
 	count, err = db.Collection("allocations").CountDocuments(context.Background(), bson.M{"bill_id": bill.ID})
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), count, "Allocation should be deleted")
+}
+
+func TestDeleteBill_Atomicity(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Create services
+	notificationService := NewNotificationService(db, nil, nil, nil, nil)
+	billService := NewBillService(db, notificationService)
+
+	// Create a user, bill, and allocation for the test
+	userID := primitive.NewObjectID()
+	_, err := db.Collection("users").InsertOne(context.Background(), bson.M{"_id": userID, "name": "Test User"})
+	require.NoError(t, err)
+
+	billID := primitive.NewObjectID()
+	_, err = db.Collection("bills").InsertOne(context.Background(), bson.M{"_id": billID, "type": "electricity"})
+	require.NoError(t, err)
+
+	_, err = db.Collection("consumptions").InsertOne(context.Background(), bson.M{"bill_id": billID})
+	require.NoError(t, err)
+
+	// Create a service that will fail
+	failingBillService := NewBillService(db, notificationService)
+	failingBillService.db.Client().Disconnect(context.Background())
+
+	// Attempt to delete the bill, expecting a failure
+	err = failingBillService.DeleteBill(context.Background(), billID)
+	require.Error(t, err)
+
+	// Verify that the bill still exists
+	var bill models.Bill
+	err = db.Collection("bills").FindOne(context.Background(), bson.M{"_id": billID}).Decode(&bill)
+	require.NoError(t, err, "Bill should not have been deleted")
+
+	// Verify that the consumptions were NOT deleted
+	count, err := db.Collection("consumptions").CountDocuments(context.Background(), bson.M{"bill_id": billID})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), count, "Consumptions should not have been deleted")
 }

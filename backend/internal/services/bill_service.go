@@ -317,35 +317,45 @@ func (s *BillService) calculateWeights(users []models.User, groups []models.Grou
 
 // DeleteBill deletes a bill and all associated data
 func (s *BillService) DeleteBill(ctx context.Context, billID primitive.ObjectID) error {
-	// Delete all consumptions
-	_, err := s.db.Collection("consumptions").DeleteMany(ctx, bson.M{"bill_id": billID})
+	session, err := s.db.Client().StartSession()
 	if err != nil {
-		return fmt.Errorf("failed to delete consumptions: %w", err)
+		return fmt.Errorf("failed to start session: %w", err)
 	}
+	defer session.EndSession(ctx)
 
-	// Delete all payments
-	_, err = s.db.Collection("payments").DeleteMany(ctx, bson.M{"bill_id": billID})
-	if err != nil {
-		return fmt.Errorf("failed to delete payments: %w", err)
-	}
+	_, err = session.WithTransaction(ctx, func(sessCtx mongo.SessionContext) (interface{}, error) {
+		// Delete all consumptions
+		_, err := s.db.Collection("consumptions").DeleteMany(sessCtx, bson.M{"bill_id": billID})
+		if err != nil {
+			return nil, fmt.Errorf("failed to delete consumptions: %w", err)
+		}
 
-	// Delete all allocations
-	_, err = s.db.Collection("allocations").DeleteMany(ctx, bson.M{"bill_id": billID})
-	if err != nil {
-		return fmt.Errorf("failed to delete allocations: %w", err)
-	}
+		// Delete all payments
+		_, err = s.db.Collection("payments").DeleteMany(sessCtx, bson.M{"bill_id": billID})
+		if err != nil {
+			return nil, fmt.Errorf("failed to delete payments: %w", err)
+		}
 
-	// Delete the bill
-	result, err := s.db.Collection("bills").DeleteOne(ctx, bson.M{"_id": billID})
-	if err != nil {
-		return fmt.Errorf("failed to delete bill: %w", err)
-	}
+		// Delete all allocations
+		_, err = s.db.Collection("allocations").DeleteMany(sessCtx, bson.M{"bill_id": billID})
+		if err != nil {
+			return nil, fmt.Errorf("failed to delete allocations: %w", err)
+		}
 
-	if result.DeletedCount == 0 {
-		return errors.New("bill not found")
-	}
+		// Delete the bill
+		result, err := s.db.Collection("bills").DeleteOne(sessCtx, bson.M{"_id": billID})
+		if err != nil {
+			return nil, fmt.Errorf("failed to delete bill: %w", err)
+		}
 
-	return nil
+		if result.DeletedCount == 0 {
+			return nil, errors.New("bill not found")
+		}
+
+		return nil, nil
+	})
+
+	return err
 }
 
 // PaymentStatusEntry represents payment status for a user/group
