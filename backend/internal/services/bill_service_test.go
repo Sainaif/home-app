@@ -118,13 +118,23 @@ func TestDeleteBill_Atomicity(t *testing.T) {
 	err = failingBillService.DeleteBill(context.Background(), billID)
 	require.Error(t, err)
 
+	// Create a new client to verify the data was not deleted
+	mongoURI := os.Getenv("MONGODB_URI")
+	if mongoURI == "" {
+		mongoURI = "mongodb://localhost:27017"
+	}
+	newClient, err := mongo.Connect(context.Background(), options.Client().ApplyURI(mongoURI))
+	require.NoError(t, err)
+	defer newClient.Disconnect(context.Background())
+	verificationDB := newClient.Database("holy-home-test")
+
 	// Verify that the bill still exists
 	var bill models.Bill
-	err = db.Collection("bills").FindOne(context.Background(), bson.M{"_id": billID}).Decode(&bill)
+	err = verificationDB.Collection("bills").FindOne(context.Background(), bson.M{"_id": billID}).Decode(&bill)
 	require.NoError(t, err, "Bill should not have been deleted")
 
 	// Verify that the consumptions were NOT deleted
-	count, err := db.Collection("consumptions").CountDocuments(context.Background(), bson.M{"bill_id": billID})
+	count, err := verificationDB.Collection("consumptions").CountDocuments(context.Background(), bson.M{"_id": billID})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), count, "Consumptions should not have been deleted")
 }
