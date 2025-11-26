@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"errors"
 	"os"
 	"testing"
 	"time"
@@ -98,7 +97,6 @@ func TestDeleteBill_Atomicity(t *testing.T) {
 
 	// Create services
 	notificationService := NewNotificationService(db, nil, nil, nil, nil)
-	billService := NewBillService(db, notificationService)
 
 	// Create a user, bill, and allocation for the test
 	userID := primitive.NewObjectID()
