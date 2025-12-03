@@ -2750,40 +2750,40 @@ Diagram przedstawia główne klasy systemu, ich atrybuty, metody oraz relacje.
 classDiagram
     %% Użytkownicy i uprawnienia
     class User {
-        +ObjectID _id
+        +string _id
         +string email
         +string password_hash
         +string name
         +string role
-        +ObjectID group_id
+        +string group_id
         +bool is_active
         +bool must_change_password
-        +Credential[] passkey_credentials
-        +Login(email string, password string) bool
-        +ChangePassword(oldPass string, newPass string) error
+        +List~Credential~ passkey_credentials
+        +Login(email, password) bool
+        +ChangePassword(oldPass, newPass) error
         +Enable2FA() string
-        +ValidateTotp(code string) bool
+        +ValidateTotp(code) bool
     }
 
     class Group {
-        +ObjectID _id
+        +string _id
         +string name
         +float weight
-        +GetMembers() User[]
+        +GetMembers() List~User~
     }
 
     class Role {
-        +ObjectID _id
+        +string _id
         +string name
         +string display_name
         +bool is_system
-        +string[] permissions
-        +HasPermission(perm string) bool
-        +AddPermission(perm string) error
+        +List~string~ permissions
+        +HasPermission(perm) bool
+        +AddPermission(perm) error
     }
 
     class Permission {
-        +ObjectID _id
+        +string _id
         +string name
         +string description
         +string category
@@ -2791,58 +2791,58 @@ classDiagram
 
     %% Rachunki
     class Bill {
-        +ObjectID _id
+        +string _id
         +string type
         +string custom_type
         +Date period_start
         +Date period_end
-        +Decimal128 total_amount_pln
+        +float total_amount_pln
         +float total_units
-        +Decimal128 price_per_unit
+        +float price_per_unit
         +string status
         +Date due_date
-        +ObjectID created_by
+        +string created_by
         +Create() error
-        +Update(data BillData) error
+        +Update(data) error
         +DeleteDraft() error
         +Post() error
         +Close() error
         +Reopen() error
-        +AddConsumption(consumption Consumption) error
-        +AddPayment(payment Payment) error
+        +AddConsumption(consumption) error
+        +AddPayment(payment) error
         +AllocateCosts() error
-        +CalculatePricePerUnit() Decimal128
+        +CalculatePricePerUnit() float
     }
 
     class BillAllocation {
-        +ObjectID _id
-        +ObjectID bill_id
-        +ObjectID user_id
+        +string _id
+        +string bill_id
+        +string user_id
         +float allocated_units
-        +Decimal128 allocated_amount_pln
-        +Calculate(bill Bill) error
+        +float allocated_amount_pln
+        +Calculate(bill) error
         +Save() error
     }
 
     class Consumption {
-        +ObjectID _id
-        +ObjectID bill_id
-        +ObjectID user_id
+        +string _id
+        +string bill_id
+        +string user_id
         +float units
         +float meter_value
         +Date recorded_at
         +string source
         +bool is_valid
         +Record() error
-        +UpdateMeter(value float) error
+        +UpdateMeter(value) error
         +MarkInvalid() error
     }
 
     class Payment {
-        +ObjectID _id
-        +ObjectID bill_id
-        +ObjectID payer_user_id
-        +Decimal128 amount_pln
+        +string _id
+        +string bill_id
+        +string payer_user_id
+        +float amount_pln
         +Date paid_at
         +string method
         +string reference
@@ -2852,56 +2852,56 @@ classDiagram
 
     %% Skanowanie faktur (OCR + AI)
     class BillScan {
-        +ObjectID _id
-        +ObjectID bill_id
-        +ObjectID user_id
+        +string _id
+        +string bill_id
+        +string user_id
         +string image_url
         +string ocr_text
-        +JSON ai_result
+        +string ai_result
         +float confidence
         +string status
         +ProcessOCR() string
-        +ExtractWithAI() JSON
+        +ExtractWithAI() string
         +CreateBill() Bill
     }
 
     class OCRService {
         <<service>>
-        +ExtractText(image byte[]) string
-        +ValidateQuality(image byte[]) bool
+        +ExtractText(image) string
+        +ValidateQuality(image) bool
     }
 
     class AIService {
         <<service>>
-        +ParseInvoice(text string) JSON
-        +CalculateConfidence(data JSON) float
+        +ParseInvoice(text) string
+        +CalculateConfidence(data) float
     }
 
     %% Pożyczki
     class Loan {
-        +ObjectID _id
-        +ObjectID lender_id
-        +ObjectID borrower_id
-        +Decimal128 amount_pln
-        +Decimal128 remaining_amount_pln
+        +string _id
+        +string lender_id
+        +string borrower_id
+        +float amount_pln
+        +float remaining_amount_pln
         +string status
         +string note
         +Date due_date
-        +AddPayment(amount Decimal128) error
+        +AddPayment(amount) error
         +Settle() error
     }
 
     class LoanPayment {
-        +ObjectID _id
-        +ObjectID loan_id
-        +Decimal128 amount_pln
+        +string _id
+        +string loan_id
+        +float amount_pln
         +Date paid_at
         +string note
     }
 
     %% Obowiązki
     class Chore {
-        +ObjectID _id
+        +string _id
         +string name
         +string description
         +string frequency
@@ -2911,26 +2911,26 @@ classDiagram
         +int points
         +string assignment_mode
         +bool is_active
-        +Assign(user_id ObjectID) ChoreAssignment
+        +Assign(user_id) ChoreAssignment
         +Rotate() error
     }
 
     class ChoreAssignment {
-        +ObjectID _id
-        +ObjectID chore_id
-        +ObjectID assignee_user_id
+        +string _id
+        +string chore_id
+        +string assignee_user_id
         +Date due_date
         +string status
         +Date completed_at
         +int points
         +bool is_on_time
         +MarkComplete() error
-        +Swap(other_user_id ObjectID) error
+        +Swap(other_user_id) error
     }
 
     %% Zakupy
     class SupplyItem {
-        +ObjectID _id
+        +string _id
         +string name
         +string category
         +float current_quantity
@@ -2939,32 +2939,32 @@ classDiagram
         +int priority
         +Date last_restocked_at
         +bool needs_refund
-        +Restock(quantity float, cost Decimal128) error
-        +Consume(quantity float) error
+        +Restock(quantity, cost) error
+        +Consume(quantity) error
     }
 
     class SupplySettings {
-        +ObjectID _id
-        +Decimal128 weekly_contribution_pln
+        +string _id
+        +float weekly_contribution_pln
         +int contribution_day
-        +Decimal128 current_budget_pln
+        +float current_budget_pln
         +Date last_contribution_at
-        +AdjustBudget(amount Decimal128) error
+        +AdjustBudget(amount) error
     }
 
     class SupplyItemHistory {
-        +ObjectID _id
-        +ObjectID supply_item_id
-        +ObjectID user_id
+        +string _id
+        +string supply_item_id
+        +string user_id
         +string action
         +float quantity_delta
-        +Decimal128 cost_pln
+        +float cost_pln
     }
 
     %% Sesje i audyt
     class Session {
-        +ObjectID _id
-        +ObjectID user_id
+        +string _id
+        +string user_id
         +string refresh_token_hash
         +string name
         +string ip_address
@@ -2976,15 +2976,15 @@ classDiagram
     }
 
     class AuditLog {
-        +ObjectID _id
-        +ObjectID user_id
+        +string _id
+        +string user_id
         +string action
         +string resource_type
         +string resource_id
-        +JSON details
+        +string details
         +string ip_address
         +string status
-        +Log(action string, resource string) error
+        +Log(action, resource) error
     }
 
     %% Relacje - Użytkownicy
