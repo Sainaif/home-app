@@ -2769,7 +2769,7 @@ classDiagram
         +ObjectID _id
         +string name
         +float weight
-        +GetMembers() []User
+        +GetMembers() User[]
     }
 
     class Role {
@@ -2867,14 +2867,14 @@ classDiagram
 
     class OCRService {
         <<service>>
-        +ExtractText(image) string
-        +ValidateQuality(image) bool
+        +ExtractText(image byte[]) string
+        +ValidateQuality(image byte[]) bool
     }
 
     class AIService {
         <<service>>
-        +ParseInvoice(text) JSON
-        +CalculateConfidence(data) float
+        +ParseInvoice(text string) JSON
+        +CalculateConfidence(data JSON) float
     }
 
     %% Pożyczki
