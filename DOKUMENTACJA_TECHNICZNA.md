@@ -2759,10 +2759,10 @@ classDiagram
         +bool is_active
         +bool must_change_password
         +Credential[] passkey_credentials
-        +Login(email: string, password: string) bool
-        +ChangePassword(oldPass: string, newPass: string) error
+        +Login(email string, password string) bool
+        +ChangePassword(oldPass string, newPass string) error
         +Enable2FA() string
-        +ValidateTotp(code: string) bool
+        +ValidateTotp(code string) bool
     }
 
     class Group {
@@ -2778,8 +2778,8 @@ classDiagram
         +string display_name
         +bool is_system
         +string[] permissions
-        +HasPermission(perm: string) bool
-        +AddPermission(perm: string) error
+        +HasPermission(perm string) bool
+        +AddPermission(perm string) error
     }
 
     class Permission {
@@ -2803,13 +2803,13 @@ classDiagram
         +Date due_date
         +ObjectID created_by
         +Create() error
-        +Update(data: BillData) error
+        +Update(data BillData) error
         +DeleteDraft() error
         +Post() error
         +Close() error
         +Reopen() error
-        +AddConsumption(consumption: Consumption) error
-        +AddPayment(payment: Payment) error
+        +AddConsumption(consumption Consumption) error
+        +AddPayment(payment Payment) error
         +AllocateCosts() error
         +CalculatePricePerUnit() Decimal128
     }
@@ -2820,7 +2820,7 @@ classDiagram
         +ObjectID user_id
         +float allocated_units
         +Decimal128 allocated_amount_pln
-        +Calculate(bill: Bill) error
+        +Calculate(bill Bill) error
         +Save() error
     }
 
@@ -2834,7 +2834,7 @@ classDiagram
         +string source
         +bool is_valid
         +Record() error
-        +UpdateMeter(value: float) error
+        +UpdateMeter(value float) error
         +MarkInvalid() error
     }
 
@@ -2887,7 +2887,7 @@ classDiagram
         +string status
         +string note
         +Date due_date
-        +AddPayment(amount) error
+        +AddPayment(amount Decimal128) error
         +Settle() error
     }
 
@@ -2911,7 +2911,7 @@ classDiagram
         +int points
         +string assignment_mode
         +bool is_active
-        +Assign(user_id) ChoreAssignment
+        +Assign(user_id ObjectID) ChoreAssignment
         +Rotate() error
     }
 
@@ -2925,7 +2925,7 @@ classDiagram
         +int points
         +bool is_on_time
         +MarkComplete() error
-        +Swap(other_user_id) error
+        +Swap(other_user_id ObjectID) error
     }
 
     %% Zakupy
@@ -2939,8 +2939,8 @@ classDiagram
         +int priority
         +Date last_restocked_at
         +bool needs_refund
-        +Restock(quantity, cost) error
-        +Consume(quantity) error
+        +Restock(quantity float, cost Decimal128) error
+        +Consume(quantity float) error
     }
 
     class SupplySettings {
@@ -2949,7 +2949,7 @@ classDiagram
         +int contribution_day
         +Decimal128 current_budget_pln
         +Date last_contribution_at
-        +AdjustBudget(amount) error
+        +AdjustBudget(amount Decimal128) error
     }
 
     class SupplyItemHistory {
@@ -2984,7 +2984,7 @@ classDiagram
         +JSON details
         +string ip_address
         +string status
-        +Log(action, resource) error
+        +Log(action string, resource string) error
     }
 
     %% Relacje - Użytkownicy
