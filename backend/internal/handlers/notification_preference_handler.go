@@ -15,7 +15,7 @@ func NewNotificationPreferenceHandler(notificationPreferenceService *services.No
 }
 
 func (h *NotificationPreferenceHandler) GetPreferences(c *fiber.Ctx) error {
-	user, ok := c.Locals("user").(primitive.ObjectID)
+	user, ok := c.Locals("userId").(primitive.ObjectID)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
@@ -29,7 +29,7 @@ func (h *NotificationPreferenceHandler) GetPreferences(c *fiber.Ctx) error {
 }
 
 func (h *NotificationPreferenceHandler) UpdatePreferences(c *fiber.Ctx) error {
-	user, ok := c.Locals("user").(primitive.ObjectID)
+	user, ok := c.Locals("userId").(primitive.ObjectID)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}

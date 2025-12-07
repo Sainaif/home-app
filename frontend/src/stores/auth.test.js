@@ -86,7 +86,7 @@ describe('Auth Store', () => {
   })
 
   describe('logout', () => {
-    it('should clear all auth data', () => {
+    it('should clear all auth data', async () => {
       const authStore = useAuthStore()
 
       // Set up authenticated state
@@ -99,7 +99,10 @@ describe('Auth Store', () => {
       localStorage.setItem('user', JSON.stringify({ id: '1' }))
       localStorage.setItem('permissions', JSON.stringify(['bills.create']))
 
-      authStore.logout()
+      // Mock the API call to revoke session
+      api.post.mockResolvedValueOnce({ data: {} })
+
+      await authStore.logout()
 
       expect(authStore.accessToken).toBeNull()
       expect(authStore.refreshToken).toBeNull()

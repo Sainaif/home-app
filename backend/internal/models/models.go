@@ -16,6 +16,7 @@ type User struct {
 	GroupID            *primitive.ObjectID `bson:"group_id,omitempty" json:"groupId,omitempty"`
 	IsActive           bool                `bson:"is_active" json:"isActive"`
 	MustChangePassword bool                `bson:"must_change_password" json:"mustChangePassword"`
+	TOTPSecret         string              `bson:"totp_secret,omitempty" json:"-"` // Encrypted TOTP secret for 2FA
 	CreatedAt          time.Time           `bson:"created_at" json:"createdAt"`
 	PasskeyCredentials []PasskeyCredential `bson:"passkey_credentials,omitempty" json:"-"`
 }

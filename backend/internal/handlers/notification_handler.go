@@ -15,7 +15,7 @@ func NewNotificationHandler(notificationService *services.NotificationService) *
 }
 
 func (h *NotificationHandler) GetNotifications(c *fiber.Ctx) error {
-	user, ok := c.Locals("user").(primitive.ObjectID)
+	user, ok := c.Locals("userId").(primitive.ObjectID)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
@@ -29,7 +29,7 @@ func (h *NotificationHandler) GetNotifications(c *fiber.Ctx) error {
 }
 
 func (h *NotificationHandler) MarkNotificationAsRead(c *fiber.Ctx) error {
-	user, ok := c.Locals("user").(primitive.ObjectID)
+	user, ok := c.Locals("userId").(primitive.ObjectID)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
@@ -47,7 +47,7 @@ func (h *NotificationHandler) MarkNotificationAsRead(c *fiber.Ctx) error {
 }
 
 func (h *NotificationHandler) MarkAllNotificationsAsRead(c *fiber.Ctx) error {
-	user, ok := c.Locals("user").(primitive.ObjectID)
+	user, ok := c.Locals("userId").(primitive.ObjectID)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}

@@ -16,7 +16,7 @@ func NewWebPushHandler(webPushService *services.WebPushService) *WebPushHandler 
 }
 
 func (h *WebPushHandler) CreateSubscription(c *fiber.Ctx) error {
-	user, ok := c.Locals("user").(primitive.ObjectID)
+	user, ok := c.Locals("userId").(primitive.ObjectID)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
@@ -36,7 +36,7 @@ func (h *WebPushHandler) CreateSubscription(c *fiber.Ctx) error {
 }
 
 func (h *WebPushHandler) GetSubscriptions(c *fiber.Ctx) error {
-	user, ok := c.Locals("user").(primitive.ObjectID)
+	user, ok := c.Locals("userId").(primitive.ObjectID)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
@@ -50,7 +50,7 @@ func (h *WebPushHandler) GetSubscriptions(c *fiber.Ctx) error {
 }
 
 func (h *WebPushHandler) DeleteSubscription(c *fiber.Ctx) error {
-	_, ok := c.Locals("user").(primitive.ObjectID)
+	_, ok := c.Locals("userId").(primitive.ObjectID)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}

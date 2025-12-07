@@ -43,7 +43,8 @@ type AdminConfig struct {
 }
 
 type AuthConfig struct {
-	TwoFAEnabled bool
+	TwoFAEnabled      bool
+	TOTPEncryptionKey string // 32-byte key for AES-256 encryption of TOTP secrets
 }
 
 type MongoConfig struct {
@@ -87,7 +88,8 @@ func Load() (*Config, error) {
 			PasswordHash: getEnv("ADMIN_PASSWORD_HASH", getEnv("ADMIN_PASSWORD", "")),
 		},
 		Auth: AuthConfig{
-			TwoFAEnabled: getEnv("AUTH_2FA_ENABLED", "false") == "true",
+			TwoFAEnabled:      getEnv("AUTH_2FA_ENABLED", "false") == "true",
+			TOTPEncryptionKey: getEnv("TOTP_ENCRYPTION_KEY", ""),
 		},
 		Mongo: MongoConfig{
 			URI:      getEnv("MONGO_URI", "mongodb://localhost:27017"),

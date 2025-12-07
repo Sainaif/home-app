@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -24,6 +25,7 @@ type AuthService struct {
 	cfg            *config.Config
 	webAuthn       *webauthn.WebAuthn
 	sessions       map[string]*webauthn.SessionData // In-memory session storage (use Redis in production)
+	sessionsMu     sync.RWMutex                     // Mutex to protect concurrent access to sessions map
 	sessionService *SessionService
 }
 
@@ -51,12 +53,14 @@ func NewAuthService(db *mongo.Database, cfg *config.Config, sessionService *Sess
 type LoginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+	TOTPCode string `json:"totpCode,omitempty"` // Required if 2FA is enabled for the user
 }
 
 type TokenResponse struct {
 	Access             string `json:"access"`
 	Refresh            string `json:"refresh"`
 	MustChangePassword bool   `json:"mustChangePassword"`
+	Requires2FA        bool   `json:"requires2FA,omitempty"` // True if 2FA is required but no code provided
 }
 
 // Login authenticates a user and returns JWT tokens
@@ -88,6 +92,32 @@ func (s *AuthService) Login(ctx context.Context, req LoginRequest, ipAddress, us
 	}
 	if !valid {
 		return nil, errors.New("invalid credentials")
+	}
+
+	// Check if 2FA is enabled for this user
+	if user.TOTPSecret != "" {
+		// 2FA is enabled - require TOTP code
+		if req.TOTPCode == "" {
+			// Return indicator that 2FA is required
+			return &TokenResponse{Requires2FA: true}, nil
+		}
+
+		// Decrypt the TOTP secret
+		decryptedSecret := user.TOTPSecret
+		if s.cfg.Auth.TOTPEncryptionKey != "" {
+			decrypted, err := utils.DecryptTOTPSecret(user.TOTPSecret, s.cfg.Auth.TOTPEncryptionKey)
+			if err != nil {
+				// If decryption fails, assume it's an old unencrypted secret
+				decryptedSecret = user.TOTPSecret
+			} else {
+				decryptedSecret = decrypted
+			}
+		}
+
+		// Validate TOTP code
+		if !utils.ValidateTOTP(req.TOTPCode, decryptedSecret) {
+			return nil, errors.New("invalid 2FA code")
+		}
 	}
 
 	// Generate tokens
@@ -208,17 +238,27 @@ func (s *AuthService) Enable2FA(ctx context.Context, userID primitive.ObjectID) 
 		return "", "", fmt.Errorf("failed to generate TOTP secret: %w", err)
 	}
 
-	// Update user with TOTP secret
+	// Encrypt the secret if encryption key is configured
+	secretToStore := secret
+	if s.cfg.Auth.TOTPEncryptionKey != "" {
+		encrypted, err := utils.EncryptTOTPSecret(secret, s.cfg.Auth.TOTPEncryptionKey)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to encrypt TOTP secret: %w", err)
+		}
+		secretToStore = encrypted
+	}
+
+	// Update user with encrypted TOTP secret
 	_, err = s.db.Collection("users").UpdateOne(
 		ctx,
 		bson.M{"_id": userID},
-		bson.M{"$set": bson.M{"totp_secret": secret}},
+		bson.M{"$set": bson.M{"totp_secret": secretToStore}},
 	)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to save TOTP secret: %w", err)
 	}
 
-	// Generate provisioning URL
+	// Generate provisioning URL (uses plaintext secret for QR code)
 	otpauthURL := utils.GenerateTOTPURL(secret, user.Email, s.cfg.App.Name)
 
 	return secret, otpauthURL, nil
@@ -260,7 +300,9 @@ func (s *AuthService) BeginPasskeyRegistration(ctx context.Context, userID primi
 	}
 
 	// Store session (in production, use Redis or similar)
+	s.sessionsMu.Lock()
 	s.sessions[userID.Hex()] = session
+	s.sessionsMu.Unlock()
 
 	return options, nil
 }
@@ -272,11 +314,14 @@ func (s *AuthService) FinishPasskeyRegistration(ctx context.Context, userID prim
 	}
 
 	// Get session
+	s.sessionsMu.Lock()
 	session, exists := s.sessions[userID.Hex()]
 	if !exists {
+		s.sessionsMu.Unlock()
 		return errors.New("session not found")
 	}
-	defer delete(s.sessions, userID.Hex())
+	delete(s.sessions, userID.Hex())
+	s.sessionsMu.Unlock()
 
 	// Get user
 	var user models.User
@@ -356,7 +401,9 @@ func (s *AuthService) BeginPasskeyLogin(ctx context.Context, email string) (*pro
 	}
 
 	// Store session
+	s.sessionsMu.Lock()
 	s.sessions[user.ID.Hex()] = session
+	s.sessionsMu.Unlock()
 
 	return options, nil
 }
@@ -375,7 +422,9 @@ func (s *AuthService) BeginPasskeyDiscoverableLogin(ctx context.Context) (*proto
 
 	// Store session with a temporary key (we'll update it when we know the user)
 	sessionKey := fmt.Sprintf("discoverable_%d", time.Now().UnixNano())
+	s.sessionsMu.Lock()
 	s.sessions[sessionKey] = session
+	s.sessionsMu.Unlock()
 
 	// Store the session key in the response (we'll need it to retrieve the session)
 	return options, nil
@@ -401,11 +450,14 @@ func (s *AuthService) FinishPasskeyLogin(ctx context.Context, email string, resp
 	}
 
 	// Get session
+	s.sessionsMu.Lock()
 	session, exists := s.sessions[user.ID.Hex()]
 	if !exists {
+		s.sessionsMu.Unlock()
 		return nil, errors.New("session not found")
 	}
-	defer delete(s.sessions, user.ID.Hex())
+	delete(s.sessions, user.ID.Hex())
+	s.sessionsMu.Unlock()
 
 	// Wrap user for WebAuthn
 	webAuthnUser := utils.WebAuthnUser{User: &user}
@@ -489,6 +541,7 @@ func (s *AuthService) FinishPasskeyDiscoverableLogin(ctx context.Context, respon
 	// Find the matching session (try all discoverable sessions)
 	var session *webauthn.SessionData
 	var sessionKey string
+	s.sessionsMu.Lock()
 	for key, sess := range s.sessions {
 		if len(key) > 13 && key[:13] == "discoverable_" {
 			session = sess
@@ -498,9 +551,11 @@ func (s *AuthService) FinishPasskeyDiscoverableLogin(ctx context.Context, respon
 	}
 
 	if session == nil {
+		s.sessionsMu.Unlock()
 		return nil, errors.New("session not found")
 	}
-	defer delete(s.sessions, sessionKey)
+	delete(s.sessions, sessionKey)
+	s.sessionsMu.Unlock()
 
 	// Create user handler for discoverable login
 	userHandler := func(rawID, userHandle []byte) (webauthn.User, error) {
@@ -533,9 +588,14 @@ func (s *AuthService) FinishPasskeyDiscoverableLogin(ctx context.Context, respon
 
 	// Get the user from the user handle for token generation
 	userIDHex := string(parsedResponse.Response.UserHandle)
-	userID, _ := primitive.ObjectIDFromHex(userIDHex)
+	userID, err := primitive.ObjectIDFromHex(userIDHex)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user handle: %w", err)
+	}
 	var user models.User
-	s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	if err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user); err != nil {
+		return nil, fmt.Errorf("failed to fetch user: %w", err)
+	}
 
 	// Update credential sign count and last used time
 	now := time.Now()
