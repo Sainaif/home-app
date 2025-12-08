@@ -1,8 +1,5 @@
-# Holy Home v1.5 - Single Container Deployment (SQLite)
-# Usage: docker-compose -f docker-compose.sqlite.yml up -d
-#
-# This is the new simplified deployment using SQLite instead of MongoDB.
-# For migration from MongoDB, set MIGRATION_MODE=true
+# Holy Home - Single Container Deployment
+# Edit the 4 REQUIRED values below, then: docker-compose -f docker-compose.sqlite.yml up -d
 
 services:
   holyhome:
@@ -10,46 +7,13 @@ services:
       context: ..
       dockerfile: Dockerfile
     environment:
-      # App
-      APP_NAME: ${APP_NAME:-Holy Home}
-      APP_ENV: ${APP_ENV:-production}
-      APP_HOST: "0.0.0.0"
-      APP_PORT: "3000"
-      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:16161}
-      APP_DOMAIN: ${APP_DOMAIN:-localhost}
-
-      # JWT (required - generate with: openssl rand -base64 32)
-      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env}
-      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
-      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-720h}
-
-      # Admin bootstrap (required for first run)
-      ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL in .env}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
-
-      # Auth options
-      AUTH_2FA_ENABLED: ${AUTH_2FA_ENABLED:-false}
-      AUTH_ALLOW_EMAIL_LOGIN: ${AUTH_ALLOW_EMAIL_LOGIN:-true}
-      AUTH_ALLOW_USERNAME_LOGIN: ${AUTH_ALLOW_USERNAME_LOGIN:-false}
-      AUTH_REQUIRE_USERNAME: ${AUTH_REQUIRE_USERNAME:-false}
-      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:-}
-
-      # CORS (set to your domain in production)
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
-
-      # SQLite Database
+      # REQUIRED - generate secrets with: openssl rand -base64 32
+      JWT_SECRET: "CHANGE_ME"
+      JWT_REFRESH_SECRET: "CHANGE_ME"
+      ADMIN_EMAIL: "admin@example.com"
+      ADMIN_PASSWORD: "CHANGE_ME"
+      # Container paths (don't change)
       DATABASE_PATH: /data/holyhome.db
-
-      # Migration mode (set to true when migrating from MongoDB)
-      MIGRATION_MODE: ${MIGRATION_MODE:-false}
-
-      # Timezone
-      TZ: ${TZ:-Europe/Warsaw}
-
-      # Logging
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      LOG_FORMAT: ${LOG_FORMAT:-json}
     ports:
       - "16161:3000"
     volumes:
