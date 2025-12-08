@@ -8,7 +8,7 @@ on:
 
 jobs:
   backend-test:
-    name: Backend Tests
+    name: Tests (Backend)
     runs-on: ubuntu-latest
 
     steps:
@@ -55,7 +55,7 @@ jobs:
         continue-on-error: true
 
   frontend-test:
-    name: Frontend Tests
+    name: Tests (Frontend)
     runs-on: ubuntu-latest
 
     steps:
@@ -86,7 +86,7 @@ jobs:
         continue-on-error: true
 
   build:
-    name: Full Build (Single Container)
+    name: Build
     runs-on: ubuntu-latest
     needs: [backend-test, frontend-test]
 

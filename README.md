@@ -55,29 +55,26 @@ Multiple login options: email, username, passkeys (WebAuthn), and optional two-f
 
 **Requirements:** Docker and Docker Compose
 
-```bash
-# Clone the repository
-git clone https://github.com/Sainaif/home-app.git
-cd home-app
+1. Edit `deploy/docker-compose.sqlite.yml` - set the 4 required values:
+   - `JWT_SECRET` - generate with `openssl rand -base64 32`
+   - `JWT_REFRESH_SECRET` - generate with `openssl rand -base64 32`
+   - `ADMIN_EMAIL` - your admin email
+   - `ADMIN_PASSWORD` - strong password (12+ chars)
 
-# Configure environment
-cp .env.example .env
-# Edit .env with your settings (see Configuration below)
+2. Run:
+   ```bash
+   docker-compose -f deploy/docker-compose.sqlite.yml up -d
+   ```
 
-# Start the application
-cd deploy
-docker-compose up -d
-```
+3. Access at **http://localhost:16161**
 
-Open **http://localhost:16161** in your browser and log in with your admin credentials.
-
-> The admin account is created automatically on first startup using the credentials from your `.env` file.
+> The admin account is created automatically on first startup.
 
 ---
 
 ## Configuration
 
-Copy `.env.example` to `.env` and set the following:
+All configuration is done via environment variables in `docker-compose.sqlite.yml`.
 
 ### Required
 
@@ -92,12 +89,80 @@ Copy `.env.example` to `.env` and set the following:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `APP_ENV` | `development` | Set to `production` for production deployments |
-| `APP_DOMAIN` | `localhost` | Your domain (required for passkey authentication) |
-| `AUTH_ALLOW_USERNAME_LOGIN` | `false` | Allow login with username instead of email |
-| `AUTH_2FA_ENABLED` | `false` | Enable two-factor authentication |
+| `APP_NAME` | Holy Home | Display name |
+| `APP_ENV` | production | Environment mode (development/production) |
+| `APP_DOMAIN` | localhost | Domain for WebAuthn passkeys |
+| `APP_BASE_URL` | http://localhost:16161 | Full URL for generated links |
+| `ALLOWED_ORIGINS` | * | CORS allowed origins |
+| `JWT_ACCESS_TTL` | 15m | Access token lifetime |
+| `JWT_REFRESH_TTL` | 720h | Refresh token lifetime (30 days) |
+| `AUTH_2FA_ENABLED` | false | Enable TOTP two-factor auth |
+| `AUTH_ALLOW_EMAIL_LOGIN` | true | Allow login with email |
+| `AUTH_ALLOW_USERNAME_LOGIN` | false | Allow login with username |
+| `LOG_LEVEL` | info | Logging level (debug/info/warn/error) |
+| `LOG_FORMAT` | json | Log format (json/text) |
+| `TZ` | Europe/Warsaw | Container timezone |
+| `PUID` | (internal) | User ID for file ownership |
+| `PGID` | (internal) | Group ID for file ownership |
 
-See `.env.example` for the complete list of options.
+---
+
+## Volume Permissions
+
+The container handles permissions automatically. Three options:
+
+### Option 1: Named volume (default)
+```yaml
+volumes:
+  - holyhome_data:/data
+```
+Works out of the box. Permissions handled internally.
+
+### Option 2: Bind mount with PUID/PGID
+```yaml
+environment:
+  PUID: 1000
+  PGID: 1000
+volumes:
+  - ./data:/data
+```
+Files on host will be owned by the specified UID:GID. Find your IDs with `id -u` and `id -g`.
+
+### Option 3: Bind mount with user directive
+```yaml
+user: "1000:1000"
+volumes:
+  - ./data:/data
+```
+Requires pre-creating the directory: `mkdir -p ./data`
+
+---
+
+## Data & Backups
+
+SQLite database is stored at `/data/holyhome.db` inside the container.
+
+- **Named volume**: Data in `holyhome_data` Docker volume
+- **Bind mount**: Data in `./data/holyhome.db` on host
+
+To backup:
+```bash
+# Named volume
+docker cp $(docker-compose -f deploy/docker-compose.sqlite.yml ps -q holyhome):/data/holyhome.db ./backup.db
+
+# Bind mount
+cp ./data/holyhome.db ./backup.db
+```
+
+---
+
+## Production Checklist
+
+- [ ] Set `APP_DOMAIN` to your actual domain (required for WebAuthn/passkeys)
+- [ ] Set `APP_BASE_URL` to your full URL (e.g., `https://home.yourdomain.com`)
+- [ ] Set `ALLOWED_ORIGINS` to your domain (instead of `*`)
+- [ ] Consider enabling `AUTH_2FA_ENABLED=true`
+- [ ] Change admin password after first login
 
 ---
 
@@ -106,12 +171,12 @@ See `.env.example` for the complete list of options.
 | Layer | Technology |
 |-------|------------|
 | Backend | Go 1.24, Fiber v2 |
-| Database | MongoDB 8.0 |
+| Database | SQLite |
 | Frontend | Vue 3, Vite, Tailwind CSS, Pinia |
 | Auth | JWT, Argon2id, WebAuthn, TOTP |
-| Deployment | Docker, Docker Compose |
+| Deployment | Docker (single container) |
 
-**Ports:** Frontend on `16161`, API on `16162`, MongoDB on `27017`
+**Port:** 16161 (serves both frontend and API)
 
 ---
 
@@ -134,7 +199,7 @@ npm run dev
 ### Running Tests
 
 ```bash
-# Backend (requires MongoDB replica set)
+# Backend
 cd backend
 go test -v -race ./...
 
@@ -146,8 +211,7 @@ npm test
 ### Rebuilding Docker Images
 
 ```bash
-cd deploy
-docker-compose build && docker-compose up -d
+docker-compose -f deploy/docker-compose.sqlite.yml up -d --build
 ```
 
 ---
@@ -159,7 +223,7 @@ backend/
 ├── cmd/api/           # Application entry point
 └── internal/
     ├── config/        # Environment configuration
-    ├── database/      # MongoDB connection
+    ├── database/      # SQLite connection
     ├── handlers/      # HTTP route handlers
     ├── middleware/    # Auth, rate limiting
     ├── models/        # Data structures

@@ -52,6 +52,7 @@ RUN apk add --no-cache \
     tzdata \
     sqlite \
     sqlite-libs \
+    su-exec \
     && addgroup -S app \
     && adduser -S app -G app \
     && mkdir -p /data \
@@ -59,17 +60,16 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 
-# Copy the compiled binary
+# Copy the compiled binary and entrypoint
 COPY --from=backend /holyhome .
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # Set default environment variables
 ENV TZ=Europe/Warsaw \
     DATABASE_PATH=/data/holyhome.db \
     APP_PORT=3000 \
     APP_HOST=0.0.0.0
-
-# Switch to non-root user
-USER app
 
 # Expose the application port
 EXPOSE 3000
@@ -81,5 +81,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Data volume for SQLite database
 VOLUME ["/data"]
 
-# Start the application
-ENTRYPOINT ["/app/holyhome"]
+# Start the application (entrypoint handles permissions and drops to app user)
+ENTRYPOINT ["/entrypoint.sh"]
