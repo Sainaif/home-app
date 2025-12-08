@@ -376,7 +376,7 @@ func (s *MigrationService) ImportFromBackup(ctx context.Context, backup *BackupD
 	if len(backup.Groups) > 0 {
 		for _, g := range backup.Groups {
 			_, err := tx.ExecContext(ctx, `
-				INSERT INTO groups (id, name, weight, created_at)
+				INSERT OR REPLACE INTO groups (id, name, weight, created_at)
 				VALUES (?, ?, ?, ?)
 			`, g.ID, g.Name, g.Weight, g.CreatedAt.Format(time.RFC3339))
 			if err != nil {
@@ -391,7 +391,7 @@ func (s *MigrationService) ImportFromBackup(ctx context.Context, backup *BackupD
 	if len(backup.Users) > 0 {
 		for _, u := range backup.Users {
 			_, err := tx.ExecContext(ctx, `
-				INSERT INTO users (id, email, username, name, password_hash, role, group_id, is_active, must_change_password, totp_secret, created_at)
+				INSERT OR REPLACE INTO users (id, email, username, name, password_hash, role, group_id, is_active, must_change_password, totp_secret, created_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`, u.ID, u.Email, u.Username, u.Name, u.PasswordHash, u.Role, u.GroupID,
 				boolToInt(u.IsActive), boolToInt(u.MustChangePassword), u.TOTPSecret, u.CreatedAt.Format(time.RFC3339))
@@ -417,7 +417,7 @@ func (s *MigrationService) ImportFromBackup(ctx context.Context, backup *BackupD
 			}
 
 			_, err := tx.ExecContext(ctx, `
-				INSERT INTO bills (id, type, custom_type, allocation_type, period_start, period_end, payment_deadline, total_amount_pln, total_units, notes, status, reopened_at, reopen_reason, reopened_by, recurring_template_id, created_at)
+				INSERT OR REPLACE INTO bills (id, type, custom_type, allocation_type, period_start, period_end, payment_deadline, total_amount_pln, total_units, notes, status, reopened_at, reopen_reason, reopened_by, recurring_template_id, created_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`, b.ID, b.Type, b.CustomType, b.AllocationType,
 				b.PeriodStart.Format(time.RFC3339), b.PeriodEnd.Format(time.RFC3339),
@@ -505,7 +505,7 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 	// 1. Groups (no dependencies)
 	for _, g := range mongoBackup.Groups {
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO groups (id, name, weight, created_at)
+			INSERT OR REPLACE INTO groups (id, name, weight, created_at)
 			VALUES (?, ?, ?, ?)
 		`, g.ID.ID, g.Name, g.Weight, g.CreatedAt.Time.Format(time.RFC3339))
 		if err != nil {
@@ -523,7 +523,7 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 		}
 
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO users (id, email, username, name, password_hash, role, group_id, is_active, must_change_password, totp_secret, created_at)
+			INSERT OR REPLACE INTO users (id, email, username, name, password_hash, role, group_id, is_active, must_change_password, totp_secret, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, u.ID.ID, u.Email, u.Username, u.Name, u.PasswordHash, u.Role, groupID,
 			boolToInt(u.IsActive), boolToInt(u.MustChangePassword), u.TOTPSecret, u.CreatedAt.Time.Format(time.RFC3339))
@@ -542,7 +542,7 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 			}
 
 			_, err := tx.ExecContext(ctx, `
-				INSERT INTO passkey_credentials (id, user_id, public_key, attestation_type, aaguid, sign_count, name, backup_eligible, backup_state, created_at, last_used_at)
+				INSERT OR REPLACE INTO passkey_credentials (id, user_id, public_key, attestation_type, aaguid, sign_count, name, backup_eligible, backup_state, created_at, last_used_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`, fmt.Sprintf("%x", cred.ID), u.ID.ID, cred.PublicKey, cred.AttestationType,
 				cred.AAGUID, cred.SignCount, cred.Name, boolToInt(cred.BackupEligible),
@@ -579,7 +579,7 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 		}
 
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO bills (id, type, custom_type, allocation_type, period_start, period_end, payment_deadline, total_amount_pln, total_units, notes, status, reopened_at, reopen_reason, reopened_by, recurring_template_id, created_at)
+			INSERT OR REPLACE INTO bills (id, type, custom_type, allocation_type, period_start, period_end, payment_deadline, total_amount_pln, total_units, notes, status, reopened_at, reopen_reason, reopened_by, recurring_template_id, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, b.ID.ID, b.Type, b.CustomType, b.AllocationType,
 			b.PeriodStart.Time.Format(time.RFC3339), b.PeriodEnd.Time.Format(time.RFC3339),
@@ -601,7 +601,7 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 		}
 
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO consumptions (id, bill_id, subject_type, subject_id, units, meter_value, recorded_at, source)
+			INSERT OR REPLACE INTO consumptions (id, bill_id, subject_type, subject_id, units, meter_value, recorded_at, source)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		`, c.ID.ID, c.BillID.ID, c.SubjectType, c.SubjectID.ID,
 			c.Units.Value, meterValue, c.RecordedAt.Time.Format(time.RFC3339), c.Source)
@@ -623,7 +623,7 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 		}
 
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO payments (id, bill_id, payer_user_id, amount_pln, paid_at, method, reference)
+			INSERT OR REPLACE INTO payments (id, bill_id, payer_user_id, amount_pln, paid_at, method, reference)
 			VALUES (?, ?, ?, ?, ?, ?, ?)
 		`, p.ID.ID, p.BillID.ID, p.PayerUserID.ID,
 			p.AmountPLN.Value, p.PaidAt.Time.Format(time.RFC3339), method, reference)
@@ -646,7 +646,7 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 		}
 
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO loans (id, lender_id, borrower_id, amount_pln, note, due_date, status, created_at)
+			INSERT OR REPLACE INTO loans (id, lender_id, borrower_id, amount_pln, note, due_date, status, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		`, l.ID.ID, l.LenderID.ID, l.BorrowerID.ID,
 			l.AmountPLN.Value, note, dueDate, l.Status, l.CreatedAt.Time.Format(time.RFC3339))
@@ -665,7 +665,7 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 		}
 
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO loan_payments (id, loan_id, amount_pln, paid_at, note)
+			INSERT OR REPLACE INTO loan_payments (id, loan_id, amount_pln, paid_at, note)
 			VALUES (?, ?, ?, ?, ?)
 		`, lp.ID.ID, lp.LoanID.ID, lp.AmountPLN.Value,
 			lp.PaidAt.Time.Format(time.RFC3339), note)
@@ -692,7 +692,7 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 		}
 
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO chores (id, name, description, frequency, custom_interval, difficulty, priority, assignment_mode, notifications_enabled, reminder_hours, is_active, created_at)
+			INSERT OR REPLACE INTO chores (id, name, description, frequency, custom_interval, difficulty, priority, assignment_mode, notifications_enabled, reminder_hours, is_active, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, ch.ID.ID, ch.Name, description, ch.Frequency, customInterval,
 			ch.Difficulty, ch.Priority, ch.AssignmentMode, boolToInt(ch.NotificationsEnabled),
@@ -713,7 +713,7 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 		}
 
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO chore_assignments (id, chore_id, assignee_user_id, due_date, status, completed_at, points, is_on_time)
+			INSERT OR REPLACE INTO chore_assignments (id, chore_id, assignee_user_id, due_date, status, completed_at, points, is_on_time)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		`, ca.ID.ID, ca.ChoreID.ID, ca.AssigneeUserID.ID,
 			ca.DueDate.Time.Format(time.RFC3339), ca.Status, completedAt, ca.Points, boolToInt(ca.IsOnTime))
@@ -751,7 +751,7 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 		}
 
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO notifications (id, channel, template_id, scheduled_for, sent_at, status, read, user_id, title, body)
+			INSERT OR REPLACE INTO notifications (id, channel, template_id, scheduled_for, sent_at, status, read, user_id, title, body)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, n.ID.ID, n.Channel, n.TemplateID, n.ScheduledFor.Time.Format(time.RFC3339),
 			sentAt, n.Status, boolToInt(n.Read), userID, n.Title, n.Body)
@@ -797,7 +797,7 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 		}
 
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO supply_items (id, name, category, current_quantity, min_quantity, unit, priority, added_by_user_id, added_at, last_restocked_at, last_restocked_by_user_id, last_restock_amount_pln, needs_refund, notes)
+			INSERT OR REPLACE INTO supply_items (id, name, category, current_quantity, min_quantity, unit, priority, added_by_user_id, added_at, last_restocked_at, last_restocked_by_user_id, last_restock_amount_pln, needs_refund, notes)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, si.ID.ID, si.Name, si.Category, si.CurrentQuantity, si.MinQuantity,
 			si.Unit, si.Priority, si.AddedByUserID.ID, si.AddedAt.Time.Format(time.RFC3339),
@@ -818,7 +818,7 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 		}
 
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO supply_contributions (id, user_id, amount_pln, period_start, period_end, type, notes, created_at)
+			INSERT OR REPLACE INTO supply_contributions (id, user_id, amount_pln, period_start, period_end, type, notes, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		`, sc.ID.ID, sc.UserID.ID, sc.AmountPLN.Value,
 			sc.PeriodStart.Time.Format(time.RFC3339), sc.PeriodEnd.Time.Format(time.RFC3339),
