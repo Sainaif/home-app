@@ -382,7 +382,7 @@ func main() {
 
 	// Migration mode routes (v1.5 bridge release)
 	if cfg.MigrationMode {
-		log.Println("MIGRATION_MODE enabled - migration endpoints active")
+		log.Println("MIGRATION_MODE enabled - migration endpoints active (NO AUTH REQUIRED)")
 
 		// Initialize migration service and handler
 		migrationService := services.NewMigrationService(sqliteDB.DB, repos)
@@ -390,7 +390,8 @@ func main() {
 
 		migrate := api.Group("/migrate")
 		migrate.Get("/status", migrationHandler.GetMigrationStatus)
-		migrate.Post("/import", middleware.AuthMiddleware(cfg), middleware.RequirePermission("backup.import", getRoleService), migrationHandler.ImportFromMongoDB)
+		// No auth required in migration mode - enabling MIGRATION_MODE is the authorization
+		migrate.Post("/import", migrationHandler.ImportFromMongoDB)
 	}
 
 	// Serve embedded static files (SPA fallback)
