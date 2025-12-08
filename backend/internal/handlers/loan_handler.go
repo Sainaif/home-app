@@ -6,7 +6,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sainaif/holy-home/internal/middleware"
 	"github.com/sainaif/holy-home/internal/services"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type LoanHandler struct {
@@ -61,7 +60,7 @@ func (h *LoanHandler) CreateLoan(c *fiber.Ctx) error {
 
 	// Broadcast loan created event
 	h.eventService.Broadcast(services.EventLoanCreated, map[string]interface{}{
-		"loan_id": loan.ID.Hex(),
+		"loan_id": loan.ID,
 	})
 
 	// Broadcast balance updated event
@@ -110,8 +109,8 @@ func (h *LoanHandler) CreateLoanPayment(c *fiber.Ctx) error {
 
 	// Broadcast loan payment created event
 	h.eventService.Broadcast(services.EventLoanPaymentCreated, map[string]interface{}{
-		"payment_id": payment.ID.Hex(),
-		"loan_id":    payment.LoanID.Hex(),
+		"payment_id": payment.ID,
+		"loan_id":    payment.LoanID,
 	})
 
 	// Broadcast balance updated event
@@ -180,9 +179,8 @@ func (h *LoanHandler) GetMyBalance(c *fiber.Ctx) error {
 
 // GetUserBalance retrieves a specific user's balance (ADMIN)
 func (h *LoanHandler) GetUserBalance(c *fiber.Ctx) error {
-	id := c.Params("id")
-	userID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	userID := c.Params("id")
+	if userID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid user ID",
 		})
@@ -200,9 +198,8 @@ func (h *LoanHandler) GetUserBalance(c *fiber.Ctx) error {
 
 // GetLoanPayments retrieves all payments for a specific loan
 func (h *LoanHandler) GetLoanPayments(c *fiber.Ctx) error {
-	id := c.Params("id")
-	loanID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	loanID := c.Params("id")
+	if loanID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid loan ID",
 		})
@@ -233,9 +230,8 @@ func (h *LoanHandler) DeleteLoan(c *fiber.Ctx) error {
 		})
 	}
 
-	id := c.Params("id")
-	loanID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	loanID := c.Params("id")
+	if loanID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid loan ID",
 		})
@@ -257,12 +253,12 @@ func (h *LoanHandler) DeleteLoan(c *fiber.Ctx) error {
 
 	// Broadcast loan deleted event
 	h.eventService.Broadcast(services.EventLoanDeleted, map[string]interface{}{
-		"loan_id": loanID.Hex(),
+		"loan_id": loanID,
 	})
 
 	// Broadcast balance updated event
 	h.eventService.Broadcast(services.EventBalanceUpdated, map[string]interface{}{
-		"timestamp": primitive.NewDateTimeFromTime(time.Now()),
+		"timestamp": time.Now(),
 	})
 
 	return c.JSON(fiber.Map{
@@ -305,7 +301,7 @@ func (h *LoanHandler) CompensateLoan(c *fiber.Ctx) error {
 	// Broadcast balance updated event if compensations were performed
 	if result.CompensationsPerformed > 0 {
 		h.eventService.Broadcast(services.EventBalanceUpdated, map[string]interface{}{
-			"timestamp": primitive.NewDateTimeFromTime(time.Now()),
+			"timestamp": time.Now(),
 		})
 	}
 

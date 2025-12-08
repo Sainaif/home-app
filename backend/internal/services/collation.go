@@ -1,10 +1,5 @@
 package services
 
-import "go.mongodb.org/mongo-driver/mongo/options"
-
-// caseInsensitiveEmailCollation ensures MongoDB queries treat email comparisons
-// as case insensitive so users aren't locked out due to casing differences.
-var caseInsensitiveEmailCollation = &options.Collation{
-	Locale:   "en",
-	Strength: 2, // Primary level comparison (case-insensitive)
-}
+// This file previously contained MongoDB-specific collation settings.
+// For SQLite, case-insensitive comparisons are handled via COLLATE NOCASE
+// in the schema definition, so no runtime configuration is needed here.

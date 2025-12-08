@@ -4,7 +4,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sainaif/holy-home/internal/middleware"
 	"github.com/sainaif/holy-home/internal/services"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type RoleHandler struct {
@@ -49,8 +48,11 @@ func (h *RoleHandler) GetAllPermissions(c *fiber.Ctx) error {
 
 // CreateRole creates a new custom role (ADMIN only)
 func (h *RoleHandler) CreateRole(c *fiber.Ctx) error {
-	userID := c.Locals(middleware.UserIDKey).(primitive.ObjectID)
-	userEmail := c.Locals(middleware.UserEmail).(string)
+	userID, ok := c.Locals("userId").(string)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+	userEmail, _ := c.Locals("userEmail").(string)
 
 	var req struct {
 		Name        string   `json:"name"`
@@ -83,21 +85,16 @@ func (h *RoleHandler) CreateRole(c *fiber.Ctx) error {
 
 // UpdateRole updates a role's permissions (ADMIN only)
 func (h *RoleHandler) UpdateRole(c *fiber.Ctx) error {
-	userIDVal := c.Locals("userId")
-	userEmailVal := c.Locals("userEmail")
-
-	if userIDVal == nil || userEmailVal == nil {
+	userID, ok := c.Locals("userId").(string)
+	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Unauthorized",
 		})
 	}
+	userEmail, _ := c.Locals("userEmail").(string)
 
-	userID := userIDVal.(primitive.ObjectID)
-	userEmail := userEmailVal.(string)
-
-	id := c.Params("id")
-	roleID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	roleID := c.Params("id")
+	if roleID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid role ID",
 		})
@@ -166,9 +163,8 @@ func (h *RoleHandler) DeleteRole(c *fiber.Ctx) error {
 		})
 	}
 
-	id := c.Params("id")
-	roleID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	roleID := c.Params("id")
+	if roleID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid role ID",
 		})

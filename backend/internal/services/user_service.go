@@ -8,44 +8,53 @@ import (
 	"strings"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-
+	"github.com/google/uuid"
 	"github.com/sainaif/holy-home/internal/config"
 	"github.com/sainaif/holy-home/internal/models"
+	"github.com/sainaif/holy-home/internal/repository"
 	"github.com/sainaif/holy-home/internal/utils"
 )
 
 type UserService struct {
-	db     *mongo.Database
-	config *config.Config
+	users               repository.UserRepository
+	groups              repository.GroupRepository
+	roles               repository.RoleRepository
+	passwordResetTokens repository.PasswordResetTokenRepository
+	config              *config.Config
 }
 
-func NewUserService(db *mongo.Database, cfg *config.Config) *UserService {
+func NewUserService(
+	users repository.UserRepository,
+	groups repository.GroupRepository,
+	roles repository.RoleRepository,
+	passwordResetTokens repository.PasswordResetTokenRepository,
+	cfg *config.Config,
+) *UserService {
 	return &UserService{
-		db:     db,
-		config: cfg,
+		users:               users,
+		groups:              groups,
+		roles:               roles,
+		passwordResetTokens: passwordResetTokens,
+		config:              cfg,
 	}
 }
 
 type CreateUserRequest struct {
-	Name         string              `json:"name"`
-	Email        string              `json:"email"`
-	Username     string              `json:"username,omitempty"` // Optional username for login
-	Role         string              `json:"role"`               // ADMIN, RESIDENT
-	GroupID      *primitive.ObjectID `json:"groupId,omitempty"`
-	TempPassword *string             `json:"tempPassword,omitempty"`
+	Name         string  `json:"name"`
+	Email        string  `json:"email"`
+	Username     string  `json:"username,omitempty"` // Optional username for login
+	Role         string  `json:"role"`               // ADMIN, RESIDENT
+	GroupID      *string `json:"groupId,omitempty"`
+	TempPassword *string `json:"tempPassword,omitempty"`
 }
 
 type UpdateUserRequest struct {
-	Email    *string             `json:"email,omitempty"`
-	Username *string             `json:"username,omitempty"`
-	Name     *string             `json:"name,omitempty"`
-	Role     *string             `json:"role,omitempty"`
-	GroupID  *primitive.ObjectID `json:"groupId,omitempty"`
-	IsActive *bool               `json:"isActive,omitempty"`
+	Email    *string `json:"email,omitempty"`
+	Username *string `json:"username,omitempty"`
+	Name     *string `json:"name,omitempty"`
+	Role     *string `json:"role,omitempty"`
+	GroupID  *string `json:"groupId,omitempty"`
+	IsActive *bool   `json:"isActive,omitempty"`
 }
 
 // CreateUser creates a new user (ADMIN only)
@@ -63,32 +72,21 @@ func (s *UserService) CreateUser(ctx context.Context, req CreateUserRequest) (*m
 	}
 
 	// Validate role exists
-	roleCount, err := s.db.Collection("roles").CountDocuments(ctx, bson.M{"name": req.Role})
+	_, err := s.roles.GetByName(ctx, req.Role)
 	if err != nil {
-		return nil, fmt.Errorf("database error: %w", err)
-	}
-	if roleCount == 0 {
 		return nil, errors.New("invalid role: role does not exist")
 	}
 
 	// Check if email already exists (case-insensitive)
-	countOpts := options.Count().SetCollation(caseInsensitiveEmailCollation)
-	count, err := s.db.Collection("users").CountDocuments(ctx, bson.M{"email": req.Email}, countOpts)
-	if err != nil {
-		return nil, fmt.Errorf("database error: %w", err)
-	}
-	if count > 0 {
+	existingUser, _ := s.users.GetByEmail(ctx, req.Email)
+	if existingUser != nil {
 		return nil, errors.New("user with this email already exists")
 	}
 
 	// Check if username already exists (case-insensitive) if provided
 	if username != "" {
-		usernameCollation := options.Count().SetCollation(&options.Collation{Locale: "en", Strength: 2})
-		usernameCount, err := s.db.Collection("users").CountDocuments(ctx, bson.M{"username": username}, usernameCollation)
-		if err != nil {
-			return nil, fmt.Errorf("database error: %w", err)
-		}
-		if usernameCount > 0 {
+		existingUser, _ := s.users.GetByUsername(ctx, username)
+		if existingUser != nil {
 			return nil, errors.New("user with this username already exists")
 		}
 	}
@@ -110,7 +108,7 @@ func (s *UserService) CreateUser(ctx context.Context, req CreateUserRequest) (*m
 	}
 
 	user := models.User{
-		ID:                 primitive.NewObjectID(),
+		ID:                 uuid.New().String(),
 		Email:              req.Email,
 		Username:           username,
 		Name:               name,
@@ -122,8 +120,7 @@ func (s *UserService) CreateUser(ctx context.Context, req CreateUserRequest) (*m
 		CreatedAt:          time.Now(),
 	}
 
-	_, err = s.db.Collection("users").InsertOne(ctx, user)
-	if err != nil {
+	if err := s.users.Create(ctx, &user); err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 
@@ -132,64 +129,58 @@ func (s *UserService) CreateUser(ctx context.Context, req CreateUserRequest) (*m
 
 // UserWithGroup extends User with group name for API responses
 type UserWithGroup struct {
-	models.User `bson:",inline"`
-	GroupName   string `bson:"groupName,omitempty" json:"groupName,omitempty"`
+	models.User
+	GroupName string `json:"groupName,omitempty"`
 }
 
 // GetUsers retrieves all users with their group names (ADMIN only)
 func (s *UserService) GetUsers(ctx context.Context) ([]UserWithGroup, error) {
-	// Use aggregation pipeline to join with groups collection
-	pipeline := mongo.Pipeline{
-		// Stage 1: Lookup group information
-		{{Key: "$lookup", Value: bson.D{
-			{Key: "from", Value: "groups"},
-			{Key: "localField", Value: "group_id"},
-			{Key: "foreignField", Value: "_id"},
-			{Key: "as", Value: "groupData"},
-		}}},
-		// Stage 2: Add groupName field from the joined group
-		{{Key: "$addFields", Value: bson.D{
-			{Key: "groupName", Value: bson.D{
-				{Key: "$arrayElemAt", Value: bson.A{"$groupData.name", 0}},
-			}},
-		}}},
-		// Stage 3: Remove temporary groupData array
-		{{Key: "$project", Value: bson.D{
-			{Key: "groupData", Value: 0},
-		}}},
-	}
-
-	cursor, err := s.db.Collection("users").Aggregate(ctx, pipeline)
+	users, err := s.users.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
 	}
-	defer cursor.Close(ctx)
 
-	var users []UserWithGroup
-	if err := cursor.All(ctx, &users); err != nil {
-		return nil, fmt.Errorf("failed to decode users: %w", err)
+	// Fetch all groups for lookup
+	groups, err := s.groups.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch groups: %w", err)
 	}
 
-	return users, nil
+	// Create group lookup map
+	groupMap := make(map[string]string)
+	for _, g := range groups {
+		groupMap[g.ID] = g.Name
+	}
+
+	// Map users to UserWithGroup
+	result := make([]UserWithGroup, len(users))
+	for i, u := range users {
+		uwg := UserWithGroup{User: u}
+		if u.GroupID != nil {
+			uwg.GroupName = groupMap[*u.GroupID]
+		}
+		result[i] = uwg
+	}
+
+	return result, nil
 }
 
 // GetUser retrieves a user by ID
-func (s *UserService) GetUser(ctx context.Context, userID primitive.ObjectID) (*models.User, error) {
-	var user models.User
-	err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+func (s *UserService) GetUser(ctx context.Context, userID string) (*models.User, error) {
+	user, err := s.users.GetByID(ctx, userID)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("user not found")
-		}
-		return nil, fmt.Errorf("database error: %w", err)
+		return nil, errors.New("user not found")
 	}
-	return &user, nil
+	return user, nil
 }
 
 // UpdateUser updates a user (ADMIN only)
-func (s *UserService) UpdateUser(ctx context.Context, userID primitive.ObjectID, req UpdateUserRequest) error {
-	update := bson.M{}
-	unset := bson.M{}
+func (s *UserService) UpdateUser(ctx context.Context, userID string, req UpdateUserRequest) error {
+	// Get existing user
+	user, err := s.users.GetByID(ctx, userID)
+	if err != nil {
+		return errors.New("user not found")
+	}
 
 	if req.Email != nil {
 		normalizedEmail := strings.ToLower(strings.TrimSpace(*req.Email))
@@ -200,90 +191,55 @@ func (s *UserService) UpdateUser(ctx context.Context, userID primitive.ObjectID,
 			return errors.New("invalid email format")
 		}
 
-		countOpts := options.Count().SetCollation(caseInsensitiveEmailCollation)
-		countFilter := bson.M{
-			"email": normalizedEmail,
-			"_id":   bson.M{"$ne": userID},
-		}
-		count, err := s.db.Collection("users").CountDocuments(ctx, countFilter, countOpts)
-		if err != nil {
-			return fmt.Errorf("database error: %w", err)
-		}
-		if count > 0 {
+		// Check if email is already in use by another user
+		existingUser, _ := s.users.GetByEmail(ctx, normalizedEmail)
+		if existingUser != nil && existingUser.ID != userID {
 			return errors.New("email already in use")
 		}
-		update["email"] = normalizedEmail
+		user.Email = normalizedEmail
 	}
 
 	if req.Name != nil {
-		update["name"] = *req.Name
+		user.Name = *req.Name
 	}
 
 	if req.Role != nil {
 		// Validate role exists
-		roleCount, err := s.db.Collection("roles").CountDocuments(ctx, bson.M{"name": *req.Role})
+		_, err := s.roles.GetByName(ctx, *req.Role)
 		if err != nil {
-			return fmt.Errorf("database error: %w", err)
-		}
-		if roleCount == 0 {
 			return errors.New("invalid role: role does not exist")
 		}
-		update["role"] = *req.Role
+		user.Role = *req.Role
 	}
 
 	if req.GroupID != nil {
-		if req.GroupID.IsZero() {
-			// Zero ObjectID means remove the group
-			unset["group_id"] = ""
+		if *req.GroupID == "" {
+			// Empty string means remove the group
+			user.GroupID = nil
 		} else {
 			// Verify group exists before assigning
-			groupCount, err := s.db.Collection("groups").CountDocuments(ctx, bson.M{"_id": *req.GroupID})
+			_, err := s.groups.GetByID(ctx, *req.GroupID)
 			if err != nil {
-				return fmt.Errorf("database error checking group: %w", err)
-			}
-			if groupCount == 0 {
 				return errors.New("invalid group: group does not exist")
 			}
-			update["group_id"] = *req.GroupID
+			user.GroupID = req.GroupID
 		}
 	}
 
 	if req.IsActive != nil {
-		update["is_active"] = *req.IsActive
+		user.IsActive = *req.IsActive
 	}
 
-	if len(update) == 0 && len(unset) == 0 {
-		return errors.New("no fields to update")
-	}
-
-	updateDoc := bson.M{}
-	if len(update) > 0 {
-		updateDoc["$set"] = update
-	}
-	if len(unset) > 0 {
-		updateDoc["$unset"] = unset
-	}
-
-	result, err := s.db.Collection("users").UpdateOne(
-		ctx,
-		bson.M{"_id": userID},
-		updateDoc,
-	)
-	if err != nil {
+	if err := s.users.Update(ctx, user); err != nil {
 		return fmt.Errorf("failed to update user: %w", err)
-	}
-
-	if result.MatchedCount == 0 {
-		return errors.New("user not found")
 	}
 
 	return nil
 }
 
 // ChangePassword allows users to change their own password
-func (s *UserService) ChangePassword(ctx context.Context, userID primitive.ObjectID, oldPassword, newPassword string) error {
-	var user models.User
-	err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+func (s *UserService) ChangePassword(ctx context.Context, userID string, oldPassword, newPassword string) error {
+	user, err := s.users.GetByID(ctx, userID)
 	if err != nil {
 		return errors.New("user not found")
 	}
@@ -301,64 +257,48 @@ func (s *UserService) ChangePassword(ctx context.Context, userID primitive.Objec
 	}
 
 	// Update password and clear must_change_password flag
-	_, err = s.db.Collection("users").UpdateOne(
-		ctx,
-		bson.M{"_id": userID},
-		bson.M{"$set": bson.M{
-			"password_hash":        newHash,
-			"must_change_password": false,
-		}},
-	)
-	if err != nil {
+	if err := s.users.UpdatePassword(ctx, userID, newHash); err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	if err := s.users.SetMustChangePassword(ctx, userID, false); err != nil {
+		return fmt.Errorf("failed to clear must_change_password: %w", err)
 	}
 
 	return nil
 }
 
 // ForcePasswordChange marks a user as needing to change their password
-func (s *UserService) ForcePasswordChange(ctx context.Context, userID primitive.ObjectID) error {
-	_, err := s.db.Collection("users").UpdateOne(
-		ctx,
-		bson.M{"_id": userID},
-		bson.M{"$set": bson.M{"must_change_password": true}},
-	)
-	if err != nil {
+func (s *UserService) ForcePasswordChange(ctx context.Context, userID string) error {
+	if err := s.users.SetMustChangePassword(ctx, userID, true); err != nil {
 		return fmt.Errorf("failed to set password change flag: %w", err)
 	}
 	return nil
 }
 
-// DeleteUser deletes a user from the system
 // GetUserIDsByRole returns all user IDs that have a specific role
-func (s *UserService) GetUserIDsByRole(ctx context.Context, roleName string) ([]primitive.ObjectID, error) {
-	cursor, err := s.db.Collection("users").Find(ctx, bson.M{"role": roleName, "is_active": true})
+func (s *UserService) GetUserIDsByRole(ctx context.Context, roleName string) ([]string, error) {
+	users, err := s.users.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
 
-	var userIDs []primitive.ObjectID
-	for cursor.Next(ctx) {
-		var user models.User
-		if err := cursor.Decode(&user); err != nil {
-			continue
+	var userIDs []string
+	for _, user := range users {
+		if user.Role == roleName && user.IsActive {
+			userIDs = append(userIDs, user.ID)
 		}
-		userIDs = append(userIDs, user.ID)
 	}
 
 	return userIDs, nil
 }
 
-func (s *UserService) DeleteUser(ctx context.Context, userID primitive.ObjectID) error {
+// DeleteUser deletes a user from the system
+func (s *UserService) DeleteUser(ctx context.Context, userID string) error {
 	// Check if user is active
-	var user models.User
-	err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	user, err := s.users.GetByID(ctx, userID)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return fmt.Errorf("user not found")
-		}
-		return fmt.Errorf("failed to find user: %w", err)
+		return fmt.Errorf("user not found")
 	}
 
 	if user.IsActive {
@@ -366,13 +306,8 @@ func (s *UserService) DeleteUser(ctx context.Context, userID primitive.ObjectID)
 	}
 
 	// Delete the user
-	result, err := s.db.Collection("users").DeleteOne(ctx, bson.M{"_id": userID})
-	if err != nil {
+	if err := s.users.Delete(ctx, userID); err != nil {
 		return fmt.Errorf("failed to delete user: %w", err)
-	}
-
-	if result.DeletedCount == 0 {
-		return fmt.Errorf("user not found")
 	}
 
 	return nil
@@ -380,15 +315,11 @@ func (s *UserService) DeleteUser(ctx context.Context, userID primitive.ObjectID)
 
 // GeneratePasswordResetToken generates a password reset token for a user
 // Returns the full reset URL that should be shared with the user
-func (s *UserService) GeneratePasswordResetToken(ctx context.Context, userID primitive.ObjectID, adminID primitive.ObjectID, expirationMinutes int, baseURL string) (string, error) {
+func (s *UserService) GeneratePasswordResetToken(ctx context.Context, userID string, adminID string, expirationMinutes int, baseURL string) (string, error) {
 	// Verify user exists
-	var user models.User
-	err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	_, err := s.users.GetByID(ctx, userID)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return "", errors.New("user not found")
-		}
-		return "", fmt.Errorf("database error: %w", err)
+		return "", errors.New("user not found")
 	}
 
 	// Generate secure token
@@ -405,7 +336,7 @@ func (s *UserService) GeneratePasswordResetToken(ctx context.Context, userID pri
 
 	// Create reset token record
 	resetToken := models.PasswordResetToken{
-		ID:               primitive.NewObjectID(),
+		ID:               uuid.New().String(),
 		UserID:           userID,
 		TokenHash:        tokenHash,
 		ExpiresAt:        expiresAt,
@@ -415,8 +346,7 @@ func (s *UserService) GeneratePasswordResetToken(ctx context.Context, userID pri
 	}
 
 	// Store in database
-	_, err = s.db.Collection("password_reset_tokens").InsertOne(ctx, resetToken)
-	if err != nil {
+	if err := s.passwordResetTokens.Create(ctx, &resetToken); err != nil {
 		return "", fmt.Errorf("failed to store reset token: %w", err)
 	}
 
@@ -438,15 +368,9 @@ func (s *UserService) ValidateResetToken(ctx context.Context, token string) (*mo
 	tokenHash := utils.HashToken(token)
 
 	// Find the token in database
-	var resetToken models.PasswordResetToken
-	err := s.db.Collection("password_reset_tokens").FindOne(ctx, bson.M{
-		"token_hash": tokenHash,
-	}).Decode(&resetToken)
+	resetToken, err := s.passwordResetTokens.GetByTokenHash(ctx, tokenHash)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("invalid or expired reset token")
-		}
-		return nil, fmt.Errorf("database error: %w", err)
+		return nil, errors.New("invalid or expired reset token")
 	}
 
 	// Check if token is expired
@@ -459,7 +383,7 @@ func (s *UserService) ValidateResetToken(ctx context.Context, token string) (*mo
 		return nil, errors.New("reset token has already been used")
 	}
 
-	return &resetToken, nil
+	return resetToken, nil
 }
 
 // ResetPasswordWithToken resets a user's password using a valid reset token
@@ -478,42 +402,21 @@ func (s *UserService) ResetPasswordWithToken(ctx context.Context, token string, 
 	}
 
 	// Update user password and clear must_change_password flag
-	now := time.Now()
-	updateResult, err := s.db.Collection("users").UpdateOne(
-		ctx,
-		bson.M{"_id": resetToken.UserID},
-		bson.M{"$set": bson.M{
-			"password_hash":        newHash,
-			"must_change_password": false,
-		}},
-	)
-	if err != nil {
+	if err := s.users.UpdatePassword(ctx, resetToken.UserID, newHash); err != nil {
 		return nil, fmt.Errorf("failed to update password: %w", err)
 	}
-	if updateResult.MatchedCount == 0 {
-		return nil, errors.New("user not found for password reset")
+
+	if err := s.users.SetMustChangePassword(ctx, resetToken.UserID, false); err != nil {
+		return nil, fmt.Errorf("failed to clear must_change_password: %w", err)
 	}
 
 	// Mark token as used
-	tokenHash := utils.HashToken(token)
-	tokenUpdateResult, err := s.db.Collection("password_reset_tokens").UpdateOne(
-		ctx,
-		bson.M{"token_hash": tokenHash},
-		bson.M{"$set": bson.M{
-			"used":    true,
-			"used_at": &now,
-		}},
-	)
-	if err != nil {
+	if err := s.passwordResetTokens.MarkUsed(ctx, resetToken.ID); err != nil {
 		return nil, fmt.Errorf("failed to mark token as used: %w", err)
-	}
-	if tokenUpdateResult.MatchedCount == 0 {
-		return nil, errors.New("reset token record not found")
 	}
 
 	// Get user details for JWT generation
-	var user models.User
-	err = s.db.Collection("users").FindOne(ctx, bson.M{"_id": resetToken.UserID}).Decode(&user)
+	user, err := s.users.GetByID(ctx, resetToken.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve user: %w", err)
 	}
@@ -547,24 +450,10 @@ func (s *UserService) ResetPasswordWithToken(ctx context.Context, token string, 
 // CleanupExpiredResetTokens removes expired and used tokens from the database
 // This should be called periodically (e.g., via a cron job)
 func (s *UserService) CleanupExpiredResetTokens(ctx context.Context) error {
-	now := time.Now()
-
-	// Delete tokens that are either expired or used
-	filter := bson.M{
-		"$or": []bson.M{
-			{"expires_at": bson.M{"$lt": now}},
-			{"used": true},
-		},
-	}
-
-	result, err := s.db.Collection("password_reset_tokens").DeleteMany(ctx, filter)
-	if err != nil {
+	if err := s.passwordResetTokens.DeleteExpired(ctx); err != nil {
 		return fmt.Errorf("failed to cleanup expired tokens: %w", err)
 	}
 
-	if result.DeletedCount > 0 {
-		log.Printf("Cleaned up %d expired/used password reset tokens", result.DeletedCount)
-	}
-
+	log.Printf("Cleaned up expired/used password reset tokens")
 	return nil
 }

@@ -4,7 +4,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sainaif/holy-home/internal/models"
 	"github.com/sainaif/holy-home/internal/services"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type WebPushHandler struct {
@@ -16,7 +15,7 @@ func NewWebPushHandler(webPushService *services.WebPushService) *WebPushHandler 
 }
 
 func (h *WebPushHandler) CreateSubscription(c *fiber.Ctx) error {
-	user, ok := c.Locals("userId").(primitive.ObjectID)
+	userID, ok := c.Locals("userId").(string)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
@@ -26,7 +25,7 @@ func (h *WebPushHandler) CreateSubscription(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 
-	subscription.UserID = user
+	subscription.UserID = userID
 
 	if err := h.webPushService.CreateSubscription(c.Context(), &subscription); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create subscription"})
@@ -36,12 +35,12 @@ func (h *WebPushHandler) CreateSubscription(c *fiber.Ctx) error {
 }
 
 func (h *WebPushHandler) GetSubscriptions(c *fiber.Ctx) error {
-	user, ok := c.Locals("userId").(primitive.ObjectID)
+	userID, ok := c.Locals("userId").(string)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
 
-	subscriptions, err := h.webPushService.GetSubscriptionsByUserID(c.Context(), user)
+	subscriptions, err := h.webPushService.GetSubscriptionsByUserID(c.Context(), userID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get subscriptions"})
 	}
@@ -50,7 +49,7 @@ func (h *WebPushHandler) GetSubscriptions(c *fiber.Ctx) error {
 }
 
 func (h *WebPushHandler) DeleteSubscription(c *fiber.Ctx) error {
-	_, ok := c.Locals("userId").(primitive.ObjectID)
+	_, ok := c.Locals("userId").(string)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}

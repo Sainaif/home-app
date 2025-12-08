@@ -799,6 +799,9 @@
           </div>
         </div>
       </div>
+
+      <!-- Migration Panel (shown when MIGRATION_MODE is enabled) -->
+      <MigrationPanel />
     </div>
 
     <!-- Create User Modal -->
@@ -1110,6 +1113,7 @@ import { useLocale } from '../composables/useLocale'
 import { useDataEvents, DATA_EVENTS } from '../composables/useDataEvents'
 import api from '../api/client'
 import { UserPlus, Users, Edit, Trash, X, Key, Shield, ShieldOff, Download, Upload, RefreshCw, CheckSquare, Gauge, ShoppingCart, Search, Globe } from 'lucide-vue-next'
+import MigrationPanel from '../components/MigrationPanel.vue'
 
 const router = useRouter()
 const { t } = useI18n()

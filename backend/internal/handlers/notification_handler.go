@@ -3,7 +3,6 @@ package handlers
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sainaif/holy-home/internal/services"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type NotificationHandler struct {
@@ -15,12 +14,12 @@ func NewNotificationHandler(notificationService *services.NotificationService) *
 }
 
 func (h *NotificationHandler) GetNotifications(c *fiber.Ctx) error {
-	user, ok := c.Locals("userId").(primitive.ObjectID)
+	userID, ok := c.Locals("userId").(string)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
 
-	notifications, err := h.notificationService.GetNotificationsForUser(c.Context(), user)
+	notifications, err := h.notificationService.GetNotificationsForUser(c.Context(), userID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get notifications"})
 	}
@@ -29,17 +28,17 @@ func (h *NotificationHandler) GetNotifications(c *fiber.Ctx) error {
 }
 
 func (h *NotificationHandler) MarkNotificationAsRead(c *fiber.Ctx) error {
-	user, ok := c.Locals("userId").(primitive.ObjectID)
+	userID, ok := c.Locals("userId").(string)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
 
-	notificationID, err := primitive.ObjectIDFromHex(c.Params("id"))
-	if err != nil {
+	notificationID := c.Params("id")
+	if notificationID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid notification id"})
 	}
 
-	if err := h.notificationService.MarkNotificationAsRead(c.Context(), notificationID, user); err != nil {
+	if err := h.notificationService.MarkNotificationAsRead(c.Context(), notificationID, userID); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to mark notification as read"})
 	}
 
@@ -47,12 +46,12 @@ func (h *NotificationHandler) MarkNotificationAsRead(c *fiber.Ctx) error {
 }
 
 func (h *NotificationHandler) MarkAllNotificationsAsRead(c *fiber.Ctx) error {
-	user, ok := c.Locals("userId").(primitive.ObjectID)
+	userID, ok := c.Locals("userId").(string)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
 
-	if err := h.notificationService.MarkAllNotificationsAsRead(c.Context(), user); err != nil {
+	if err := h.notificationService.MarkAllNotificationsAsRead(c.Context(), userID); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to mark all notifications as read"})
 	}
 

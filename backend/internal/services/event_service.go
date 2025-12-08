@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"github.com/google/uuid"
 )
 
 // EventType represents different event types
@@ -52,31 +52,30 @@ func NewEventService() *EventService {
 }
 
 // Subscribe creates a new SSE subscription for a user
-func (s *EventService) Subscribe(userID primitive.ObjectID) chan Event {
+func (s *EventService) Subscribe(userID string) chan Event {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	ch := make(chan Event, 10) // Buffered channel
-	s.subscribers[userID.Hex()] = ch
+	s.subscribers[userID] = ch
 	return ch
 }
 
 // Unsubscribe removes a user's SSE subscription
-func (s *EventService) Unsubscribe(userID primitive.ObjectID) {
+func (s *EventService) Unsubscribe(userID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	userIDStr := userID.Hex()
-	if ch, ok := s.subscribers[userIDStr]; ok {
+	if ch, ok := s.subscribers[userID]; ok {
 		close(ch)
-		delete(s.subscribers, userIDStr)
+		delete(s.subscribers, userID)
 	}
 }
 
 // Broadcast sends an event to all subscribed users
 func (s *EventService) Broadcast(eventType EventType, data map[string]interface{}) {
 	event := Event{
-		ID:        primitive.NewObjectID().Hex(),
+		ID:        uuid.New().String(),
 		Type:      eventType,
 		Data:      data,
 		Timestamp: time.Now(),
@@ -96,9 +95,9 @@ func (s *EventService) Broadcast(eventType EventType, data map[string]interface{
 }
 
 // BroadcastToUser sends an event to a specific user
-func (s *EventService) BroadcastToUser(userID primitive.ObjectID, eventType EventType, data map[string]interface{}) {
+func (s *EventService) BroadcastToUser(userID string, eventType EventType, data map[string]interface{}) {
 	event := Event{
-		ID:        primitive.NewObjectID().Hex(),
+		ID:        uuid.New().String(),
 		Type:      eventType,
 		Data:      data,
 		Timestamp: time.Now(),
@@ -107,8 +106,7 @@ func (s *EventService) BroadcastToUser(userID primitive.ObjectID, eventType Even
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	userIDStr := userID.Hex()
-	if ch, ok := s.subscribers[userIDStr]; ok {
+	if ch, ok := s.subscribers[userID]; ok {
 		select {
 		case ch <- event:
 			// Event sent successfully
@@ -132,9 +130,9 @@ func (s *EventService) SubscriberCount() int {
 }
 
 // BroadcastToUserIDs sends an event to specific user IDs
-func (s *EventService) BroadcastToUserIDs(userIDs []primitive.ObjectID, eventType EventType, data map[string]interface{}) {
+func (s *EventService) BroadcastToUserIDs(userIDs []string, eventType EventType, data map[string]interface{}) {
 	event := Event{
-		ID:        primitive.NewObjectID().Hex(),
+		ID:        uuid.New().String(),
 		Type:      eventType,
 		Data:      data,
 		Timestamp: time.Now(),
@@ -144,8 +142,7 @@ func (s *EventService) BroadcastToUserIDs(userIDs []primitive.ObjectID, eventTyp
 	defer s.mu.RUnlock()
 
 	for _, userID := range userIDs {
-		userIDStr := userID.Hex()
-		if ch, ok := s.subscribers[userIDStr]; ok {
+		if ch, ok := s.subscribers[userID]; ok {
 			select {
 			case ch <- event:
 				// Event sent successfully

@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/sainaif/holy-home/internal/services"
 )
@@ -70,11 +69,9 @@ func (h *ExportHandler) ExportChores(c *fiber.Ctx) error {
 	ctx := c.Context()
 
 	// Parse query parameters
-	var userID *primitive.ObjectID
+	var userID *string
 	if u := c.Query("user_id"); u != "" {
-		if parsed, err := primitive.ObjectIDFromHex(u); err == nil {
-			userID = &parsed
-		}
+		userID = &u
 	}
 
 	var status *string
@@ -98,11 +95,9 @@ func (h *ExportHandler) ExportConsumptions(c *fiber.Ctx) error {
 	ctx := c.Context()
 
 	// Parse query parameters
-	var userID *primitive.ObjectID
+	var userID *string
 	if u := c.Query("user_id"); u != "" {
-		if parsed, err := primitive.ObjectIDFromHex(u); err == nil {
-			userID = &parsed
-		}
+		userID = &u
 	}
 
 	var from, to *time.Time

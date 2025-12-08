@@ -3,10 +3,10 @@ package services
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/sainaif/holy-home/internal/models"
 	"github.com/sainaif/holy-home/internal/utils"
 	"github.com/stretchr/testify/assert"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 func TestAllocationBreakdown_RoundingPrecision(t *testing.T) {
@@ -92,19 +92,19 @@ func TestGroupAggregationLogic(t *testing.T) {
 		expectedGroupShare := 200.0      // 2/3 of 300
 		expectedIndividualShare := 100.0 // 1/3 of 300
 
-		groupID := primitive.NewObjectID()
+		groupID := uuid.New().String()
 		userA := models.User{
-			ID:      primitive.NewObjectID(),
+			ID:      uuid.New().String(),
 			Name:    "User A",
 			GroupID: &groupID,
 		}
 		userB := models.User{
-			ID:      primitive.NewObjectID(),
+			ID:      uuid.New().String(),
 			Name:    "User B",
 			GroupID: &groupID,
 		}
 		userC := models.User{
-			ID:   primitive.NewObjectID(),
+			ID:   uuid.New().String(),
 			Name: "User C",
 			// No GroupID - individual user
 		}
@@ -113,9 +113,9 @@ func TestGroupAggregationLogic(t *testing.T) {
 		totalWeight := 3.0 // Each user has weight 1.0
 
 		// Simulate the aggregation logic from CalculateSimpleAllocation
-		groupAllocations := make(map[primitive.ObjectID]float64)
+		groupAllocations := make(map[string]float64)
 		var individualAllocations []struct {
-			userID primitive.ObjectID
+			userID string
 			amount float64
 		}
 
@@ -129,7 +129,7 @@ func TestGroupAggregationLogic(t *testing.T) {
 			} else {
 				// Individual user
 				individualAllocations = append(individualAllocations, struct {
-					userID primitive.ObjectID
+					userID string
 					amount float64
 				}{u.ID, amount})
 			}
@@ -156,20 +156,20 @@ func TestGroupAggregationLogic(t *testing.T) {
 
 		totalAmount := 600.0
 
-		group1ID := primitive.NewObjectID()
-		group2ID := primitive.NewObjectID()
+		group1ID := uuid.New().String()
+		group2ID := uuid.New().String()
 
 		users := []models.User{
-			{ID: primitive.NewObjectID(), Name: "G1-User1", GroupID: &group1ID},
-			{ID: primitive.NewObjectID(), Name: "G1-User2", GroupID: &group1ID},
-			{ID: primitive.NewObjectID(), Name: "G2-User1", GroupID: &group2ID},
-			{ID: primitive.NewObjectID(), Name: "G2-User2", GroupID: &group2ID},
-			{ID: primitive.NewObjectID(), Name: "G2-User3", GroupID: &group2ID},
-			{ID: primitive.NewObjectID(), Name: "Individual", GroupID: nil},
+			{ID: uuid.New().String(), Name: "G1-User1", GroupID: &group1ID},
+			{ID: uuid.New().String(), Name: "G1-User2", GroupID: &group1ID},
+			{ID: uuid.New().String(), Name: "G2-User1", GroupID: &group2ID},
+			{ID: uuid.New().String(), Name: "G2-User2", GroupID: &group2ID},
+			{ID: uuid.New().String(), Name: "G2-User3", GroupID: &group2ID},
+			{ID: uuid.New().String(), Name: "Individual", GroupID: nil},
 		}
 
 		totalWeight := 6.0
-		groupAllocations := make(map[primitive.ObjectID]float64)
+		groupAllocations := make(map[string]float64)
 		individualCount := 0
 
 		for _, u := range users {
@@ -196,16 +196,16 @@ func TestGroupAggregationLogic(t *testing.T) {
 
 	t.Run("All users in groups", func(t *testing.T) {
 		totalAmount := 300.0
-		groupID := primitive.NewObjectID()
+		groupID := uuid.New().String()
 
 		users := []models.User{
-			{ID: primitive.NewObjectID(), Name: "User A", GroupID: &groupID},
-			{ID: primitive.NewObjectID(), Name: "User B", GroupID: &groupID},
-			{ID: primitive.NewObjectID(), Name: "User C", GroupID: &groupID},
+			{ID: uuid.New().String(), Name: "User A", GroupID: &groupID},
+			{ID: uuid.New().String(), Name: "User B", GroupID: &groupID},
+			{ID: uuid.New().String(), Name: "User C", GroupID: &groupID},
 		}
 
 		totalWeight := 3.0
-		groupAllocations := make(map[primitive.ObjectID]float64)
+		groupAllocations := make(map[string]float64)
 
 		for _, u := range users {
 			weight := 1.0
@@ -221,13 +221,13 @@ func TestGroupAggregationLogic(t *testing.T) {
 		totalAmount := 300.0
 
 		users := []models.User{
-			{ID: primitive.NewObjectID(), Name: "User A", GroupID: nil},
-			{ID: primitive.NewObjectID(), Name: "User B", GroupID: nil},
-			{ID: primitive.NewObjectID(), Name: "User C", GroupID: nil},
+			{ID: uuid.New().String(), Name: "User A", GroupID: nil},
+			{ID: uuid.New().String(), Name: "User B", GroupID: nil},
+			{ID: uuid.New().String(), Name: "User C", GroupID: nil},
 		}
 
 		totalWeight := 3.0
-		groupAllocations := make(map[primitive.ObjectID]float64)
+		groupAllocations := make(map[string]float64)
 		individualCount := 0
 
 		for _, u := range users {

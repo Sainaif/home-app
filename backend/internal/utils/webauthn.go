@@ -20,7 +20,7 @@ type WebAuthnUser struct {
 
 // WebAuthnID returns the user's ID as bytes (required by webauthn.User)
 func (u WebAuthnUser) WebAuthnID() []byte {
-	return []byte(u.User.ID.Hex())
+	return []byte(u.User.ID)
 }
 
 // WebAuthnName returns the user's email (required by webauthn.User)

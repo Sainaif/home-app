@@ -2,15 +2,12 @@ package handlers
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/sainaif/holy-home/internal/middleware"
 	"github.com/sainaif/holy-home/internal/models"
 	"github.com/sainaif/holy-home/internal/services"
-	"github.com/sainaif/holy-home/internal/utils"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type RecurringBillTemplateRequest struct {
@@ -57,25 +54,11 @@ func (h *RecurringBillHandler) CreateRecurringBillTemplate(c *fiber.Ctx) error {
 		})
 	}
 
-	// Convert amount string to Decimal128
-	amountFloat, err := strconv.ParseFloat(req.Amount, 64)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": fmt.Sprintf("Invalid amount: %v", err),
-		})
-	}
-	amountDecimal, err := utils.DecimalFromFloat(amountFloat)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to convert amount: %v", err),
-		})
-	}
-
-	// Build template model
+	// Build template model - Amount is now a string
 	template := &models.RecurringBillTemplate{
 		CustomType:  req.CustomType,
 		Frequency:   req.Frequency,
-		Amount:      amountDecimal,
+		Amount:      req.Amount,
 		DayOfMonth:  req.DayOfMonth,
 		StartDate:   req.StartDate,
 		Allocations: req.Allocations,
@@ -117,9 +100,8 @@ func (h *RecurringBillHandler) GetRecurringBillTemplates(c *fiber.Ctx) error {
 
 // GetRecurringBillTemplate retrieves a specific recurring bill template
 func (h *RecurringBillHandler) GetRecurringBillTemplate(c *fiber.Ctx) error {
-	id := c.Params("id")
-	templateID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	templateID := c.Params("id")
+	if templateID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid template ID",
 		})
@@ -150,9 +132,8 @@ func (h *RecurringBillHandler) UpdateRecurringBillTemplate(c *fiber.Ctx) error {
 		})
 	}
 
-	id := c.Params("id")
-	templateID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	templateID := c.Params("id")
+	if templateID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid template ID",
 		})
@@ -165,22 +146,7 @@ func (h *RecurringBillHandler) UpdateRecurringBillTemplate(c *fiber.Ctx) error {
 		})
 	}
 
-	// Convert amount to Decimal128 if present
-	if amountStr, ok := updates["amount"].(string); ok {
-		amountFloat, err := strconv.ParseFloat(amountStr, 64)
-		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"error": fmt.Sprintf("Invalid amount: %v", err),
-			})
-		}
-		amountDecimal, err := utils.DecimalFromFloat(amountFloat)
-		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"error": fmt.Sprintf("Failed to convert amount: %v", err),
-			})
-		}
-		updates["amount"] = amountDecimal
-	}
+	// Amount is now a string, no conversion needed
 
 	if err := h.recurringBillService.UpdateTemplate(c.Context(), templateID, updates); err != nil {
 		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "update_recurring_bill_template", "recurring_bill_template", &templateID,
@@ -215,9 +181,8 @@ func (h *RecurringBillHandler) DeleteRecurringBillTemplate(c *fiber.Ctx) error {
 		})
 	}
 
-	id := c.Params("id")
-	templateID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	templateID := c.Params("id")
+	if templateID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid template ID",
 		})

@@ -2,29 +2,22 @@ package handlers
 
 import (
 	"strconv"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/sainaif/holy-home/internal/middleware"
 	"github.com/sainaif/holy-home/internal/models"
 	"github.com/sainaif/holy-home/internal/services"
-	"github.com/sainaif/holy-home/internal/utils"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type PaymentHandler struct {
-	db                   *mongo.Database
-	auditService         *services.AuditService
-	recurringBillService *services.RecurringBillService
+	paymentService *services.PaymentService
+	auditService   *services.AuditService
 }
 
-func NewPaymentHandler(db *mongo.Database, auditService *services.AuditService, recurringBillService *services.RecurringBillService) *PaymentHandler {
+func NewPaymentHandler(paymentService *services.PaymentService, auditService *services.AuditService) *PaymentHandler {
 	return &PaymentHandler{
-		db:                   db,
-		auditService:         auditService,
-		recurringBillService: recurringBillService,
+		paymentService: paymentService,
+		auditService:   auditService,
 	}
 }
 
@@ -57,34 +50,13 @@ func (h *PaymentHandler) RecordPayment(c *fiber.Ctx) error {
 	}
 
 	// Validate bill ID
-	billID, err := primitive.ObjectIDFromHex(req.BillID)
-	if err != nil {
+	if req.BillID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid bill ID",
 		})
 	}
 
-	// Check if bill exists and is posted
-	var bill models.Bill
-	err = h.db.Collection("bills").FindOne(c.Context(), bson.M{"_id": billID}).Decode(&bill)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-				"error": "Bill not found",
-			})
-		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to fetch bill",
-		})
-	}
-
-	if bill.Status != "posted" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Can only record payments for posted bills",
-		})
-	}
-
-	// Convert amount to Decimal128
+	// Parse amount
 	amountFloat, err := strconv.ParseFloat(req.Amount, 64)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -92,72 +64,42 @@ func (h *PaymentHandler) RecordPayment(c *fiber.Ctx) error {
 		})
 	}
 
-	amountDecimal, err := utils.DecimalFromFloat(amountFloat)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Failed to convert amount",
-		})
-	}
+	// Record the payment
+	payment, err := h.paymentService.RecordPayment(c.Context(), services.RecordPaymentRequest{
+		BillID: req.BillID,
+		Amount: amountFloat,
+		Method: req.Method,
+	}, userID)
 
-	// Create payment record
-	payment := models.Payment{
-		BillID:      billID,
-		PayerUserID: userID,
-		AmountPLN:   amountDecimal,
-		PaidAt:      time.Now(),
-		Method:      req.Method,
-	}
-
-	result, err := h.db.Collection("payments").InsertOne(c.Context(), payment)
 	if err != nil {
 		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "record_payment", "payment", nil,
-			map[string]interface{}{"bill_id": billID, "amount": amountFloat},
+			map[string]interface{}{"bill_id": req.BillID, "amount": amountFloat},
 			c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to record payment",
+			"error": err.Error(),
 		})
 	}
 
-	payment.ID = result.InsertedID.(primitive.ObjectID)
-
 	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "record_payment", "payment", &payment.ID,
-		map[string]interface{}{"bill_id": billID, "amount": amountFloat},
+		map[string]interface{}{"bill_id": req.BillID, "amount": amountFloat},
 		c.IP(), c.Get("User-Agent"), "success")
-
-	// Check if this payment completes a recurring bill and generate next bill if needed
-	if h.recurringBillService != nil {
-		if err := h.recurringBillService.CheckAndGenerateNextBill(c.Context(), billID); err != nil {
-			// Log the error but don't fail the payment
-			// The next bill can be generated manually if needed
-			// TODO: consider adding this to a job queue instead
-		}
-	}
 
 	return c.Status(fiber.StatusCreated).JSON(payment)
 }
 
 // GetBillPayments returns all payments for a specific bill
 func (h *PaymentHandler) GetBillPayments(c *fiber.Ctx) error {
-	billIDStr := c.Params("billId")
-	billID, err := primitive.ObjectIDFromHex(billIDStr)
-	if err != nil {
+	billID := c.Params("billId")
+	if billID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid bill ID",
 		})
 	}
 
-	cursor, err := h.db.Collection("payments").Find(c.Context(), bson.M{"bill_id": billID})
+	payments, err := h.paymentService.GetBillPayments(c.Context(), billID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch payments",
-		})
-	}
-	defer cursor.Close(c.Context())
-
-	var payments []models.Payment
-	if err := cursor.All(c.Context(), &payments); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to decode payments",
 		})
 	}
 
@@ -177,18 +119,10 @@ func (h *PaymentHandler) GetUserPayments(c *fiber.Ctx) error {
 		})
 	}
 
-	cursor, err := h.db.Collection("payments").Find(c.Context(), bson.M{"payer_user_id": userID})
+	payments, err := h.paymentService.GetUserPayments(c.Context(), userID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch payments",
-		})
-	}
-	defer cursor.Close(c.Context())
-
-	var payments []models.Payment
-	if err := cursor.All(c.Context(), &payments); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to decode payments",
 		})
 	}
 

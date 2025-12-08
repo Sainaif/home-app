@@ -7,27 +7,26 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/sainaif/holy-home/internal/models"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
+	"github.com/sainaif/holy-home/internal/repository"
 )
 
 type SessionService struct {
-	db *mongo.Database
+	sessions repository.SessionRepository
 }
 
-func NewSessionService(db *mongo.Database) *SessionService {
-	return &SessionService{db: db}
+func NewSessionService(sessions repository.SessionRepository) *SessionService {
+	return &SessionService{sessions: sessions}
 }
 
 // CreateSession creates a new session with a refresh token
-func (s *SessionService) CreateSession(ctx context.Context, userID primitive.ObjectID, refreshToken, name, ipAddress, userAgent string, expiresAt time.Time) error {
+func (s *SessionService) CreateSession(ctx context.Context, userID string, refreshToken, name, ipAddress, userAgent string, expiresAt time.Time) error {
 	// Hash the refresh token before storing
 	hashedToken := hashToken(refreshToken)
 
 	session := models.Session{
-		ID:           primitive.NewObjectID(),
+		ID:           uuid.New().String(),
 		UserID:       userID,
 		RefreshToken: hashedToken,
 		Name:         name,
@@ -38,127 +37,102 @@ func (s *SessionService) CreateSession(ctx context.Context, userID primitive.Obj
 		ExpiresAt:    expiresAt,
 	}
 
-	_, err := s.db.Collection("sessions").InsertOne(ctx, session)
-	return err
+	return s.sessions.Create(ctx, &session)
 }
 
 // GetUserSessions retrieves all sessions for a user
-func (s *SessionService) GetUserSessions(ctx context.Context, userID primitive.ObjectID) ([]models.Session, error) {
+func (s *SessionService) GetUserSessions(ctx context.Context, userID string) ([]models.Session, error) {
 	// Clean up expired sessions first
-	_, _ = s.db.Collection("sessions").DeleteMany(ctx, bson.M{
-		"user_id":    userID,
-		"expires_at": bson.M{"$lt": time.Now()},
-	})
+	_ = s.sessions.DeleteExpired(ctx)
 
-	cursor, err := s.db.Collection("sessions").Find(ctx, bson.M{
-		"user_id":    userID,
-		"expires_at": bson.M{"$gte": time.Now()},
-	})
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var sessions []models.Session
-	if err := cursor.All(ctx, &sessions); err != nil {
-		return nil, err
-	}
-
-	return sessions, nil
+	return s.sessions.ListByUserID(ctx, userID)
 }
 
 // ValidateSession validates a refresh token and updates last used time
 func (s *SessionService) ValidateSession(ctx context.Context, refreshToken string) (*models.Session, error) {
 	hashedToken := hashToken(refreshToken)
 
-	var session models.Session
-	err := s.db.Collection("sessions").FindOne(ctx, bson.M{
-		"refresh_token": hashedToken,
-		"expires_at":    bson.M{"$gte": time.Now()},
-	}).Decode(&session)
-
+	session, err := s.sessions.GetByRefreshToken(ctx, hashedToken)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("invalid or expired session")
-		}
-		return nil, err
+		return nil, errors.New("invalid or expired session")
+	}
+
+	// Check if session is expired
+	if time.Now().After(session.ExpiresAt) {
+		return nil, errors.New("session expired")
 	}
 
 	// Update last used time
-	_, _ = s.db.Collection("sessions").UpdateOne(ctx, bson.M{"_id": session.ID}, bson.M{
-		"$set": bson.M{"last_used_at": time.Now()},
-	})
+	session.LastUsedAt = time.Now()
+	_ = s.sessions.Update(ctx, session)
 
-	return &session, nil
+	return session, nil
 }
 
 // RenameSession renames a session
-func (s *SessionService) RenameSession(ctx context.Context, sessionID, userID primitive.ObjectID, newName string) error {
-	result, err := s.db.Collection("sessions").UpdateOne(ctx, bson.M{
-		"_id":     sessionID,
-		"user_id": userID,
-	}, bson.M{
-		"$set": bson.M{"name": newName},
-	})
-
+func (s *SessionService) RenameSession(ctx context.Context, sessionID, userID string, newName string) error {
+	session, err := s.sessions.GetByID(ctx, sessionID)
 	if err != nil {
-		return err
-	}
-
-	if result.MatchedCount == 0 {
 		return errors.New("session not found")
 	}
 
-	return nil
+	// Verify the session belongs to the user
+	if session.UserID != userID {
+		return errors.New("session not found")
+	}
+
+	session.Name = newName
+	return s.sessions.Update(ctx, session)
 }
 
 // DeleteSession deletes a specific session
-func (s *SessionService) DeleteSession(ctx context.Context, sessionID, userID primitive.ObjectID) error {
-	result, err := s.db.Collection("sessions").DeleteOne(ctx, bson.M{
-		"_id":     sessionID,
-		"user_id": userID,
-	})
-
+func (s *SessionService) DeleteSession(ctx context.Context, sessionID, userID string) error {
+	session, err := s.sessions.GetByID(ctx, sessionID)
 	if err != nil {
-		return err
-	}
-
-	if result.DeletedCount == 0 {
 		return errors.New("session not found")
 	}
 
-	return nil
+	// Verify the session belongs to the user
+	if session.UserID != userID {
+		return errors.New("session not found")
+	}
+
+	return s.sessions.Delete(ctx, sessionID)
 }
 
 // RevokeSession revokes a session by refresh token (used during logout)
 func (s *SessionService) RevokeSession(ctx context.Context, refreshToken string) error {
 	hashedToken := hashToken(refreshToken)
 
-	_, err := s.db.Collection("sessions").DeleteOne(ctx, bson.M{
-		"refresh_token": hashedToken,
-	})
+	session, err := s.sessions.GetByRefreshToken(ctx, hashedToken)
+	if err != nil {
+		// Session doesn't exist or already revoked - that's fine
+		return nil
+	}
 
-	return err
+	return s.sessions.Delete(ctx, session.ID)
 }
 
 // RevokeAllUserSessions revokes all sessions for a user (except optionally the current one)
-func (s *SessionService) RevokeAllUserSessions(ctx context.Context, userID primitive.ObjectID, exceptSessionID *primitive.ObjectID) error {
-	filter := bson.M{"user_id": userID}
-
-	if exceptSessionID != nil {
-		filter["_id"] = bson.M{"$ne": *exceptSessionID}
+func (s *SessionService) RevokeAllUserSessions(ctx context.Context, userID string, exceptSessionID *string) error {
+	sessions, err := s.sessions.ListByUserID(ctx, userID)
+	if err != nil {
+		return err
 	}
 
-	_, err := s.db.Collection("sessions").DeleteMany(ctx, filter)
-	return err
+	for _, session := range sessions {
+		if exceptSessionID != nil && session.ID == *exceptSessionID {
+			continue
+		}
+		_ = s.sessions.Delete(ctx, session.ID)
+	}
+
+	return nil
 }
 
 // CleanupExpiredSessions removes all expired sessions (should be run periodically)
 func (s *SessionService) CleanupExpiredSessions(ctx context.Context) error {
-	_, err := s.db.Collection("sessions").DeleteMany(ctx, bson.M{
-		"expires_at": bson.M{"$lt": time.Now()},
-	})
-	return err
+	return s.sessions.DeleteExpired(ctx)
 }
 
 // hashToken creates a SHA-256 hash of the token

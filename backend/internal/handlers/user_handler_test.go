@@ -8,24 +8,24 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // MockUser represents a user for testing
 type MockUser struct {
-	ID       primitive.ObjectID `json:"id"`
-	Email    string             `json:"email"`
-	Name     string             `json:"name"`
-	Role     string             `json:"role"`
-	IsActive bool               `json:"isActive"`
+	ID       string `json:"id"`
+	Email    string `json:"email"`
+	Name     string `json:"name"`
+	Role     string `json:"role"`
+	IsActive bool   `json:"isActive"`
 }
 
 func TestGetCurrentUser_Success(t *testing.T) {
 	app := fiber.New()
 
 	mockUser := MockUser{
-		ID:       primitive.NewObjectID(),
+		ID:       uuid.New().String(),
 		Email:    "test@example.com",
 		Name:     "Test User",
 		Role:     "user",
@@ -68,12 +68,11 @@ func TestGetCurrentUser_Unauthorized(t *testing.T) {
 func TestUpdateUser_Success(t *testing.T) {
 	app := fiber.New()
 
-	userID := primitive.NewObjectID()
+	userID := uuid.New().String()
 
 	app.Put("/users/:id", func(c *fiber.Ctx) error {
 		id := c.Params("id")
-		_, err := primitive.ObjectIDFromHex(id)
-		if err != nil {
+		if _, err := uuid.Parse(id); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "Invalid user ID",
 			})
@@ -100,7 +99,7 @@ func TestUpdateUser_Success(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req := httptest.NewRequest(http.MethodPut, "/users/"+userID.Hex(), bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPut, "/users/"+userID, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 
@@ -114,8 +113,7 @@ func TestUpdateUser_InvalidID(t *testing.T) {
 
 	app.Put("/users/:id", func(c *fiber.Ctx) error {
 		id := c.Params("id")
-		_, err := primitive.ObjectIDFromHex(id)
-		if err != nil {
+		if _, err := uuid.Parse(id); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "Invalid user ID",
 			})
@@ -262,14 +260,14 @@ func TestGetUsers_Admin_Success(t *testing.T) {
 
 	mockUsers := []MockUser{
 		{
-			ID:       primitive.NewObjectID(),
+			ID:       uuid.New().String(),
 			Email:    "user1@example.com",
 			Name:     "User One",
 			Role:     "user",
 			IsActive: true,
 		},
 		{
-			ID:       primitive.NewObjectID(),
+			ID:       uuid.New().String(),
 			Email:    "user2@example.com",
 			Name:     "User Two",
 			Role:     "admin",
@@ -335,7 +333,7 @@ func TestCreateUser_Admin_Success(t *testing.T) {
 		}
 
 		return c.Status(fiber.StatusCreated).JSON(MockUser{
-			ID:       primitive.NewObjectID(),
+			ID:       uuid.New().String(),
 			Email:    req.Email,
 			Name:     req.Name,
 			Role:     req.Role,

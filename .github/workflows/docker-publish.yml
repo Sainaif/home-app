@@ -3,6 +3,7 @@ name: Docker Build & Publish
 on:
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]
   workflow_run:
     workflows: ["CI"]
     branches: [ main, master ]
@@ -11,8 +12,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME_API: ${{ github.repository }}/api
-  IMAGE_NAME_FRONTEND: ${{ github.repository }}/frontend
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   # Only run if CI workflow passed or this is a direct push to main/master
@@ -36,8 +36,8 @@ jobs:
             echo "should_run=false" >> $GITHUB_OUTPUT
           fi
 
-  build-and-push-backend:
-    name: Build and Push Backend
+  build-and-push:
+    name: Build and Push Single Container
     runs-on: ubuntu-latest
     needs: check-ci
     if: needs.check-ci.outputs.should_run == 'true'
@@ -48,6 +48,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -63,64 +66,22 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=sha-
             type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=schedule,pattern={{date 'YYYY-MM-DD'}}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./backend
-          file: ./backend/Dockerfile
+          context: .
+          file: ./Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  build-and-push-frontend:
-    name: Build and Push Frontend
-    runs-on: ubuntu-latest
-    needs: check-ci
-    if: needs.check-ci.outputs.should_run == 'true'
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=sha-
-            type=ref,event=branch
-            type=schedule,pattern={{date 'YYYY-MM-DD'}}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: true
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -129,24 +90,32 @@ jobs:
   summary:
     name: Deployment Summary
     runs-on: ubuntu-latest
-    needs: [build-and-push-backend, build-and-push-frontend]
-    if: always()
+    needs: build-and-push
+    if: always() && needs.build-and-push.result == 'success'
 
     steps:
       - name: Summary
         run: |
-          echo "## Docker Images Published 🐳" >> $GITHUB_STEP_SUMMARY
+          echo "## Docker Image Published 🐳" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Backend API" >> $GITHUB_STEP_SUMMARY
-          echo "- Registry: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "### Holy Home (Single Container)" >> $GITHUB_STEP_SUMMARY
+          echo "- Registry: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Tags: \`latest\`, \`sha-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Platforms: \`linux/amd64\`, \`linux/arm64\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Frontend" >> $GITHUB_STEP_SUMMARY
-          echo "- Registry: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Tags: \`latest\`, \`sha-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Pull with:" >> $GITHUB_STEP_SUMMARY
+          echo "### Pull Command" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}:latest" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Quick Start" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "docker run -d \\" >> $GITHUB_STEP_SUMMARY
+          echo "  -p 3000:3000 \\" >> $GITHUB_STEP_SUMMARY
+          echo "  -v holyhome_data:/data \\" >> $GITHUB_STEP_SUMMARY
+          echo "  -e JWT_SECRET=your-secret \\" >> $GITHUB_STEP_SUMMARY
+          echo "  -e JWT_REFRESH_SECRET=your-refresh-secret \\" >> $GITHUB_STEP_SUMMARY
+          echo "  -e ADMIN_EMAIL=admin@example.com \\" >> $GITHUB_STEP_SUMMARY
+          echo "  -e ADMIN_PASSWORD=your-password \\" >> $GITHUB_STEP_SUMMARY
+          echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

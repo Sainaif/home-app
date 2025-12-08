@@ -6,7 +6,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sainaif/holy-home/internal/middleware"
 	"github.com/sainaif/holy-home/internal/services"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type SupplyHandler struct {
@@ -168,7 +167,7 @@ func (h *SupplyHandler) CreateItem(c *fiber.Ctx) error {
 
 	// Broadcast event to all users
 	h.eventService.Broadcast(services.EventSupplyItemAdded, map[string]interface{}{
-		"itemId":   item.ID.Hex(),
+		"itemId":   item.ID,
 		"name":     req.Name,
 		"category": req.Category,
 		"addedBy":  userEmail,
@@ -192,9 +191,8 @@ func (h *SupplyHandler) UpdateItem(c *fiber.Ctx) error {
 		})
 	}
 
-	id := c.Params("id")
-	itemID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	itemID := c.Params("id")
+	if itemID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid item ID",
 		})
@@ -235,9 +233,8 @@ func (h *SupplyHandler) UpdateItem(c *fiber.Ctx) error {
 
 // RestockItem increases item quantity
 func (h *SupplyHandler) RestockItem(c *fiber.Ctx) error {
-	id := c.Params("id")
-	itemID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	itemID := c.Params("id")
+	if itemID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid item ID",
 		})
@@ -288,9 +285,8 @@ func (h *SupplyHandler) RestockItem(c *fiber.Ctx) error {
 
 // ConsumeItem reduces item quantity
 func (h *SupplyHandler) ConsumeItem(c *fiber.Ctx) error {
-	id := c.Params("id")
-	itemID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	itemID := c.Params("id")
+	if itemID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid item ID",
 		})
@@ -319,9 +315,8 @@ func (h *SupplyHandler) ConsumeItem(c *fiber.Ctx) error {
 
 // SetQuantity directly sets item quantity
 func (h *SupplyHandler) SetQuantity(c *fiber.Ctx) error {
-	id := c.Params("id")
-	itemID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	itemID := c.Params("id")
+	if itemID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid item ID",
 		})
@@ -350,9 +345,8 @@ func (h *SupplyHandler) SetQuantity(c *fiber.Ctx) error {
 
 // MarkAsRefunded marks an item's restock as refunded
 func (h *SupplyHandler) MarkAsRefunded(c *fiber.Ctx) error {
-	id := c.Params("id")
-	itemID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	itemID := c.Params("id")
+	if itemID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid item ID",
 		})
@@ -384,9 +378,8 @@ func (h *SupplyHandler) DeleteItem(c *fiber.Ctx) error {
 		})
 	}
 
-	id := c.Params("id")
-	itemID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	itemID := c.Params("id")
+	if itemID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid item ID",
 		})
@@ -414,13 +407,10 @@ func (h *SupplyHandler) DeleteItem(c *fiber.Ctx) error {
 
 // GetContributions retrieves contributions
 func (h *SupplyHandler) GetContributions(c *fiber.Ctx) error {
-	var userID *primitive.ObjectID
+	var userID *string
 	userIDParam := c.Query("userId")
 	if userIDParam != "" {
-		id, err := primitive.ObjectIDFromHex(userIDParam)
-		if err == nil {
-			userID = &id
-		}
+		userID = &userIDParam
 	}
 
 	var fromDate *time.Time

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/filesystem"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 
@@ -18,7 +20,9 @@ import (
 	"github.com/sainaif/holy-home/internal/database"
 	"github.com/sainaif/holy-home/internal/handlers"
 	"github.com/sainaif/holy-home/internal/middleware"
+	sqliterepo "github.com/sainaif/holy-home/internal/repository/sqlite"
 	"github.com/sainaif/holy-home/internal/services"
+	"github.com/sainaif/holy-home/internal/static"
 )
 
 func main() {
@@ -33,22 +37,19 @@ func main() {
 		log.Fatalf("Configuration validation failed: %v", err)
 	}
 
-	// Connect to MongoDB
-	db, err := database.NewMongoDB(cfg.Mongo.URI, cfg.Mongo.Database)
+	// Initialize SQLite database
+	sqliteDB, err := database.NewSQLiteDB(cfg.SQLite.DatabasePath)
 	if err != nil {
-		log.Fatalf("Failed to connect to MongoDB: %v", err)
+		log.Fatalf("Failed to initialize SQLite: %v", err)
 	}
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := db.Close(ctx); err != nil {
-			log.Printf("Error closing MongoDB connection: %v", err)
-		}
-	}()
+	defer sqliteDB.Close()
+
+	// Initialize all repositories
+	repos := sqliterepo.NewRepositories(sqliteDB.DB)
 
 	// Initialize services
-	sessionService := services.NewSessionService(db.Database)
-	authService := services.NewAuthService(db.Database, cfg, sessionService)
+	sessionService := services.NewSessionService(repos.Sessions)
+	authService := services.NewAuthService(repos.Users, repos.PasskeyCredentials, repos.Roles, cfg, sessionService)
 	if err := authService.BootstrapAdmin(context.Background()); err != nil {
 		log.Fatalf("Failed to bootstrap admin: %v", err)
 	}
@@ -112,27 +113,28 @@ func main() {
 		})
 	})
 
-	// Initialize services
-	userService := services.NewUserService(db.Database, cfg)
-	groupService := services.NewGroupService(db.Database)
+	// Initialize services with repositories
+	userService := services.NewUserService(repos.Users, repos.Groups, repos.Roles, repos.PasswordResetTokens, cfg)
+	groupService := services.NewGroupService(repos.Groups, repos.Users, repos.Allocations)
 	eventService := services.NewEventService()
-	webPushService := services.NewWebPushService(db.Database)
-	notificationPreferenceService := services.NewNotificationPreferenceService(db.Database)
-	notificationService := services.NewNotificationService(db.Database, eventService, webPushService, notificationPreferenceService, cfg)
-	billService := services.NewBillService(db.Database, notificationService)
-	consumptionService := services.NewConsumptionService(db.Database)
-	allocationService := services.NewAllocationService(db.Database)
-	loanService := services.NewLoanService(db.Database)
-	choreService := services.NewChoreService(db.Database)
-	supplyService := services.NewSupplyService(db.Database)
-	recurringBillService := services.NewRecurringBillService(db.Database, cfg)
-	exportService := services.NewExportService(db.Database)
-	backupService := services.NewBackupService(db.Database)
-	auditService := services.NewAuditService(db.Database)
-	permissionService := services.NewPermissionService(db.Database)
-	roleService := services.NewRoleService(db.Database)
-	approvalService := services.NewApprovalService(db.Database)
-	appSettingsService := services.NewAppSettingsService(db.Database)
+	webPushService := services.NewWebPushService(repos.WebPushSubscriptions)
+	notificationPreferenceService := services.NewNotificationPreferenceService(repos.NotificationPreferences)
+	notificationService := services.NewNotificationService(repos.Notifications, eventService, webPushService, notificationPreferenceService, cfg)
+	billService := services.NewBillService(repos.Bills, repos.Consumptions, repos.Allocations, repos.Payments, repos.Users, repos.Groups, notificationService)
+	consumptionService := services.NewConsumptionService(repos.Consumptions, repos.Bills, repos.Users)
+	allocationService := services.NewAllocationService(repos.Users, repos.Groups, repos.Consumptions, repos.Allocations, repos.Bills)
+	loanService := services.NewLoanService(repos.Loans, repos.LoanPayments, repos.Users, repos.Groups)
+	choreService := services.NewChoreService(repos.Chores, repos.ChoreAssignments, repos.Users)
+	supplyService := services.NewSupplyService(repos.SupplySettings, repos.SupplyItems, repos.SupplyContributions, repos.Users)
+	recurringBillService := services.NewRecurringBillService(repos.RecurringBillTemplates, repos.RecurringBillAllocations, repos.Bills, repos.Allocations, repos.Payments, repos.Users, cfg)
+	paymentService := services.NewPaymentService(repos.Payments, repos.Bills, recurringBillService)
+	exportService := services.NewExportService(repos.Bills, repos.Consumptions, repos.Loans, repos.LoanPayments, repos.Chores, repos.ChoreAssignments, repos.Users, repos.Groups)
+	backupService := services.NewBackupService(repos.Users, repos.Groups, repos.Bills, repos.Consumptions, repos.Payments, repos.Loans, repos.LoanPayments, repos.Chores, repos.ChoreAssignments, repos.ChoreSettings, repos.Notifications, repos.SupplySettings, repos.SupplyItems, repos.SupplyContributions)
+	auditService := services.NewAuditService(repos.AuditLogs)
+	permissionService := services.NewPermissionService(repos.Permissions)
+	roleService := services.NewRoleService(repos.Roles, repos.Users)
+	approvalService := services.NewApprovalService(repos.ApprovalRequests)
+	appSettingsService := services.NewAppSettingsService(repos.AppSettings)
 
 	// Initialize default permissions and roles
 	if err := permissionService.InitializeDefaultPermissions(context.Background()); err != nil {
@@ -164,6 +166,7 @@ func main() {
 	webPushHandler := handlers.NewWebPushHandler(webPushService)
 	notificationPreferenceHandler := handlers.NewNotificationPreferenceHandler(notificationPreferenceService)
 	appSettingsHandler := handlers.NewAppSettingsHandler(appSettingsService)
+	paymentHandler := handlers.NewPaymentHandler(paymentService, auditService)
 
 	// Helper function to provide RoleService to middleware
 	getRoleService := func() interface{} { return roleService }
@@ -247,7 +250,6 @@ func main() {
 	recurringBills.Post("/generate", middleware.AuthMiddleware(cfg), middleware.RequirePermission("bills.create", getRoleService), recurringBillHandler.GenerateRecurringBills)
 
 	// Payment routes
-	paymentHandler := handlers.NewPaymentHandler(db.Database, auditService, recurringBillService)
 	payments := app.Group("/payments")
 	payments.Post("/", middleware.AuthMiddleware(cfg), paymentHandler.RecordPayment)
 	payments.Get("/me", middleware.AuthMiddleware(cfg), paymentHandler.GetUserPayments)
@@ -325,6 +327,9 @@ func main() {
 	// Export routes
 	exports := app.Group("/exports")
 	exports.Get("/bills", middleware.AuthMiddleware(cfg), exportHandler.ExportBills)
+	exports.Get("/balances", middleware.AuthMiddleware(cfg), exportHandler.ExportBalances)
+	exports.Get("/chores", middleware.AuthMiddleware(cfg), exportHandler.ExportChores)
+	exports.Get("/consumptions", middleware.AuthMiddleware(cfg), exportHandler.ExportConsumptions)
 
 	// Audit log routes
 	audit := app.Group("/audit")
@@ -365,15 +370,52 @@ func main() {
 	backup := app.Group("/backup")
 	backup.Get("/export", middleware.AuthMiddleware(cfg), middleware.RequirePermission("backup.export", getRoleService), backupHandler.ExportBackup)
 	backup.Post("/import", middleware.AuthMiddleware(cfg), middleware.RequirePermission("backup.import", getRoleService), backupHandler.ImportBackup)
-	exports.Get("/balances", middleware.AuthMiddleware(cfg), exportHandler.ExportBalances)
-	exports.Get("/chores", middleware.AuthMiddleware(cfg), exportHandler.ExportChores)
-	exports.Get("/consumptions", middleware.AuthMiddleware(cfg), exportHandler.ExportConsumptions)
 
 	// App settings routes
 	appSettings := app.Group("/app-settings")
 	appSettings.Get("/", appSettingsHandler.GetSettings)                    // Public - no auth required for branding
 	appSettings.Get("/languages", appSettingsHandler.GetSupportedLanguages) // Public - get supported languages
 	appSettings.Patch("/", middleware.AuthMiddleware(cfg), middleware.RequirePermission("settings.app.update", getRoleService), appSettingsHandler.UpdateSettings)
+
+	// Migration mode routes (v1.5 bridge release)
+	if cfg.MigrationMode {
+		log.Println("MIGRATION_MODE enabled - migration endpoints active")
+
+		// Initialize migration service and handler
+		migrationService := services.NewMigrationService(sqliteDB.DB, repos)
+		migrationHandler := handlers.NewMigrationHandler(migrationService)
+
+		migrate := app.Group("/migrate")
+		migrate.Get("/status", migrationHandler.GetMigrationStatus)
+		migrate.Post("/import", middleware.AuthMiddleware(cfg), middleware.RequirePermission("backup.import", getRoleService), migrationHandler.ImportFromMongoDB)
+	}
+
+	// Serve embedded static files (SPA fallback)
+	// This must come AFTER all API routes
+	if static.HasStaticFiles() {
+		log.Println("Serving embedded static files")
+		staticFS, err := static.GetFileSystem()
+		if err != nil {
+			log.Printf("Warning: Failed to get static filesystem: %v", err)
+		} else {
+			// Serve static files with SPA fallback
+			app.Use("/", filesystem.New(filesystem.Config{
+				Root:         staticFS,
+				Browse:       false,
+				Index:        "index.html",
+				NotFoundFile: "index.html", // SPA fallback - serve index.html for client-side routing
+				MaxAge:       86400,        // Cache static assets for 1 day
+			}))
+		}
+	} else {
+		log.Println("No embedded static files found (development mode)")
+		// In development, return 404 for non-API routes so frontend dev server can handle them
+		app.Use(func(c *fiber.Ctx) error {
+			return c.Status(http.StatusNotFound).JSON(fiber.Map{
+				"error": "Not found - static files not embedded (development mode)",
+			})
+		})
+	}
 
 	// Start password reset token cleanup job
 	go func() {

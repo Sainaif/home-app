@@ -2,160 +2,113 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-
+	"github.com/google/uuid"
 	"github.com/sainaif/holy-home/internal/models"
+	"github.com/sainaif/holy-home/internal/repository"
 )
 
 type ApprovalService struct {
-	db *mongo.Database
+	approvalRequests repository.ApprovalRequestRepository
 }
 
-func NewApprovalService(db *mongo.Database) *ApprovalService {
-	return &ApprovalService{db: db}
+func NewApprovalService(approvalRequests repository.ApprovalRequestRepository) *ApprovalService {
+	return &ApprovalService{approvalRequests: approvalRequests}
 }
 
 // CreateApprovalRequest creates a new approval request
 func (s *ApprovalService) CreateApprovalRequest(
 	ctx context.Context,
-	userID primitive.ObjectID,
+	userID string,
 	userEmail, userName string,
 	action, resourceType string,
-	resourceID *primitive.ObjectID,
+	resourceID *string,
 	details map[string]interface{},
 ) (*models.ApprovalRequest, error) {
-	request := models.ApprovalRequest{
-		ID:           primitive.NewObjectID(),
+	// Convert details map to JSON string
+	var detailsJSON string
+	if details != nil {
+		detailsBytes, _ := json.Marshal(details)
+		detailsJSON = string(detailsBytes)
+	}
+
+	request := &models.ApprovalRequest{
+		ID:           uuid.New().String(),
 		UserID:       userID,
 		UserEmail:    userEmail,
 		UserName:     userName,
 		Action:       action,
 		ResourceType: resourceType,
 		ResourceID:   resourceID,
-		Details:      details,
+		DetailsJSON:  detailsJSON,
 		Status:       "pending",
 		CreatedAt:    time.Now(),
 	}
 
-	_, err := s.db.Collection("approval_requests").InsertOne(ctx, request)
-	if err != nil {
+	if err := s.approvalRequests.Create(ctx, request); err != nil {
 		return nil, err
 	}
-	return &request, nil
+	return request, nil
 }
 
 // GetPendingRequests retrieves all pending approval requests
 func (s *ApprovalService) GetPendingRequests(ctx context.Context) ([]models.ApprovalRequest, error) {
-	cursor, err := s.db.Collection("approval_requests").Find(
-		ctx,
-		bson.M{"status": "pending"},
-		options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}),
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var requests []models.ApprovalRequest
-	if err := cursor.All(ctx, &requests); err != nil {
-		return nil, err
-	}
-	return requests, nil
+	return s.approvalRequests.ListPending(ctx)
 }
 
-// GetAllRequests retrieves all approval requests with pagination
-func (s *ApprovalService) GetAllRequests(ctx context.Context, limit, skip int, filter bson.M) ([]models.ApprovalRequest, int64, error) {
-	total, err := s.db.Collection("approval_requests").CountDocuments(ctx, filter)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	opts := options.Find().
-		SetLimit(int64(limit)).
-		SetSkip(int64(skip)).
-		SetSort(bson.D{{Key: "created_at", Value: -1}})
-
-	cursor, err := s.db.Collection("approval_requests").Find(ctx, filter, opts)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer cursor.Close(ctx)
-
-	var requests []models.ApprovalRequest
-	if err := cursor.All(ctx, &requests); err != nil {
-		return nil, 0, err
-	}
-
-	return requests, total, nil
+// GetAllRequests retrieves all approval requests
+func (s *ApprovalService) GetAllRequests(ctx context.Context) ([]models.ApprovalRequest, error) {
+	return s.approvalRequests.List(ctx)
 }
 
 // ApproveRequest approves an approval request
-func (s *ApprovalService) ApproveRequest(ctx context.Context, requestID, reviewerID primitive.ObjectID, notes *string) error {
-	now := time.Now()
-	update := bson.M{
-		"$set": bson.M{
-			"status":       "approved",
-			"reviewed_by":  reviewerID,
-			"reviewed_at":  now,
-			"review_notes": notes,
-		},
+func (s *ApprovalService) ApproveRequest(ctx context.Context, requestID, reviewerID string, notes *string) error {
+	request, err := s.approvalRequests.GetByID(ctx, requestID)
+	if err != nil {
+		return errors.New("request not found")
 	}
 
-	result, err := s.db.Collection("approval_requests").UpdateOne(
-		ctx,
-		bson.M{"_id": requestID, "status": "pending"},
-		update,
-	)
-	if err != nil {
-		return err
-	}
-	if result.MatchedCount == 0 {
+	if request.Status != "pending" {
 		return errors.New("request not found or already processed")
 	}
-	return nil
+
+	now := time.Now()
+	request.Status = "approved"
+	request.ReviewedBy = &reviewerID
+	request.ReviewedAt = &now
+	request.ReviewNotes = notes
+
+	return s.approvalRequests.Update(ctx, request)
 }
 
 // RejectRequest rejects an approval request
-func (s *ApprovalService) RejectRequest(ctx context.Context, requestID, reviewerID primitive.ObjectID, notes *string) error {
-	now := time.Now()
-	update := bson.M{
-		"$set": bson.M{
-			"status":       "rejected",
-			"reviewed_by":  reviewerID,
-			"reviewed_at":  now,
-			"review_notes": notes,
-		},
+func (s *ApprovalService) RejectRequest(ctx context.Context, requestID, reviewerID string, notes *string) error {
+	request, err := s.approvalRequests.GetByID(ctx, requestID)
+	if err != nil {
+		return errors.New("request not found")
 	}
 
-	result, err := s.db.Collection("approval_requests").UpdateOne(
-		ctx,
-		bson.M{"_id": requestID, "status": "pending"},
-		update,
-	)
-	if err != nil {
-		return err
-	}
-	if result.MatchedCount == 0 {
+	if request.Status != "pending" {
 		return errors.New("request not found or already processed")
 	}
-	return nil
+
+	now := time.Now()
+	request.Status = "rejected"
+	request.ReviewedBy = &reviewerID
+	request.ReviewedAt = &now
+	request.ReviewNotes = notes
+
+	return s.approvalRequests.Update(ctx, request)
 }
 
 // GetRequest retrieves a specific approval request
-func (s *ApprovalService) GetRequest(ctx context.Context, requestID primitive.ObjectID) (*models.ApprovalRequest, error) {
-	var request models.ApprovalRequest
-	err := s.db.Collection("approval_requests").FindOne(ctx, bson.M{"_id": requestID}).Decode(&request)
+func (s *ApprovalService) GetRequest(ctx context.Context, requestID string) (*models.ApprovalRequest, error) {
+	request, err := s.approvalRequests.GetByID(ctx, requestID)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("request not found")
-		}
-		return nil, err
+		return nil, errors.New("request not found")
 	}
-	return &request, nil
+	return request, nil
 }

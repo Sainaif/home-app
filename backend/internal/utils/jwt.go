@@ -5,19 +5,18 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // Claims holds user data inside JWT tokens
 type Claims struct {
-	UserID primitive.ObjectID `json:"userId"`
-	Email  string             `json:"email"`
-	Role   string             `json:"role"`
+	UserID string `json:"userId"`
+	Email  string `json:"email"`
+	Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
 
 // GenerateAccessToken creates short-lived token (15 min)
-func GenerateAccessToken(userID primitive.ObjectID, email, role, secret string, ttl time.Duration) (string, error) {
+func GenerateAccessToken(userID string, email, role, secret string, ttl time.Duration) (string, error) {
 	claims := &Claims{
 		UserID: userID,
 		Email:  email,
@@ -33,9 +32,9 @@ func GenerateAccessToken(userID primitive.ObjectID, email, role, secret string, 
 }
 
 // GenerateRefreshToken creates long-lived token (30 days) for renewing access
-func GenerateRefreshToken(userID primitive.ObjectID, secret string, ttl time.Duration) (string, error) {
+func GenerateRefreshToken(userID string, secret string, ttl time.Duration) (string, error) {
 	claims := &jwt.RegisteredClaims{
-		Subject:   userID.Hex(),
+		Subject:   userID,
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
 	}
@@ -65,7 +64,7 @@ func ValidateAccessToken(tokenString, secret string) (*Claims, error) {
 }
 
 // ValidateRefreshToken checks refresh token and gets user ID
-func ValidateRefreshToken(tokenString, secret string) (primitive.ObjectID, error) {
+func ValidateRefreshToken(tokenString, secret string) (string, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -74,16 +73,12 @@ func ValidateRefreshToken(tokenString, secret string) (primitive.ObjectID, error
 	})
 
 	if err != nil {
-		return primitive.NilObjectID, err
+		return "", err
 	}
 
 	if claims, ok := token.Claims.(*jwt.RegisteredClaims); ok && token.Valid {
-		userID, err := primitive.ObjectIDFromHex(claims.Subject)
-		if err != nil {
-			return primitive.NilObjectID, fmt.Errorf("invalid user ID in token")
-		}
-		return userID, nil
+		return claims.Subject, nil
 	}
 
-	return primitive.NilObjectID, fmt.Errorf("invalid token")
+	return "", fmt.Errorf("invalid token")
 }

@@ -3,7 +3,6 @@ package handlers
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sainaif/holy-home/internal/services"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type NotificationPreferenceHandler struct {
@@ -15,12 +14,12 @@ func NewNotificationPreferenceHandler(notificationPreferenceService *services.No
 }
 
 func (h *NotificationPreferenceHandler) GetPreferences(c *fiber.Ctx) error {
-	user, ok := c.Locals("userId").(primitive.ObjectID)
+	userID, ok := c.Locals("userId").(string)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
 
-	preferences, err := h.notificationPreferenceService.GetPreferences(c.Context(), user)
+	preferences, err := h.notificationPreferenceService.GetPreferences(c.Context(), userID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get preferences"})
 	}
@@ -29,7 +28,7 @@ func (h *NotificationPreferenceHandler) GetPreferences(c *fiber.Ctx) error {
 }
 
 func (h *NotificationPreferenceHandler) UpdatePreferences(c *fiber.Ctx) error {
-	user, ok := c.Locals("userId").(primitive.ObjectID)
+	userID, ok := c.Locals("userId").(string)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
@@ -42,7 +41,7 @@ func (h *NotificationPreferenceHandler) UpdatePreferences(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 
-	preferences, err := h.notificationPreferenceService.UpdatePreferences(c.Context(), user, req.Preferences, req.AllEnabled)
+	preferences, err := h.notificationPreferenceService.UpdatePreferences(c.Context(), userID, req.Preferences, req.AllEnabled)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update preferences"})
 	}

@@ -461,7 +461,7 @@ func (h *AuthHandler) ValidateResetToken(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"valid":     true,
 		"expiresAt": resetToken.ExpiresAt,
-		"userId":    resetToken.UserID.Hex(),
+		"userId":    resetToken.UserID,
 	})
 }
 

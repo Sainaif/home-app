@@ -562,5 +562,21 @@
   },
   "footer": {
     "createdBy": "Stworzone przez Sainaif"
+  },
+  "migration": {
+    "title": "Migracja bazy danych",
+    "description": "Importuj dane z kopii zapasowej MongoDB",
+    "existingDataWarning": "Baza danych zawiera już dane. Import nadpisze istniejące rekordy.",
+    "confirmOverwrite": "Rozumiem i chcę kontynuować",
+    "lastMigration": "Ostatnia migracja",
+    "dragDropHint": "Przeciągnij i upuść plik kopii zapasowej tutaj, lub",
+    "selectBackupFile": "wybierz plik",
+    "importing": "Importowanie danych...",
+    "startMigration": "Rozpocznij migrację",
+    "success": "Migracja zakończona pomyślnie",
+    "failed": "Migracja zakończona z błędami",
+    "recordsMigrated": "Zmigrowane rekordy",
+    "errors": "Błędy",
+    "startNew": "Rozpocznij nową migrację"
   }
 }

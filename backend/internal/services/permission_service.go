@@ -6,100 +6,96 @@ import (
 	"fmt"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-
+	"github.com/google/uuid"
 	"github.com/sainaif/holy-home/internal/models"
+	"github.com/sainaif/holy-home/internal/repository"
 )
 
 type PermissionService struct {
-	db *mongo.Database
+	permissions repository.PermissionRepository
 }
 
-func NewPermissionService(db *mongo.Database) *PermissionService {
-	return &PermissionService{db: db}
+func NewPermissionService(permissions repository.PermissionRepository) *PermissionService {
+	return &PermissionService{permissions: permissions}
 }
 
 // InitializeDefaultPermissions creates the default permission set
 func (s *PermissionService) InitializeDefaultPermissions(ctx context.Context) error {
 	permissions := []models.Permission{
 		// User management
-		{ID: primitive.NewObjectID(), Name: "users.create", Description: "Twórz nowych użytkowników", Category: "users"},
-		{ID: primitive.NewObjectID(), Name: "users.read", Description: "Przeglądaj informacje o użytkownikach", Category: "users"},
-		{ID: primitive.NewObjectID(), Name: "users.update", Description: "Aktualizuj informacje o użytkownikach", Category: "users"},
-		{ID: primitive.NewObjectID(), Name: "users.delete", Description: "Usuń użytkowników", Category: "users"},
+		{ID: uuid.New().String(), Name: "users.create", Description: "Twórz nowych użytkowników", Category: "users"},
+		{ID: uuid.New().String(), Name: "users.read", Description: "Przeglądaj informacje o użytkownikach", Category: "users"},
+		{ID: uuid.New().String(), Name: "users.update", Description: "Aktualizuj informacje o użytkownikach", Category: "users"},
+		{ID: uuid.New().String(), Name: "users.delete", Description: "Usuń użytkowników", Category: "users"},
 
 		// Group management
-		{ID: primitive.NewObjectID(), Name: "groups.create", Description: "Twórz nowe grupy", Category: "groups"},
-		{ID: primitive.NewObjectID(), Name: "groups.read", Description: "Przeglądaj grupy", Category: "groups"},
-		{ID: primitive.NewObjectID(), Name: "groups.update", Description: "Aktualizuj grupy", Category: "groups"},
-		{ID: primitive.NewObjectID(), Name: "groups.delete", Description: "Usuń grupy", Category: "groups"},
+		{ID: uuid.New().String(), Name: "groups.create", Description: "Twórz nowe grupy", Category: "groups"},
+		{ID: uuid.New().String(), Name: "groups.read", Description: "Przeglądaj grupy", Category: "groups"},
+		{ID: uuid.New().String(), Name: "groups.update", Description: "Aktualizuj grupy", Category: "groups"},
+		{ID: uuid.New().String(), Name: "groups.delete", Description: "Usuń grupy", Category: "groups"},
 
 		// Bill management
-		{ID: primitive.NewObjectID(), Name: "bills.create", Description: "Twórz nowe rachunki", Category: "bills"},
-		{ID: primitive.NewObjectID(), Name: "bills.read", Description: "Przeglądaj rachunki", Category: "bills"},
-		{ID: primitive.NewObjectID(), Name: "bills.update", Description: "Aktualizuj rachunki", Category: "bills"},
-		{ID: primitive.NewObjectID(), Name: "bills.delete", Description: "Usuń rachunki", Category: "bills"},
-		{ID: primitive.NewObjectID(), Name: "bills.post", Description: "Opublikuj rachunki", Category: "bills"},
-		{ID: primitive.NewObjectID(), Name: "bills.close", Description: "Zamknij rachunki", Category: "bills"},
+		{ID: uuid.New().String(), Name: "bills.create", Description: "Twórz nowe rachunki", Category: "bills"},
+		{ID: uuid.New().String(), Name: "bills.read", Description: "Przeglądaj rachunki", Category: "bills"},
+		{ID: uuid.New().String(), Name: "bills.update", Description: "Aktualizuj rachunki", Category: "bills"},
+		{ID: uuid.New().String(), Name: "bills.delete", Description: "Usuń rachunki", Category: "bills"},
+		{ID: uuid.New().String(), Name: "bills.post", Description: "Opublikuj rachunki", Category: "bills"},
+		{ID: uuid.New().String(), Name: "bills.close", Description: "Zamknij rachunki", Category: "bills"},
 
 		// Chore management
-		{ID: primitive.NewObjectID(), Name: "chores.create", Description: "Twórz nowe obowiązki", Category: "chores"},
-		{ID: primitive.NewObjectID(), Name: "chores.read", Description: "Przeglądaj obowiązki", Category: "chores"},
-		{ID: primitive.NewObjectID(), Name: "chores.update", Description: "Aktualizuj obowiązki", Category: "chores"},
-		{ID: primitive.NewObjectID(), Name: "chores.delete", Description: "Usuń obowiązki", Category: "chores"},
-		{ID: primitive.NewObjectID(), Name: "chores.assign", Description: "Przypisz obowiązki do użytkowników", Category: "chores"},
+		{ID: uuid.New().String(), Name: "chores.create", Description: "Twórz nowe obowiązki", Category: "chores"},
+		{ID: uuid.New().String(), Name: "chores.read", Description: "Przeglądaj obowiązki", Category: "chores"},
+		{ID: uuid.New().String(), Name: "chores.update", Description: "Aktualizuj obowiązki", Category: "chores"},
+		{ID: uuid.New().String(), Name: "chores.delete", Description: "Usuń obowiązki", Category: "chores"},
+		{ID: uuid.New().String(), Name: "chores.assign", Description: "Przypisz obowiązki do użytkowników", Category: "chores"},
 
 		// Supplies management
-		{ID: primitive.NewObjectID(), Name: "supplies.create", Description: "Dodaj artykuły zaopatrzeniowe", Category: "supplies"},
-		{ID: primitive.NewObjectID(), Name: "supplies.read", Description: "Przeglądaj zaopatrzenie", Category: "supplies"},
-		{ID: primitive.NewObjectID(), Name: "supplies.update", Description: "Aktualizuj artykuły zaopatrzeniowe", Category: "supplies"},
-		{ID: primitive.NewObjectID(), Name: "supplies.delete", Description: "Usuń artykuły zaopatrzeniowe", Category: "supplies"},
+		{ID: uuid.New().String(), Name: "supplies.create", Description: "Dodaj artykuły zaopatrzeniowe", Category: "supplies"},
+		{ID: uuid.New().String(), Name: "supplies.read", Description: "Przeglądaj zaopatrzenie", Category: "supplies"},
+		{ID: uuid.New().String(), Name: "supplies.update", Description: "Aktualizuj artykuły zaopatrzeniowe", Category: "supplies"},
+		{ID: uuid.New().String(), Name: "supplies.delete", Description: "Usuń artykuły zaopatrzeniowe", Category: "supplies"},
 
 		// Role management
-		{ID: primitive.NewObjectID(), Name: "roles.create", Description: "Twórz niestandardowe role", Category: "roles"},
-		{ID: primitive.NewObjectID(), Name: "roles.read", Description: "Przeglądaj role", Category: "roles"},
-		{ID: primitive.NewObjectID(), Name: "roles.update", Description: "Aktualizuj role", Category: "roles"},
-		{ID: primitive.NewObjectID(), Name: "roles.delete", Description: "Usuń role", Category: "roles"},
+		{ID: uuid.New().String(), Name: "roles.create", Description: "Twórz niestandardowe role", Category: "roles"},
+		{ID: uuid.New().String(), Name: "roles.read", Description: "Przeglądaj role", Category: "roles"},
+		{ID: uuid.New().String(), Name: "roles.update", Description: "Aktualizuj role", Category: "roles"},
+		{ID: uuid.New().String(), Name: "roles.delete", Description: "Usuń role", Category: "roles"},
 
 		// Approval management
-		{ID: primitive.NewObjectID(), Name: "approvals.review", Description: "Przeglądaj i zatwierdź/odrzuć oczekujące akcje", Category: "approvals"},
+		{ID: uuid.New().String(), Name: "approvals.review", Description: "Przeglądaj i zatwierdź/odrzuć oczekujące akcje", Category: "approvals"},
 
 		// Audit logs
-		{ID: primitive.NewObjectID(), Name: "audit.read", Description: "Przeglądaj logi audytu", Category: "audit"},
+		{ID: uuid.New().String(), Name: "audit.read", Description: "Przeglądaj logi audytu", Category: "audit"},
 
 		// Loan management
-		{ID: primitive.NewObjectID(), Name: "loans.create", Description: "Twórz pożyczki", Category: "loans"},
-		{ID: primitive.NewObjectID(), Name: "loans.read", Description: "Przeglądaj pożyczki", Category: "loans"},
-		{ID: primitive.NewObjectID(), Name: "loans.update", Description: "Edytuj pożyczki", Category: "loans"},
-		{ID: primitive.NewObjectID(), Name: "loans.delete", Description: "Usuń pożyczki", Category: "loans"},
-		{ID: primitive.NewObjectID(), Name: "loan-payments.create", Description: "Dodaj spłaty pożyczek", Category: "loans"},
-		{ID: primitive.NewObjectID(), Name: "loan-payments.read", Description: "Przeglądaj spłaty pożyczek", Category: "loans"},
-		{ID: primitive.NewObjectID(), Name: "loan-payments.update", Description: "Edytuj spłaty pożyczek", Category: "loans"},
-		{ID: primitive.NewObjectID(), Name: "loan-payments.delete", Description: "Usuń spłaty pożyczek", Category: "loans"},
+		{ID: uuid.New().String(), Name: "loans.create", Description: "Twórz pożyczki", Category: "loans"},
+		{ID: uuid.New().String(), Name: "loans.read", Description: "Przeglądaj pożyczki", Category: "loans"},
+		{ID: uuid.New().String(), Name: "loans.update", Description: "Edytuj pożyczki", Category: "loans"},
+		{ID: uuid.New().String(), Name: "loans.delete", Description: "Usuń pożyczki", Category: "loans"},
+		{ID: uuid.New().String(), Name: "loan-payments.create", Description: "Dodaj spłaty pożyczek", Category: "loans"},
+		{ID: uuid.New().String(), Name: "loan-payments.read", Description: "Przeglądaj spłaty pożyczek", Category: "loans"},
+		{ID: uuid.New().String(), Name: "loan-payments.update", Description: "Edytuj spłaty pożyczek", Category: "loans"},
+		{ID: uuid.New().String(), Name: "loan-payments.delete", Description: "Usuń spłaty pożyczek", Category: "loans"},
 
 		// Reading management
-		{ID: primitive.NewObjectID(), Name: "readings.delete", Description: "Usuń odczyty liczników", Category: "readings"},
+		{ID: uuid.New().String(), Name: "readings.delete", Description: "Usuń odczyty liczników", Category: "readings"},
 
 		// Backup management
-		{ID: primitive.NewObjectID(), Name: "backup.export", Description: "Eksportuj kopię zapasową", Category: "backup"},
-		{ID: primitive.NewObjectID(), Name: "backup.import", Description: "Importuj kopię zapasową", Category: "backup"},
+		{ID: uuid.New().String(), Name: "backup.export", Description: "Eksportuj kopię zapasową", Category: "backup"},
+		{ID: uuid.New().String(), Name: "backup.import", Description: "Importuj kopię zapasową", Category: "backup"},
 
 		// App settings
-		{ID: primitive.NewObjectID(), Name: "settings.app.update", Description: "Zmień ustawienia aplikacji", Category: "settings"},
+		{ID: uuid.New().String(), Name: "settings.app.update", Description: "Zmień ustawienia aplikacji", Category: "settings"},
 	}
 
-	// Insert or update permissions (upsert missing ones)
+	// Insert permissions (skip if already exists)
 	for _, perm := range permissions {
-		filter := bson.M{"name": perm.Name}
-		update := bson.M{
-			"$setOnInsert": perm,
+		// Check if permission already exists
+		existing, _ := s.permissions.GetByName(ctx, perm.Name)
+		if existing != nil {
+			continue // Already exists, skip
 		}
-		opts := options.Update().SetUpsert(true)
-		_, err := s.db.Collection("permissions").UpdateOne(ctx, filter, update, opts)
-		if err != nil {
+		if err := s.permissions.Create(ctx, &perm); err != nil {
 			return err
 		}
 	}
@@ -108,17 +104,7 @@ func (s *PermissionService) InitializeDefaultPermissions(ctx context.Context) er
 
 // GetAllPermissions retrieves all permissions
 func (s *PermissionService) GetAllPermissions(ctx context.Context) ([]models.Permission, error) {
-	cursor, err := s.db.Collection("permissions").Find(ctx, bson.M{})
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var permissions []models.Permission
-	if err := cursor.All(ctx, &permissions); err != nil {
-		return nil, err
-	}
-	return permissions, nil
+	return s.permissions.List(ctx)
 }
 
 // GetPermissionsByCategory retrieves permissions grouped by category
@@ -136,11 +122,12 @@ func (s *PermissionService) GetPermissionsByCategory(ctx context.Context) (map[s
 }
 
 type RoleService struct {
-	db *mongo.Database
+	roles repository.RoleRepository
+	users repository.UserRepository
 }
 
-func NewRoleService(db *mongo.Database) *RoleService {
-	return &RoleService{db: db}
+func NewRoleService(roles repository.RoleRepository, users repository.UserRepository) *RoleService {
+	return &RoleService{roles: roles, users: users}
 }
 
 // InitializeDefaultRoles creates the default ADMIN and RESIDENT roles
@@ -175,102 +162,91 @@ func (s *RoleService) InitializeDefaultRoles(ctx context.Context) error {
 		"loan-payments.read",
 	}
 
-	// Upsert ADMIN role - always update permissions to include new ones
-	adminFilter := bson.M{"name": "ADMIN"}
-	adminUpdate := bson.M{
-		"$setOnInsert": bson.M{
-			"_id":         primitive.NewObjectID(),
-			"name":        "ADMIN",
-			"displayName": "Administrator",
-			"isSystem":    true,
-			"createdAt":   now,
-		},
-		"$set": bson.M{
-			"permissions": adminPermissions,
-			"updatedAt":   now,
-		},
-	}
-	adminOpts := options.Update().SetUpsert(true)
-	_, err := s.db.Collection("roles").UpdateOne(ctx, adminFilter, adminUpdate, adminOpts)
-	if err != nil {
-		return err
+	// Upsert ADMIN role
+	adminRole, _ := s.roles.GetByName(ctx, "ADMIN")
+	if adminRole == nil {
+		adminRole = &models.Role{
+			ID:          uuid.New().String(),
+			Name:        "ADMIN",
+			DisplayName: "Administrator",
+			IsSystem:    true,
+			Permissions: adminPermissions,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		if err := s.roles.Create(ctx, adminRole); err != nil {
+			return err
+		}
+	} else {
+		// Update permissions
+		adminRole.Permissions = adminPermissions
+		adminRole.UpdatedAt = now
+		if err := s.roles.Update(ctx, adminRole); err != nil {
+			return err
+		}
 	}
 
-	// Upsert MIESZKANIEC role - always update permissions to include new ones
-	residentFilter := bson.M{"name": "MIESZKANIEC"}
-	residentUpdate := bson.M{
-		"$setOnInsert": bson.M{
-			"_id":         primitive.NewObjectID(),
-			"name":        "MIESZKANIEC",
-			"displayName": "Mieszkaniec",
-			"isSystem":    true,
-			"createdAt":   now,
-		},
-		"$set": bson.M{
-			"permissions": residentPermissions,
-			"updatedAt":   now,
-		},
+	// Upsert MIESZKANIEC role
+	residentRole, _ := s.roles.GetByName(ctx, "MIESZKANIEC")
+	if residentRole == nil {
+		residentRole = &models.Role{
+			ID:          uuid.New().String(),
+			Name:        "MIESZKANIEC",
+			DisplayName: "Mieszkaniec",
+			IsSystem:    true,
+			Permissions: residentPermissions,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		if err := s.roles.Create(ctx, residentRole); err != nil {
+			return err
+		}
+	} else {
+		// Update permissions
+		residentRole.Permissions = residentPermissions
+		residentRole.UpdatedAt = now
+		if err := s.roles.Update(ctx, residentRole); err != nil {
+			return err
+		}
 	}
-	residentOpts := options.Update().SetUpsert(true)
-	_, err = s.db.Collection("roles").UpdateOne(ctx, residentFilter, residentUpdate, residentOpts)
-	return err
+
+	return nil
 }
 
 // GetRole retrieves a role by name
 func (s *RoleService) GetRole(ctx context.Context, name string) (*models.Role, error) {
-	var role models.Role
-	err := s.db.Collection("roles").FindOne(ctx, bson.M{"name": name}).Decode(&role)
+	role, err := s.roles.GetByName(ctx, name)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("role not found")
-		}
-		return nil, err
+		return nil, errors.New("role not found")
 	}
-	return &role, nil
+	return role, nil
 }
 
 // GetRoleByID retrieves a role by ID
-func (s *RoleService) GetRoleByID(ctx context.Context, id primitive.ObjectID) (*models.Role, error) {
-	var role models.Role
-	err := s.db.Collection("roles").FindOne(ctx, bson.M{"_id": id}).Decode(&role)
+func (s *RoleService) GetRoleByID(ctx context.Context, id string) (*models.Role, error) {
+	role, err := s.roles.GetByID(ctx, id)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("role not found")
-		}
-		return nil, err
+		return nil, errors.New("role not found")
 	}
-	return &role, nil
+	return role, nil
 }
 
 // GetAllRoles retrieves all roles
 func (s *RoleService) GetAllRoles(ctx context.Context) ([]models.Role, error) {
-	cursor, err := s.db.Collection("roles").Find(ctx, bson.M{})
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var roles []models.Role
-	if err := cursor.All(ctx, &roles); err != nil {
-		return nil, err
-	}
-	return roles, nil
+	return s.roles.List(ctx)
 }
 
 // CreateRole creates a new custom role
 func (s *RoleService) CreateRole(ctx context.Context, name, displayName string, permissions []string) (*models.Role, error) {
 	// Check if role already exists
-	count, err := s.db.Collection("roles").CountDocuments(ctx, bson.M{"name": name})
-	if err != nil {
-		return nil, err
-	}
-	if count > 0 {
+	existing, _ := s.roles.GetByName(ctx, name)
+	if existing != nil {
 		return nil, errors.New("role with this name already exists")
 	}
 
 	now := time.Now()
-	role := models.Role{
-		ID:          primitive.NewObjectID(),
+	role := &models.Role{
+		ID:          uuid.New().String(),
 		Name:        name,
 		DisplayName: displayName,
 		IsSystem:    false,
@@ -279,23 +255,17 @@ func (s *RoleService) CreateRole(ctx context.Context, name, displayName string, 
 		UpdatedAt:   now,
 	}
 
-	_, err = s.db.Collection("roles").InsertOne(ctx, role)
-	if err != nil {
+	if err := s.roles.Create(ctx, role); err != nil {
 		return nil, err
 	}
-	return &role, nil
+	return role, nil
 }
 
 // UpdateRole updates a role's permissions
-func (s *RoleService) UpdateRole(ctx context.Context, roleID primitive.ObjectID, displayName string, permissions []string) error {
-	// Check if role exists and is ADMIN role
-	var role models.Role
-	err := s.db.Collection("roles").FindOne(ctx, bson.M{"_id": roleID}).Decode(&role)
+func (s *RoleService) UpdateRole(ctx context.Context, roleID string, displayName string, permissions []string) error {
+	role, err := s.roles.GetByID(ctx, roleID)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return errors.New("role not found")
-		}
-		return err
+		return errors.New("role not found")
 	}
 
 	// Only ADMIN role is protected from modification
@@ -303,28 +273,18 @@ func (s *RoleService) UpdateRole(ctx context.Context, roleID primitive.ObjectID,
 		return errors.New("cannot modify ADMIN role")
 	}
 
-	update := bson.M{
-		"$set": bson.M{
-			"permissions":  permissions,
-			"display_name": displayName,
-			"updated_at":   time.Now(),
-		},
-	}
+	role.DisplayName = displayName
+	role.Permissions = permissions
+	role.UpdatedAt = time.Now()
 
-	_, err = s.db.Collection("roles").UpdateOne(ctx, bson.M{"_id": roleID}, update)
-	return err
+	return s.roles.Update(ctx, role)
 }
 
 // DeleteRole deletes a custom role
-func (s *RoleService) DeleteRole(ctx context.Context, roleID primitive.ObjectID) error {
-	// Check if role exists
-	var role models.Role
-	err := s.db.Collection("roles").FindOne(ctx, bson.M{"_id": roleID}).Decode(&role)
+func (s *RoleService) DeleteRole(ctx context.Context, roleID string) error {
+	role, err := s.roles.GetByID(ctx, roleID)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return errors.New("role not found")
-		}
-		return err
+		return errors.New("role not found")
 	}
 
 	// Only ADMIN role is protected from deletion
@@ -333,16 +293,23 @@ func (s *RoleService) DeleteRole(ctx context.Context, roleID primitive.ObjectID)
 	}
 
 	// Check if any users have this role
-	userCount, err := s.db.Collection("users").CountDocuments(ctx, bson.M{"role": role.Name})
+	users, err := s.users.List(ctx)
 	if err != nil {
 		return err
 	}
+
+	userCount := 0
+	for _, u := range users {
+		if u.Role == role.Name {
+			userCount++
+		}
+	}
+
 	if userCount > 0 {
 		return fmt.Errorf("cannot delete role: %d users are assigned to this role", userCount)
 	}
 
-	_, err = s.db.Collection("roles").DeleteOne(ctx, bson.M{"_id": roleID})
-	return err
+	return s.roles.Delete(ctx, roleID)
 }
 
 // HasPermission checks if a role has a specific permission

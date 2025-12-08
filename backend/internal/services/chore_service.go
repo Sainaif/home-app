@@ -6,20 +6,27 @@ import (
 	"fmt"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-
+	"github.com/google/uuid"
 	"github.com/sainaif/holy-home/internal/models"
+	"github.com/sainaif/holy-home/internal/repository"
 )
 
 type ChoreService struct {
-	db *mongo.Database
+	chores           repository.ChoreRepository
+	choreAssignments repository.ChoreAssignmentRepository
+	users            repository.UserRepository
 }
 
-func NewChoreService(db *mongo.Database) *ChoreService {
-	return &ChoreService{db: db}
+func NewChoreService(
+	chores repository.ChoreRepository,
+	choreAssignments repository.ChoreAssignmentRepository,
+	users repository.UserRepository,
+) *ChoreService {
+	return &ChoreService{
+		chores:           chores,
+		choreAssignments: choreAssignments,
+		users:            users,
+	}
 }
 
 type CreateChoreRequest struct {
@@ -35,9 +42,9 @@ type CreateChoreRequest struct {
 }
 
 type AssignChoreRequest struct {
-	ChoreID        primitive.ObjectID `json:"choreId"`
-	AssigneeUserID primitive.ObjectID `json:"assigneeUserId"`
-	DueDate        time.Time          `json:"dueDate"`
+	ChoreID        string    `json:"choreId"`
+	AssigneeUserID string    `json:"assigneeUserId"`
+	DueDate        time.Time `json:"dueDate"`
 }
 
 type UpdateChoreAssignmentRequest struct {
@@ -70,7 +77,7 @@ func (s *ChoreService) CreateChore(ctx context.Context, req CreateChoreRequest) 
 	}
 
 	chore := models.Chore{
-		ID:                   primitive.NewObjectID(),
+		ID:                   uuid.New().String(),
 		Name:                 req.Name,
 		Description:          req.Description,
 		Frequency:            req.Frequency,
@@ -84,8 +91,7 @@ func (s *ChoreService) CreateChore(ctx context.Context, req CreateChoreRequest) 
 		CreatedAt:            time.Now(),
 	}
 
-	_, err := s.db.Collection("chores").InsertOne(ctx, chore)
-	if err != nil {
+	if err := s.chores.Create(ctx, &chore); err != nil {
 		return nil, fmt.Errorf("failed to create chore: %w", err)
 	}
 
@@ -94,44 +100,29 @@ func (s *ChoreService) CreateChore(ctx context.Context, req CreateChoreRequest) 
 
 // GetChores retrieves all chores
 func (s *ChoreService) GetChores(ctx context.Context) ([]models.Chore, error) {
-	cursor, err := s.db.Collection("chores").Find(ctx, bson.M{})
+	chores, err := s.chores.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
 	}
-	defer cursor.Close(ctx)
-
-	var chores []models.Chore
-	if err := cursor.All(ctx, &chores); err != nil {
-		return nil, fmt.Errorf("failed to decode chores: %w", err)
-	}
-
 	return chores, nil
 }
 
 // GetChore retrieves a chore by ID
-func (s *ChoreService) GetChore(ctx context.Context, choreID primitive.ObjectID) (*models.Chore, error) {
-	var chore models.Chore
-	err := s.db.Collection("chores").FindOne(ctx, bson.M{"_id": choreID}).Decode(&chore)
+func (s *ChoreService) GetChore(ctx context.Context, choreID string) (*models.Chore, error) {
+	chore, err := s.chores.GetByID(ctx, choreID)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("chore not found")
-		}
-		return nil, fmt.Errorf("database error: %w", err)
+		return nil, errors.New("chore not found")
 	}
-	return &chore, nil
+	return chore, nil
 }
 
 // GetUserByID retrieves a user by ID
-func (s *ChoreService) GetUserByID(ctx context.Context, userID primitive.ObjectID) (*models.User, error) {
-	var user models.User
-	err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+func (s *ChoreService) GetUserByID(ctx context.Context, userID string) (*models.User, error) {
+	user, err := s.users.GetByID(ctx, userID)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("user not found")
-		}
-		return nil, fmt.Errorf("database error: %w", err)
+		return nil, errors.New("user not found")
 	}
-	return &user, nil
+	return user, nil
 }
 
 // AssignChore assigns a chore to a user (ADMIN only)
@@ -143,20 +134,16 @@ func (s *ChoreService) AssignChore(ctx context.Context, req AssignChoreRequest) 
 	}
 
 	// Verify user exists
-	var user models.User
-	err = s.db.Collection("users").FindOne(ctx, bson.M{"_id": req.AssigneeUserID}).Decode(&user)
+	_, err = s.users.GetByID(ctx, req.AssigneeUserID)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("user not found")
-		}
-		return nil, fmt.Errorf("database error: %w", err)
+		return nil, errors.New("user not found")
 	}
 
 	// Calculate base points (difficulty * 10)
 	points := chore.Difficulty * 10
 
 	assignment := models.ChoreAssignment{
-		ID:             primitive.NewObjectID(),
+		ID:             uuid.New().String(),
 		ChoreID:        req.ChoreID,
 		AssigneeUserID: req.AssigneeUserID,
 		DueDate:        req.DueDate,
@@ -165,8 +152,7 @@ func (s *ChoreService) AssignChore(ctx context.Context, req AssignChoreRequest) 
 		IsOnTime:       false,
 	}
 
-	_, err = s.db.Collection("chore_assignments").InsertOne(ctx, assignment)
-	if err != nil {
+	if err := s.choreAssignments.Create(ctx, &assignment); err != nil {
 		return nil, fmt.Errorf("failed to create chore assignment: %w", err)
 	}
 
@@ -174,46 +160,62 @@ func (s *ChoreService) AssignChore(ctx context.Context, req AssignChoreRequest) 
 }
 
 // GetChoreAssignments retrieves all chore assignments
-func (s *ChoreService) GetChoreAssignments(ctx context.Context, userID *primitive.ObjectID, status *string) ([]models.ChoreAssignment, error) {
-	filter := bson.M{}
+func (s *ChoreService) GetChoreAssignments(ctx context.Context, userID *string, status *string) ([]models.ChoreAssignment, error) {
+	var assignments []models.ChoreAssignment
+	var err error
 
-	if userID != nil {
-		filter["assignee_user_id"] = *userID
+	if userID != nil && status != nil {
+		// Get by user then filter by status
+		assignments, err = s.choreAssignments.ListByAssigneeID(ctx, *userID)
+		if err != nil {
+			return nil, fmt.Errorf("database error: %w", err)
+		}
+		// Filter by status
+		filtered := []models.ChoreAssignment{}
+		for _, a := range assignments {
+			if a.Status == *status {
+				filtered = append(filtered, a)
+			}
+		}
+		assignments = filtered
+	} else if userID != nil {
+		assignments, err = s.choreAssignments.ListByAssigneeID(ctx, *userID)
+	} else if status != nil {
+		assignments, err = s.choreAssignments.ListByStatus(ctx, *status)
+	} else {
+		// List all - we'll use chores to get all assignments
+		chores, err := s.chores.List(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("database error: %w", err)
+		}
+		for _, chore := range chores {
+			choreAssignments, err := s.choreAssignments.ListByChoreID(ctx, chore.ID)
+			if err != nil {
+				continue
+			}
+			assignments = append(assignments, choreAssignments...)
+		}
+		return assignments, nil
 	}
 
-	if status != nil {
-		filter["status"] = *status
-	}
-
-	cursor, err := s.db.Collection("chore_assignments").Find(ctx, filter)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
-	}
-	defer cursor.Close(ctx)
-
-	var assignments []models.ChoreAssignment
-	if err := cursor.All(ctx, &assignments); err != nil {
-		return nil, fmt.Errorf("failed to decode assignments: %w", err)
 	}
 
 	return assignments, nil
 }
 
 // GetChoreAssignment retrieves a chore assignment by ID
-func (s *ChoreService) GetChoreAssignment(ctx context.Context, assignmentID primitive.ObjectID) (*models.ChoreAssignment, error) {
-	var assignment models.ChoreAssignment
-	err := s.db.Collection("chore_assignments").FindOne(ctx, bson.M{"_id": assignmentID}).Decode(&assignment)
+func (s *ChoreService) GetChoreAssignment(ctx context.Context, assignmentID string) (*models.ChoreAssignment, error) {
+	assignment, err := s.choreAssignments.GetByID(ctx, assignmentID)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("chore assignment not found")
-		}
-		return nil, fmt.Errorf("database error: %w", err)
+		return nil, errors.New("chore assignment not found")
 	}
-	return &assignment, nil
+	return assignment, nil
 }
 
 // UpdateChoreAssignment updates a chore assignment status
-func (s *ChoreService) UpdateChoreAssignment(ctx context.Context, assignmentID primitive.ObjectID, req UpdateChoreAssignmentRequest) error {
+func (s *ChoreService) UpdateChoreAssignment(ctx context.Context, assignmentID string, req UpdateChoreAssignmentRequest) error {
 	validStatuses := map[string]bool{
 		"pending": true, "in_progress": true, "done": true, "overdue": true,
 	}
@@ -227,42 +229,33 @@ func (s *ChoreService) UpdateChoreAssignment(ctx context.Context, assignmentID p
 		return err
 	}
 
-	update := bson.M{"status": req.Status}
+	assignment.Status = req.Status
 
 	if req.Status == "done" {
 		now := time.Now()
-		update["completed_at"] = now
+		assignment.CompletedAt = &now
 
 		// Check if completed on time and award bonus points
 		isOnTime := now.Before(assignment.DueDate) || now.Equal(assignment.DueDate)
-		update["is_on_time"] = isOnTime
+		assignment.IsOnTime = isOnTime
 
 		if isOnTime {
 			// 50% bonus for on-time completion
-			update["points"] = int(float64(assignment.Points) * 1.5)
+			assignment.Points = int(float64(assignment.Points) * 1.5)
 		}
 	} else {
-		update["completed_at"] = nil
+		assignment.CompletedAt = nil
 	}
 
-	result, err := s.db.Collection("chore_assignments").UpdateOne(
-		ctx,
-		bson.M{"_id": assignmentID},
-		bson.M{"$set": update},
-	)
-	if err != nil {
+	if err := s.choreAssignments.Update(ctx, assignment); err != nil {
 		return fmt.Errorf("failed to update chore assignment: %w", err)
-	}
-
-	if result.MatchedCount == 0 {
-		return errors.New("chore assignment not found")
 	}
 
 	return nil
 }
 
 // SwapChoreAssignment swaps two chore assignments (ADMIN only)
-func (s *ChoreService) SwapChoreAssignment(ctx context.Context, assignment1ID, assignment2ID primitive.ObjectID) error {
+func (s *ChoreService) SwapChoreAssignment(ctx context.Context, assignment1ID, assignment2ID string) error {
 	// Get both assignments
 	assignment1, err := s.GetChoreAssignment(ctx, assignment1ID)
 	if err != nil {
@@ -275,21 +268,13 @@ func (s *ChoreService) SwapChoreAssignment(ctx context.Context, assignment1ID, a
 	}
 
 	// Swap assignees
-	_, err = s.db.Collection("chore_assignments").UpdateOne(
-		ctx,
-		bson.M{"_id": assignment1ID},
-		bson.M{"$set": bson.M{"assignee_user_id": assignment2.AssigneeUserID}},
-	)
-	if err != nil {
+	assignment1.AssigneeUserID, assignment2.AssigneeUserID = assignment2.AssigneeUserID, assignment1.AssigneeUserID
+
+	if err := s.choreAssignments.Update(ctx, assignment1); err != nil {
 		return fmt.Errorf("failed to update first assignment: %w", err)
 	}
 
-	_, err = s.db.Collection("chore_assignments").UpdateOne(
-		ctx,
-		bson.M{"_id": assignment2ID},
-		bson.M{"$set": bson.M{"assignee_user_id": assignment1.AssigneeUserID}},
-	)
-	if err != nil {
+	if err := s.choreAssignments.Update(ctx, assignment2); err != nil {
 		return fmt.Errorf("failed to update second assignment: %w", err)
 	}
 
@@ -297,17 +282,11 @@ func (s *ChoreService) SwapChoreAssignment(ctx context.Context, assignment1ID, a
 }
 
 // RotateChore creates a new assignment based on a rotating schedule (ADMIN only)
-func (s *ChoreService) RotateChore(ctx context.Context, choreID primitive.ObjectID, dueDate time.Time) (*models.ChoreAssignment, error) {
-	// Get all users
-	cursor, err := s.db.Collection("users").Find(ctx, bson.M{"is_active": true})
+func (s *ChoreService) RotateChore(ctx context.Context, choreID string, dueDate time.Time) (*models.ChoreAssignment, error) {
+	// Get all active users
+	users, err := s.users.ListActive(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
-	}
-	defer cursor.Close(ctx)
-
-	var users []models.User
-	if err := cursor.All(ctx, &users); err != nil {
-		return nil, fmt.Errorf("failed to decode users: %w", err)
 	}
 
 	if len(users) == 0 {
@@ -315,19 +294,13 @@ func (s *ChoreService) RotateChore(ctx context.Context, choreID primitive.Object
 	}
 
 	// Get the last assignment for this chore
-	var lastAssignment models.ChoreAssignment
-	opts := options.FindOne().SetSort(bson.M{"due_date": -1})
-	err = s.db.Collection("chore_assignments").
-		FindOne(ctx, bson.M{"chore_id": choreID}, opts).
-		Decode(&lastAssignment)
+	lastAssignment, err := s.choreAssignments.GetLatestByChoreID(ctx, choreID)
 
-	var nextUserID primitive.ObjectID
+	var nextUserID string
 
-	if err == mongo.ErrNoDocuments {
+	if err != nil {
 		// No previous assignment, assign to first user
 		nextUserID = users[0].ID
-	} else if err != nil {
-		return nil, fmt.Errorf("database error: %w", err)
 	} else {
 		// Find next user in rotation
 		lastUserIndex := -1
@@ -367,21 +340,30 @@ func (s *ChoreService) GetChoresWithAssignments(ctx context.Context) ([]ChoreWit
 
 	for _, chore := range chores {
 		// Get most recent pending assignment for this chore
-		var assignment models.ChoreAssignment
-		opts := options.FindOne().SetSort(bson.M{"due_date": -1})
-		err := s.db.Collection("chore_assignments").
-			FindOne(ctx, bson.M{
-				"chore_id": chore.ID,
-				"status":   "pending",
-			}, opts).
-			Decode(&assignment)
+		pendingAssignments, err := s.choreAssignments.ListPendingByAssignee(ctx, "")
+		if err != nil {
+			pendingAssignments = []models.ChoreAssignment{}
+		}
 
 		choreWithAssignment := ChoreWithAssignment{
 			Chore: chore,
 		}
 
-		if err == nil {
-			choreWithAssignment.Assignment = &assignment
+		// Find pending assignment for this chore
+		for _, assignment := range pendingAssignments {
+			if assignment.ChoreID == chore.ID {
+				a := assignment // Create a copy to avoid pointer issues
+				choreWithAssignment.Assignment = &a
+				break
+			}
+		}
+
+		// If no pending, try to get latest assignment
+		if choreWithAssignment.Assignment == nil {
+			latest, err := s.choreAssignments.GetLatestByChoreID(ctx, chore.ID)
+			if err == nil && latest.Status == "pending" {
+				choreWithAssignment.Assignment = latest
+			}
 		}
 
 		result = append(result, choreWithAssignment)
@@ -392,26 +374,20 @@ func (s *ChoreService) GetChoresWithAssignments(ctx context.Context) ([]ChoreWit
 
 // UserStats represents user statistics for chores
 type UserStats struct {
-	UserID          primitive.ObjectID `json:"userId"`
-	UserName        string             `json:"userName"`
-	TotalPoints     int                `json:"totalPoints"`
-	CompletedChores int                `json:"completedChores"`
-	OnTimeRate      float64            `json:"onTimeRate"`
-	PendingChores   int                `json:"pendingChores"`
+	UserID          string  `json:"userId"`
+	UserName        string  `json:"userName"`
+	TotalPoints     int     `json:"totalPoints"`
+	CompletedChores int     `json:"completedChores"`
+	OnTimeRate      float64 `json:"onTimeRate"`
+	PendingChores   int     `json:"pendingChores"`
 }
 
 // AutoAssignChore automatically assigns a chore to the user with least workload
-func (s *ChoreService) AutoAssignChore(ctx context.Context, choreID primitive.ObjectID, dueDate time.Time) (*models.ChoreAssignment, error) {
+func (s *ChoreService) AutoAssignChore(ctx context.Context, choreID string, dueDate time.Time) (*models.ChoreAssignment, error) {
 	// Get all active users
-	usersCursor, err := s.db.Collection("users").Find(ctx, bson.M{"is_active": true})
+	users, err := s.users.ListActive(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
-	}
-	defer usersCursor.Close(ctx)
-
-	var users []models.User
-	if err := usersCursor.All(ctx, &users); err != nil {
-		return nil, fmt.Errorf("failed to decode users: %w", err)
 	}
 
 	if len(users) == 0 {
@@ -420,7 +396,7 @@ func (s *ChoreService) AutoAssignChore(ctx context.Context, choreID primitive.Ob
 
 	// Calculate workload for each user (pending chores + their difficulty)
 	type userWorkload struct {
-		UserID   primitive.ObjectID
+		UserID   string
 		Workload int // Sum of difficulty points from pending chores
 		Count    int // Number of pending chores
 	}
@@ -429,9 +405,9 @@ func (s *ChoreService) AutoAssignChore(ctx context.Context, choreID primitive.Ob
 
 	for _, user := range users {
 		// Get user's pending assignments
-		pendingAssignments, err := s.GetChoreAssignments(ctx, &user.ID, stringPtr("pending"))
+		pendingAssignments, err := s.choreAssignments.ListPendingByAssignee(ctx, user.ID)
 		if err != nil {
-			return nil, err
+			pendingAssignments = []models.ChoreAssignment{}
 		}
 
 		totalWorkload := 0
@@ -468,25 +444,30 @@ func (s *ChoreService) AutoAssignChore(ctx context.Context, choreID primitive.Ob
 
 // GetUserLeaderboard retrieves user rankings based on points
 func (s *ChoreService) GetUserLeaderboard(ctx context.Context) ([]UserStats, error) {
-	// Get all users
-	usersCursor, err := s.db.Collection("users").Find(ctx, bson.M{"is_active": true})
+	// Get all active users
+	users, err := s.users.ListActive(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
-	}
-	defer usersCursor.Close(ctx)
-
-	var users []models.User
-	if err := usersCursor.All(ctx, &users); err != nil {
-		return nil, fmt.Errorf("failed to decode users: %w", err)
 	}
 
 	result := make([]UserStats, 0, len(users))
 
 	for _, user := range users {
 		// Get all completed assignments for this user
-		completedAssignments, err := s.GetChoreAssignments(ctx, &user.ID, stringPtr("done"))
+		allAssignments, err := s.choreAssignments.ListByAssigneeID(ctx, user.ID)
 		if err != nil {
-			return nil, err
+			continue
+		}
+
+		// Filter completed
+		completedAssignments := []models.ChoreAssignment{}
+		pendingCount := 0
+		for _, a := range allAssignments {
+			if a.Status == "done" {
+				completedAssignments = append(completedAssignments, a)
+			} else if a.Status == "pending" {
+				pendingCount++
+			}
 		}
 
 		// Calculate stats
@@ -497,12 +478,6 @@ func (s *ChoreService) GetUserLeaderboard(ctx context.Context) ([]UserStats, err
 			if assignment.IsOnTime {
 				onTimeCount++
 			}
-		}
-
-		// Get pending assignments
-		pendingAssignments, err := s.GetChoreAssignments(ctx, &user.ID, stringPtr("pending"))
-		if err != nil {
-			return nil, err
 		}
 
 		onTimeRate := 0.0
@@ -516,12 +491,11 @@ func (s *ChoreService) GetUserLeaderboard(ctx context.Context) ([]UserStats, err
 			TotalPoints:     totalPoints,
 			CompletedChores: len(completedAssignments),
 			OnTimeRate:      onTimeRate,
-			PendingChores:   len(pendingAssignments),
+			PendingChores:   pendingCount,
 		})
 	}
 
 	// Sort by total points descending
-	// Simple bubble sort for now
 	for i := 0; i < len(result)-1; i++ {
 		for j := 0; j < len(result)-i-1; j++ {
 			if result[j].TotalPoints < result[j+1].TotalPoints {
@@ -534,30 +508,23 @@ func (s *ChoreService) GetUserLeaderboard(ctx context.Context) ([]UserStats, err
 }
 
 // DeleteChore deletes a chore and all its assignments
-func (s *ChoreService) DeleteChore(ctx context.Context, choreID primitive.ObjectID) error {
+func (s *ChoreService) DeleteChore(ctx context.Context, choreID string) error {
 	// Delete all assignments for this chore
-	_, err := s.db.Collection("chore_assignments").DeleteMany(ctx, bson.M{"chore_id": choreID})
+	assignments, err := s.choreAssignments.ListByChoreID(ctx, choreID)
 	if err != nil {
-		return fmt.Errorf("failed to delete chore assignments: %w", err)
+		return fmt.Errorf("failed to list chore assignments: %w", err)
+	}
+
+	for _, assignment := range assignments {
+		if err := s.choreAssignments.Delete(ctx, assignment.ID); err != nil {
+			return fmt.Errorf("failed to delete chore assignment: %w", err)
+		}
 	}
 
 	// Delete the chore
-	result, err := s.db.Collection("chores").DeleteOne(ctx, bson.M{"_id": choreID})
-	if err != nil {
+	if err := s.chores.Delete(ctx, choreID); err != nil {
 		return fmt.Errorf("failed to delete chore: %w", err)
 	}
 
-	if result.DeletedCount == 0 {
-		return errors.New("chore not found")
-	}
-
 	return nil
-}
-
-func stringPtr(s string) *string {
-	return &s
-}
-
-func intPtr(i int) *int {
-	return &i
 }

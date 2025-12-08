@@ -6,7 +6,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sainaif/holy-home/internal/middleware"
 	"github.com/sainaif/holy-home/internal/services"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type BillHandler struct {
@@ -69,7 +68,7 @@ func (h *BillHandler) CreateBill(c *fiber.Ctx) error {
 
 	// Broadcast event to all users
 	h.eventService.Broadcast(services.EventBillCreated, map[string]interface{}{
-		"billId":      bill.ID.Hex(),
+		"billId":      bill.ID,
 		"type":        bill.Type,
 		"amount":      req.TotalAmountPLN,
 		"createdBy":   userEmail,
@@ -117,9 +116,8 @@ func (h *BillHandler) GetBills(c *fiber.Ctx) error {
 
 // GetBill retrieves a specific bill
 func (h *BillHandler) GetBill(c *fiber.Ctx) error {
-	id := c.Params("id")
-	billID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	billID := c.Params("id")
+	if billID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid bill ID",
 		})
@@ -150,9 +148,8 @@ func (h *BillHandler) PostBill(c *fiber.Ctx) error {
 		})
 	}
 
-	id := c.Params("id")
-	billID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	billID := c.Params("id")
+	if billID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid bill ID",
 		})
@@ -189,11 +186,10 @@ func (h *BillHandler) PostBill(c *fiber.Ctx) error {
 		billType = *bill.CustomType
 	}
 
-	totalAmount, _ := bill.TotalAmountPLN.MarshalJSON()
 	h.eventService.Broadcast(services.EventBillPosted, map[string]interface{}{
-		"billId":    bill.ID.Hex(),
+		"billId":    bill.ID,
 		"type":      billType,
-		"amount":    string(totalAmount),
+		"amount":    bill.TotalAmountPLN,
 		"postedBy":  userEmail,
 		"periodEnd": bill.PeriodEnd.Format("2006-01-02"),
 	})
@@ -218,9 +214,8 @@ func (h *BillHandler) CloseBill(c *fiber.Ctx) error {
 		})
 	}
 
-	id := c.Params("id")
-	billID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	billID := c.Params("id")
+	if billID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid bill ID",
 		})
@@ -258,9 +253,8 @@ func (h *BillHandler) CloseBill(c *fiber.Ctx) error {
 
 // ReopenBill reopens a bill to a previous status (ADMIN only)
 func (h *BillHandler) ReopenBill(c *fiber.Ctx) error {
-	id := c.Params("id")
-	billID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	billID := c.Params("id")
+	if billID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid bill ID",
 		})
@@ -341,7 +335,7 @@ func (h *BillHandler) CreateConsumption(c *fiber.Ctx) error {
 	consumption, err := h.consumptionService.CreateConsumption(c.Context(), req, source)
 	if err != nil {
 		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "create_reading", "consumption", nil,
-			map[string]interface{}{"bill_id": req.BillID.Hex(), "bill_type": bill.Type, "meter_value": req.MeterValue},
+			map[string]interface{}{"bill_id": req.BillID, "bill_type": bill.Type, "meter_value": req.MeterValue},
 			c.IP(), c.Get("User-Agent"), "failure")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
@@ -349,13 +343,13 @@ func (h *BillHandler) CreateConsumption(c *fiber.Ctx) error {
 	}
 
 	h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "create_reading", "consumption", &consumption.ID,
-		map[string]interface{}{"bill_id": req.BillID.Hex(), "bill_type": bill.Type, "meter_value": req.MeterValue, "source": source},
+		map[string]interface{}{"bill_id": req.BillID, "bill_type": bill.Type, "meter_value": req.MeterValue, "source": source},
 		c.IP(), c.Get("User-Agent"), "success")
 
 	// Broadcast event to all users
 	h.eventService.Broadcast(services.EventConsumptionCreated, map[string]interface{}{
-		"consumptionId": consumption.ID.Hex(),
-		"billId":        req.BillID.Hex(),
+		"consumptionId": consumption.ID,
+		"billId":        req.BillID,
 		"billType":      bill.Type,
 		"meterValue":    req.MeterValue,
 		"createdBy":     userEmail,
@@ -368,15 +362,9 @@ func (h *BillHandler) CreateConsumption(c *fiber.Ctx) error {
 func (h *BillHandler) GetConsumptions(c *fiber.Ctx) error {
 	billIDStr := c.Query("billId")
 
-	var billID *primitive.ObjectID
+	var billID *string
 	if billIDStr != "" {
-		id, err := primitive.ObjectIDFromHex(billIDStr)
-		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"error": "Invalid bill ID",
-			})
-		}
-		billID = &id
+		billID = &billIDStr
 	}
 
 	consumptions, err := h.consumptionService.GetConsumptions(c.Context(), billID)
@@ -404,9 +392,8 @@ func (h *BillHandler) DeleteBill(c *fiber.Ctx) error {
 		})
 	}
 
-	id := c.Params("id")
-	billID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	billID := c.Params("id")
+	if billID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid bill ID",
 		})
@@ -451,9 +438,8 @@ func (h *BillHandler) DeleteBill(c *fiber.Ctx) error {
 
 // DeleteConsumption deletes a consumption/reading (ADMIN only)
 func (h *BillHandler) DeleteConsumption(c *fiber.Ctx) error {
-	id := c.Params("id")
-	consumptionID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	consumptionID := c.Params("id")
+	if consumptionID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid consumption ID",
 		})
@@ -470,9 +456,8 @@ func (h *BillHandler) DeleteConsumption(c *fiber.Ctx) error {
 
 // MarkConsumptionInvalid marks a consumption as invalid (user can mark their own)
 func (h *BillHandler) MarkConsumptionInvalid(c *fiber.Ctx) error {
-	id := c.Params("id")
-	consumptionID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	consumptionID := c.Params("id")
+	if consumptionID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid consumption ID",
 		})
@@ -496,9 +481,8 @@ func (h *BillHandler) MarkConsumptionInvalid(c *fiber.Ctx) error {
 
 // GetBillAllocation returns allocation breakdown for a bill
 func (h *BillHandler) GetBillAllocation(c *fiber.Ctx) error {
-	id := c.Params("id")
-	billID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	billID := c.Params("id")
+	if billID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid bill ID",
 		})
@@ -516,8 +500,8 @@ func (h *BillHandler) GetBillAllocation(c *fiber.Ctx) error {
 
 // GetBillPaymentStatus returns payment status showing who paid and who hasn't
 func (h *BillHandler) GetBillPaymentStatus(c *fiber.Ctx) error {
-	billID, err := primitive.ObjectIDFromHex(c.Params("billId"))
-	if err != nil {
+	billID := c.Params("billId")
+	if billID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid bill ID",
 		})

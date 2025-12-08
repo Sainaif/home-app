@@ -64,6 +64,9 @@ export default defineConfig({
     })
   ],
   build: {
+    // Output to backend for embedding in Go binary
+    outDir: '../backend/internal/static/dist',
+    emptyOutDir: true,
     // Generate unique hashes for each build
     rollupOptions: {
       output: {

@@ -8,24 +8,38 @@ import (
 	"github.com/SherClockHolmes/webpush-go"
 	"github.com/sainaif/holy-home/internal/config"
 	"github.com/sainaif/holy-home/internal/models"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
+	"github.com/sainaif/holy-home/internal/repository"
 )
 
 type NotificationService struct {
-	db                            *mongo.Database
+	notifications                 repository.NotificationRepository
 	eventService                  *EventService
 	webPushService                *WebPushService
 	notificationPreferenceService *NotificationPreferenceService
 	cfg                           *config.Config
 }
 
-func NewNotificationService(db *mongo.Database, eventService *EventService, webPushService *WebPushService, notificationPreferenceService *NotificationPreferenceService, cfg *config.Config) *NotificationService {
-	return &NotificationService{db: db, eventService: eventService, webPushService: webPushService, notificationPreferenceService: notificationPreferenceService, cfg: cfg}
+func NewNotificationService(
+	notifications repository.NotificationRepository,
+	eventService *EventService,
+	webPushService *WebPushService,
+	notificationPreferenceService *NotificationPreferenceService,
+	cfg *config.Config,
+) *NotificationService {
+	return &NotificationService{
+		notifications:                 notifications,
+		eventService:                  eventService,
+		webPushService:                webPushService,
+		notificationPreferenceService: notificationPreferenceService,
+		cfg:                           cfg,
+	}
 }
 
 func (s *NotificationService) CreateNotification(ctx context.Context, notification *models.Notification) error {
+	if notification.UserID == nil {
+		return nil
+	}
+
 	preferences, err := s.notificationPreferenceService.GetPreferences(ctx, *notification.UserID)
 	if err != nil {
 		return err
@@ -34,8 +48,7 @@ func (s *NotificationService) CreateNotification(ctx context.Context, notificati
 		return nil
 	}
 
-	_, err = s.db.Collection("notifications").InsertOne(ctx, notification)
-	if err != nil {
+	if err := s.notifications.Create(ctx, notification); err != nil {
 		return err
 	}
 
@@ -46,7 +59,7 @@ func (s *NotificationService) CreateNotification(ctx context.Context, notificati
 	subscriptions, err := s.webPushService.GetSubscriptionsByUserID(ctx, *notification.UserID)
 	if err == nil {
 		for _, sub := range subscriptions {
-			s.sendPushNotification(sub, notification)
+			s.sendPushNotification(&sub, notification)
 		}
 	}
 
@@ -59,9 +72,14 @@ func (s *NotificationService) sendPushNotification(sub *models.WebPushSubscripti
 		return
 	}
 
-	subJSON, _ := json.Marshal(sub)
-	var subscription webpush.Subscription
-	json.Unmarshal(subJSON, &subscription)
+	// Build webpush subscription format
+	subscription := webpush.Subscription{
+		Endpoint: sub.Endpoint,
+		Keys: webpush.Keys{
+			P256dh: sub.P256dh,
+			Auth:   sub.Auth,
+		},
+	}
 
 	notificationJSON, _ := json.Marshal(notification)
 
@@ -71,42 +89,31 @@ func (s *NotificationService) sendPushNotification(sub *models.WebPushSubscripti
 	})
 	if err != nil {
 		log.Printf("Error sending push notification: %v", err)
+		return
 	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode == 410 {
 		s.webPushService.DeleteSubscription(context.Background(), sub.Endpoint)
 	}
-	defer resp.Body.Close()
 }
 
-func (s *NotificationService) GetNotificationsForUser(ctx context.Context, userID primitive.ObjectID) ([]*models.Notification, error) {
-	cursor, err := s.db.Collection("notifications").Find(ctx, bson.M{"user_id": userID})
+func (s *NotificationService) GetNotificationsForUser(ctx context.Context, userID string) ([]models.Notification, error) {
+	return s.notifications.ListByUserID(ctx, userID, 100)
+}
+
+func (s *NotificationService) MarkNotificationAsRead(ctx context.Context, notificationID, userID string) error {
+	// First verify the notification belongs to this user
+	notification, err := s.notifications.GetByID(ctx, notificationID)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer cursor.Close(ctx)
-
-	var notifications []*models.Notification
-	if err := cursor.All(ctx, &notifications); err != nil {
-		return nil, err
+	if notification.UserID == nil || *notification.UserID != userID {
+		return nil // Silently ignore if not the owner
 	}
-
-	return notifications, nil
+	return s.notifications.MarkAsRead(ctx, notificationID)
 }
 
-func (s *NotificationService) MarkNotificationAsRead(ctx context.Context, notificationID, userID primitive.ObjectID) error {
-	_, err := s.db.Collection("notifications").UpdateOne(
-		ctx,
-		bson.M{"_id": notificationID, "user_id": userID},
-		bson.M{"$set": bson.M{"read": true}},
-	)
-	return err
-}
-
-func (s *NotificationService) MarkAllNotificationsAsRead(ctx context.Context, userID primitive.ObjectID) error {
-	_, err := s.db.Collection("notifications").UpdateMany(
-		ctx,
-		bson.M{"user_id": userID},
-		bson.M{"$set": bson.M{"read": true}},
-	)
-	return err
+func (s *NotificationService) MarkAllNotificationsAsRead(ctx context.Context, userID string) error {
+	return s.notifications.MarkAllAsReadForUser(ctx, userID)
 }

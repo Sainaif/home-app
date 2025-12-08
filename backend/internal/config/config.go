@@ -7,13 +7,15 @@ import (
 )
 
 type Config struct {
-	App     AppConfig
-	JWT     JWTConfig
-	Admin   AdminConfig
-	Auth    AuthConfig
-	Mongo   MongoConfig
-	Logging LogConfig
-	VAPID   VAPIDConfig
+	App           AppConfig
+	JWT           JWTConfig
+	Admin         AdminConfig
+	Auth          AuthConfig
+	Mongo         MongoConfig
+	SQLite        SQLiteConfig
+	Logging       LogConfig
+	VAPID         VAPIDConfig
+	MigrationMode bool // v1.5 bridge release: enables MongoDB->SQLite migration UI
 }
 
 type VAPIDConfig struct {
@@ -56,6 +58,10 @@ type AuthConfig struct {
 type MongoConfig struct {
 	URI      string
 	Database string
+}
+
+type SQLiteConfig struct {
+	DatabasePath string // Path to SQLite database file
 }
 
 type LogConfig struct {
@@ -105,6 +111,9 @@ func Load() (*Config, error) {
 			URI:      getEnv("MONGO_URI", "mongodb://localhost:27017"),
 			Database: getEnv("MONGO_DB", "holyhome"),
 		},
+		SQLite: SQLiteConfig{
+			DatabasePath: getEnv("DATABASE_PATH", "./holyhome.db"),
+		},
 		Logging: LogConfig{
 			Level:  getEnv("LOG_LEVEL", "info"),
 			Format: getEnv("LOG_FORMAT", "json"),
@@ -113,6 +122,7 @@ func Load() (*Config, error) {
 			PublicKey:  getEnv("VAPID_PUBLIC_KEY", ""),
 			PrivateKey: getEnv("VAPID_PRIVATE_KEY", ""),
 		},
+		MigrationMode: getEnv("MIGRATION_MODE", "false") == "true",
 	}, nil
 }
 

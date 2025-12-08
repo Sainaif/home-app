@@ -2,8 +2,6 @@ module github.com/sainaif/holy-home
 
 go 1.24.0
 
-toolchain go1.24.11
-
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/go-webauthn/webauthn v0.14.0
@@ -11,6 +9,8 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.9
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
+	github.com/jmoiron/sqlx v1.4.0
+	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/pquerna/otp v1.5.0
 	github.com/stretchr/testify v1.11.1
 	go.mongodb.org/mongo-driver v1.17.4

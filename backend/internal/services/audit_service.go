@@ -2,78 +2,74 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-
+	"github.com/google/uuid"
 	"github.com/sainaif/holy-home/internal/models"
+	"github.com/sainaif/holy-home/internal/repository"
 )
 
 type AuditService struct {
-	db *mongo.Database
+	auditLogs repository.AuditLogRepository
 }
 
-func NewAuditService(db *mongo.Database) *AuditService {
-	return &AuditService{db: db}
+func NewAuditService(auditLogs repository.AuditLogRepository) *AuditService {
+	return &AuditService{auditLogs: auditLogs}
 }
 
 // LogAction creates an audit log entry
 func (s *AuditService) LogAction(
 	ctx context.Context,
-	userID primitive.ObjectID,
+	userID string,
 	userEmail, userName string,
 	action, resourceType string,
-	resourceID *primitive.ObjectID,
+	resourceID *string,
 	details map[string]interface{},
 	ipAddress, userAgent string,
 	status string,
 ) error {
-	log := models.AuditLog{
-		ID:           primitive.NewObjectID(),
+	// Convert details map to JSON string
+	var detailsJSON string
+	if details != nil {
+		detailsBytes, _ := json.Marshal(details)
+		detailsJSON = string(detailsBytes)
+	}
+
+	log := &models.AuditLog{
+		ID:           uuid.New().String(),
 		UserID:       userID,
 		UserEmail:    userEmail,
 		UserName:     userName,
 		Action:       action,
 		ResourceType: resourceType,
 		ResourceID:   resourceID,
-		Details:      details,
+		DetailsJSON:  detailsJSON,
 		IPAddress:    ipAddress,
 		UserAgent:    userAgent,
 		Status:       status,
 		CreatedAt:    time.Now(),
 	}
 
-	_, err := s.db.Collection("audit_logs").InsertOne(ctx, log)
-	return err
+	return s.auditLogs.Create(ctx, log)
 }
 
-// GetLogs retrieves audit logs with pagination and filtering
-func (s *AuditService) GetLogs(ctx context.Context, limit, skip int, filter bson.M) ([]models.AuditLog, int64, error) {
-	// Get total count
-	total, err := s.db.Collection("audit_logs").CountDocuments(ctx, filter)
-	if err != nil {
-		return nil, 0, err
-	}
+// GetLogs retrieves audit logs with pagination
+func (s *AuditService) GetLogs(ctx context.Context, limit, offset int) ([]models.AuditLog, error) {
+	return s.auditLogs.List(ctx, limit, offset)
+}
 
-	// Get logs with pagination
-	opts := options.Find().
-		SetLimit(int64(limit)).
-		SetSkip(int64(skip)).
-		SetSort(bson.D{{Key: "created_at", Value: -1}}) // Most recent first
+// GetLogsByUserID retrieves audit logs for a specific user
+func (s *AuditService) GetLogsByUserID(ctx context.Context, userID string, limit int) ([]models.AuditLog, error) {
+	return s.auditLogs.ListByUserID(ctx, userID, limit)
+}
 
-	cursor, err := s.db.Collection("audit_logs").Find(ctx, filter, opts)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer cursor.Close(ctx)
+// GetLogsByAction retrieves audit logs for a specific action
+func (s *AuditService) GetLogsByAction(ctx context.Context, action string, limit int) ([]models.AuditLog, error) {
+	return s.auditLogs.ListByAction(ctx, action, limit)
+}
 
-	var logs []models.AuditLog
-	if err := cursor.All(ctx, &logs); err != nil {
-		return nil, 0, err
-	}
-
-	return logs, total, nil
+// GetLogsByResourceType retrieves audit logs for a specific resource type
+func (s *AuditService) GetLogsByResourceType(ctx context.Context, resourceType string, limit int) ([]models.AuditLog, error) {
+	return s.auditLogs.ListByResourceType(ctx, resourceType, limit)
 }

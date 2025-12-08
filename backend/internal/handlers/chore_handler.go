@@ -6,7 +6,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sainaif/holy-home/internal/middleware"
 	"github.com/sainaif/holy-home/internal/services"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type ChoreHandler struct {
@@ -45,7 +44,7 @@ func (h *ChoreHandler) CreateChore(c *fiber.Ctx) error {
 
 	// Broadcast event to all users
 	h.eventService.Broadcast(services.EventChoreUpdated, map[string]interface{}{
-		"choreId":     chore.ID.Hex(),
+		"choreId":     chore.ID,
 		"name":        chore.Name,
 		"description": chore.Description,
 		"action":      "created",
@@ -101,9 +100,9 @@ func (h *ChoreHandler) AssignChore(c *fiber.Ctx) error {
 	// Broadcast chore assignment event to the assigned user
 	if chore != nil && user != nil {
 		h.eventService.BroadcastToUser(req.AssigneeUserID, services.EventChoreAssigned, map[string]interface{}{
-			"choreId":      chore.ID.Hex(),
+			"choreId":      chore.ID,
 			"choreName":    chore.Name,
-			"assigneeId":   user.ID.Hex(),
+			"assigneeId":   user.ID,
 			"assigneeName": user.Name,
 			"dueDate":      req.DueDate.Format(time.RFC3339),
 		})
@@ -117,15 +116,9 @@ func (h *ChoreHandler) GetChoreAssignments(c *fiber.Ctx) error {
 	userIDStr := c.Query("userId")
 	status := c.Query("status")
 
-	var userIDPtr *primitive.ObjectID
+	var userIDPtr *string
 	if userIDStr != "" {
-		userID, err := primitive.ObjectIDFromHex(userIDStr)
-		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"error": "Invalid user ID",
-			})
-		}
-		userIDPtr = &userID
+		userIDPtr = &userIDStr
 	}
 
 	var statusPtr *string
@@ -170,9 +163,8 @@ func (h *ChoreHandler) GetMyChoreAssignments(c *fiber.Ctx) error {
 
 // UpdateChoreAssignment updates a chore assignment status
 func (h *ChoreHandler) UpdateChoreAssignment(c *fiber.Ctx) error {
-	id := c.Params("id")
-	assignmentID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	assignmentID := c.Params("id")
+	if assignmentID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid assignment ID",
 		})
@@ -209,21 +201,13 @@ func (h *ChoreHandler) SwapChoreAssignment(c *fiber.Ctx) error {
 		})
 	}
 
-	assignment1ID, err := primitive.ObjectIDFromHex(req.Assignment1ID)
-	if err != nil {
+	if req.Assignment1ID == "" || req.Assignment2ID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid assignment1Id",
+			"error": "Invalid assignment IDs",
 		})
 	}
 
-	assignment2ID, err := primitive.ObjectIDFromHex(req.Assignment2ID)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid assignment2Id",
-		})
-	}
-
-	if err := h.choreService.SwapChoreAssignment(c.Context(), assignment1ID, assignment2ID); err != nil {
+	if err := h.choreService.SwapChoreAssignment(c.Context(), req.Assignment1ID, req.Assignment2ID); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
 		})
@@ -236,9 +220,8 @@ func (h *ChoreHandler) SwapChoreAssignment(c *fiber.Ctx) error {
 
 // RotateChore creates a new assignment based on rotation (ADMIN only)
 func (h *ChoreHandler) RotateChore(c *fiber.Ctx) error {
-	id := c.Params("id")
-	choreID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	choreID := c.Params("id")
+	if choreID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid chore ID",
 		})
@@ -266,9 +249,8 @@ func (h *ChoreHandler) RotateChore(c *fiber.Ctx) error {
 
 // AutoAssignChore automatically assigns a chore to user with least workload (ADMIN only)
 func (h *ChoreHandler) AutoAssignChore(c *fiber.Ctx) error {
-	id := c.Params("id")
-	choreID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	choreID := c.Params("id")
+	if choreID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid chore ID",
 		})
@@ -308,9 +290,8 @@ func (h *ChoreHandler) GetUserLeaderboard(c *fiber.Ctx) error {
 
 // DeleteChore deletes a chore (requires approval for non-admins)
 func (h *ChoreHandler) DeleteChore(c *fiber.Ctx) error {
-	id := c.Params("id")
-	choreID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	choreID := c.Params("id")
+	if choreID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid chore ID",
 		})
@@ -368,7 +349,7 @@ func (h *ChoreHandler) DeleteChore(c *fiber.Ctx) error {
 		"chore",
 		&choreID,
 		map[string]interface{}{
-			"choreId": choreID.Hex(),
+			"choreId": choreID,
 		},
 	)
 	if err != nil {

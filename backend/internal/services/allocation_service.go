@@ -5,30 +5,42 @@ import (
 	"errors"
 	"fmt"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-
 	"github.com/sainaif/holy-home/internal/models"
+	"github.com/sainaif/holy-home/internal/repository"
 	"github.com/sainaif/holy-home/internal/utils"
 )
 
 type AllocationService struct {
-	db *mongo.Database
+	users        repository.UserRepository
+	groups       repository.GroupRepository
+	consumptions repository.ConsumptionRepository
+	allocations  repository.AllocationRepository
+	bills        repository.BillRepository
 }
 
-func NewAllocationService(db *mongo.Database) *AllocationService {
-	return &AllocationService{db: db}
+func NewAllocationService(
+	users repository.UserRepository,
+	groups repository.GroupRepository,
+	consumptions repository.ConsumptionRepository,
+	allocations repository.AllocationRepository,
+	bills repository.BillRepository,
+) *AllocationService {
+	return &AllocationService{
+		users:        users,
+		groups:       groups,
+		consumptions: consumptions,
+		allocations:  allocations,
+		bills:        bills,
+	}
 }
 
 // AllocationBreakdown represents cost breakdown per user/group
 type AllocationBreakdown struct {
-	SubjectID   primitive.ObjectID `json:"subjectId"`
-	SubjectType string             `json:"subjectType"` // "user" or "group"
-	SubjectName string             `json:"subjectName"`
-	Weight      float64            `json:"weight"`
-	Amount      float64            `json:"amount"`
+	SubjectID   string  `json:"subjectId"`
+	SubjectType string  `json:"subjectType"` // "user" or "group"
+	SubjectName string  `json:"subjectName"`
+	Weight      float64 `json:"weight"`
+	Amount      float64 `json:"amount"`
 	// For metered allocation (electricity)
 	PersonalAmount *float64 `json:"personalAmount,omitempty"`
 	SharedAmount   *float64 `json:"sharedAmount,omitempty"`
@@ -36,9 +48,9 @@ type AllocationBreakdown struct {
 }
 
 // CalculateSimpleAllocation divides total cost by weights
-func (s *AllocationService) CalculateSimpleAllocation(ctx context.Context, billID primitive.ObjectID, totalAmount float64) ([]AllocationBreakdown, error) {
+func (s *AllocationService) CalculateSimpleAllocation(ctx context.Context, billID string, totalAmount float64) ([]AllocationBreakdown, error) {
 	// Get all active users
-	users, err := s.getAllActiveUsers(ctx)
+	users, err := s.users.ListActive(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get users: %w", err)
 	}
@@ -48,19 +60,19 @@ func (s *AllocationService) CalculateSimpleAllocation(ctx context.Context, billI
 	}
 
 	// Get all groups
-	groups, err := s.getAllGroups(ctx)
+	groups, err := s.groups.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get groups: %w", err)
 	}
 
 	// Build group weight map
-	groupWeights := make(map[primitive.ObjectID]float64)
+	groupWeights := make(map[string]float64)
 	for _, g := range groups {
 		groupWeights[g.ID] = g.Weight
 	}
 
 	// Calculate weights for each user
-	userWeights := make(map[primitive.ObjectID]float64)
+	userWeights := make(map[string]float64)
 	totalWeight := 0.0
 
 	for _, u := range users {
@@ -79,8 +91,8 @@ func (s *AllocationService) CalculateSimpleAllocation(ctx context.Context, billI
 	}
 
 	// Group users by group or show individually
-	groupAllocations := make(map[primitive.ObjectID]struct {
-		groupID   primitive.ObjectID
+	groupAllocations := make(map[string]struct {
+		groupID   string
 		groupName string
 		weight    float64
 		amount    float64
@@ -106,7 +118,7 @@ func (s *AllocationService) CalculateSimpleAllocation(ctx context.Context, billI
 					}
 				}
 				groupAllocations[*u.GroupID] = struct {
-					groupID   primitive.ObjectID
+					groupID   string
 					groupName string
 					weight    float64
 					amount    float64
@@ -150,19 +162,19 @@ func (s *AllocationService) CalculateSimpleAllocation(ctx context.Context, billI
 }
 
 // CalculateMeteredAllocation calculates based on meter readings + shared common area
-func (s *AllocationService) CalculateMeteredAllocation(ctx context.Context, billID primitive.ObjectID, totalAmount float64, totalUnits *float64) ([]AllocationBreakdown, error) {
+func (s *AllocationService) CalculateMeteredAllocation(ctx context.Context, billID string, totalAmount float64, totalUnits *float64) ([]AllocationBreakdown, error) {
 	if totalUnits == nil || *totalUnits == 0 {
 		return nil, errors.New("totalUnits is required for metered allocation")
 	}
 
 	// Get all consumptions for this bill
-	consumptions, err := s.getConsumptionsForBill(ctx, billID)
+	consumptions, err := s.consumptions.ListByBillID(ctx, billID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get consumptions: %w", err)
 	}
 
 	// Get all active users
-	users, err := s.getAllActiveUsers(ctx)
+	users, err := s.users.ListActive(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get users: %w", err)
 	}
@@ -172,19 +184,19 @@ func (s *AllocationService) CalculateMeteredAllocation(ctx context.Context, bill
 	}
 
 	// Get all groups
-	groups, err := s.getAllGroups(ctx)
+	groups, err := s.groups.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get groups: %w", err)
 	}
 
 	// Build group weight map
-	groupWeights := make(map[primitive.ObjectID]float64)
+	groupWeights := make(map[string]float64)
 	for _, g := range groups {
 		groupWeights[g.ID] = g.Weight
 	}
 
 	// Calculate user weights
-	userWeights := make(map[primitive.ObjectID]float64)
+	userWeights := make(map[string]float64)
 	totalWeight := 0.0
 
 	for _, u := range users {
@@ -203,14 +215,11 @@ func (s *AllocationService) CalculateMeteredAllocation(ctx context.Context, bill
 	}
 
 	// Calculate total consumed units from readings (aggregated by subject)
-	subjectUnits := make(map[primitive.ObjectID]float64)
+	subjectUnits := make(map[string]float64)
 	totalConsumedUnits := 0.0
 
 	for _, c := range consumptions {
-		units, err := utils.DecimalToFloat(c.Units)
-		if err != nil {
-			continue
-		}
+		units := utils.DecimalStringToFloat(c.Units)
 
 		if units <= 0 && c.MeterValue != nil {
 			derivedUnits, derr := s.deriveUnitsFromMeter(ctx, c)
@@ -218,10 +227,7 @@ func (s *AllocationService) CalculateMeteredAllocation(ctx context.Context, bill
 			case derr == nil:
 				units = derivedUnits
 			case errors.Is(derr, ErrNoPreviousReading):
-				fallback, ferr := utils.DecimalToFloat(*c.MeterValue)
-				if ferr == nil {
-					units = fallback
-				}
+				units = utils.DecimalStringToFloat(*c.MeterValue)
 			default:
 				return nil, derr
 			}
@@ -252,8 +258,8 @@ func (s *AllocationService) CalculateMeteredAllocation(ctx context.Context, bill
 	}
 
 	// Group users by group or show individually
-	groupAllocations := make(map[primitive.ObjectID]struct {
-		groupID        primitive.ObjectID
+	groupAllocations := make(map[string]struct {
+		groupID        string
 		groupName      string
 		weight         float64
 		personalAmount float64
@@ -266,7 +272,7 @@ func (s *AllocationService) CalculateMeteredAllocation(ctx context.Context, bill
 		weight := userWeights[u.ID]
 
 		// Determine subject ID for consumption lookup
-		var subjectID primitive.ObjectID
+		var subjectID string
 		if u.GroupID != nil {
 			subjectID = *u.GroupID
 		} else {
@@ -296,7 +302,7 @@ func (s *AllocationService) CalculateMeteredAllocation(ctx context.Context, bill
 					}
 				}
 				groupAllocations[*u.GroupID] = struct {
-					groupID        primitive.ObjectID
+					groupID        string
 					groupName      string
 					weight         float64
 					personalAmount float64
@@ -353,21 +359,11 @@ func (s *AllocationService) CalculateMeteredAllocation(ctx context.Context, bill
 }
 
 // GetAllocationBreakdown returns allocation breakdown for a bill
-func (s *AllocationService) GetAllocationBreakdown(ctx context.Context, billID primitive.ObjectID) ([]AllocationBreakdown, error) {
+func (s *AllocationService) GetAllocationBreakdown(ctx context.Context, billID string) ([]AllocationBreakdown, error) {
 	// First, check if allocations already exist in the database
-	cursor, err := s.db.Collection("allocations").Find(ctx, bson.M{"bill_id": billID})
+	storedAllocations, err := s.allocations.GetByBillID(ctx, billID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query allocations: %w", err)
-	}
-	defer cursor.Close(ctx)
-
-	var storedAllocations []struct {
-		SubjectID    primitive.ObjectID   `bson:"subject_id"`
-		SubjectType  string               `bson:"subject_type"`
-		AllocatedPLN primitive.Decimal128 `bson:"allocated_pln"`
-	}
-	if err := cursor.All(ctx, &storedAllocations); err != nil {
-		return nil, fmt.Errorf("failed to decode allocations: %w", err)
 	}
 
 	// If allocations exist, return them
@@ -375,18 +371,18 @@ func (s *AllocationService) GetAllocationBreakdown(ctx context.Context, billID p
 		breakdown := make([]AllocationBreakdown, 0, len(storedAllocations))
 
 		for _, alloc := range storedAllocations {
-			amount, _ := utils.DecimalToFloat(alloc.AllocatedPLN)
+			amount := utils.DecimalStringToFloat(alloc.AllocatedPLN)
 
 			// Get subject name
 			var subjectName string
 			if alloc.SubjectType == "user" {
-				var user models.User
-				if err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": alloc.SubjectID}).Decode(&user); err == nil {
+				user, err := s.users.GetByID(ctx, alloc.SubjectID)
+				if err == nil && user != nil {
 					subjectName = user.Name
 				}
 			} else if alloc.SubjectType == "group" {
-				var group models.Group
-				if err := s.db.Collection("groups").FindOne(ctx, bson.M{"_id": alloc.SubjectID}).Decode(&group); err == nil {
+				group, err := s.groups.GetByID(ctx, alloc.SubjectID)
+				if err == nil && group != nil {
 					subjectName = group.Name
 				}
 			}
@@ -405,20 +401,13 @@ func (s *AllocationService) GetAllocationBreakdown(ctx context.Context, billID p
 
 	// If no allocations exist, calculate them on-the-fly (for draft bills)
 	// Get the bill
-	var bill models.Bill
-	err = s.db.Collection("bills").FindOne(ctx, bson.M{"_id": billID}).Decode(&bill)
+	bill, err := s.bills.GetByID(ctx, billID)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("bill not found")
-		}
-		return nil, fmt.Errorf("database error: %w", err)
+		return nil, errors.New("bill not found")
 	}
 
 	// Get total amount
-	totalAmount, err := utils.DecimalToFloat(bill.TotalAmountPLN)
-	if err != nil {
-		return nil, fmt.Errorf("invalid total amount: %w", err)
-	}
+	totalAmount := utils.DecimalStringToFloat(bill.TotalAmountPLN)
 
 	// Determine allocation type
 	allocationType := "simple" // default
@@ -429,59 +418,14 @@ func (s *AllocationService) GetAllocationBreakdown(ctx context.Context, billID p
 	// Calculate allocation based on type
 	if allocationType == "metered" {
 		var totalUnits *float64
-		if bill.TotalUnits != (primitive.Decimal128{}) {
-			units, err := utils.DecimalToFloat(bill.TotalUnits)
-			if err == nil {
-				totalUnits = &units
-			}
+		if bill.TotalUnits != "" {
+			units := utils.DecimalStringToFloat(bill.TotalUnits)
+			totalUnits = &units
 		}
 		return s.CalculateMeteredAllocation(ctx, billID, totalAmount, totalUnits)
 	}
 
 	return s.CalculateSimpleAllocation(ctx, billID, totalAmount)
-}
-
-// Helper functions
-func (s *AllocationService) getAllActiveUsers(ctx context.Context) ([]models.User, error) {
-	cursor, err := s.db.Collection("users").Find(ctx, bson.M{"is_active": true})
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var users []models.User
-	if err := cursor.All(ctx, &users); err != nil {
-		return nil, err
-	}
-	return users, nil
-}
-
-func (s *AllocationService) getAllGroups(ctx context.Context) ([]models.Group, error) {
-	cursor, err := s.db.Collection("groups").Find(ctx, bson.M{})
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var groups []models.Group
-	if err := cursor.All(ctx, &groups); err != nil {
-		return nil, err
-	}
-	return groups, nil
-}
-
-func (s *AllocationService) getConsumptionsForBill(ctx context.Context, billID primitive.ObjectID) ([]models.Consumption, error) {
-	cursor, err := s.db.Collection("consumptions").Find(ctx, bson.M{"bill_id": billID})
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var consumptions []models.Consumption
-	if err := cursor.All(ctx, &consumptions); err != nil {
-		return nil, err
-	}
-	return consumptions, nil
 }
 
 func floatPtr(f float64) *float64 {
@@ -494,36 +438,33 @@ func (s *AllocationService) deriveUnitsFromMeter(ctx context.Context, consumptio
 		return 0, nil
 	}
 
-	currentValue, err := utils.DecimalToFloat(*consumption.MeterValue)
+	currentValue := utils.DecimalStringToFloat(*consumption.MeterValue)
+
+	// Get all consumptions for this subject to find the most recent one before this reading
+	consumptions, err := s.consumptions.ListBySubject(ctx, consumption.SubjectType, consumption.SubjectID)
 	if err != nil {
-		return 0, fmt.Errorf("invalid meter value: %w", err)
+		return 0, fmt.Errorf("failed to fetch consumptions: %w", err)
 	}
 
-	filter := bson.M{
-		"subject_id":   consumption.SubjectID,
-		"subject_type": consumption.SubjectType,
-		"meter_value":  bson.M{"$ne": nil},
-		"recorded_at":  bson.M{"$lt": consumption.RecordedAt},
-	}
-	opts := options.FindOne().SetSort(bson.D{{Key: "recorded_at", Value: -1}})
-
-	var previous models.Consumption
-	err = s.db.Collection("consumptions").FindOne(ctx, filter, opts).Decode(&previous)
-	if err != nil {
-		if errors.Is(err, mongo.ErrNoDocuments) {
-			return 0, nil
+	var previous *models.Consumption
+	for i := range consumptions {
+		c := &consumptions[i]
+		if c.MeterValue == nil {
+			continue
 		}
-		return 0, fmt.Errorf("failed to fetch previous reading: %w", err)
+		if !c.RecordedAt.Before(consumption.RecordedAt) {
+			continue
+		}
+		if previous == nil || c.RecordedAt.After(previous.RecordedAt) {
+			previous = c
+		}
 	}
 
-	if previous.MeterValue == nil {
+	if previous == nil || previous.MeterValue == nil {
 		return 0, nil
 	}
 
-	prevValue, err := utils.DecimalToFloat(*previous.MeterValue)
-	if err != nil {
-		return 0, fmt.Errorf("invalid previous meter value: %w", err)
-	}
+	prevValue := utils.DecimalStringToFloat(*previous.MeterValue)
 
 	units := currentValue - prevValue
 	if units < 0 {

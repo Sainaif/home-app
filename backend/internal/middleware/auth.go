@@ -8,7 +8,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sainaif/holy-home/internal/config"
 	"github.com/sainaif/holy-home/internal/utils"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type ContextKey string
@@ -84,10 +83,10 @@ func RequireRole(roles ...string) fiber.Handler {
 }
 
 // GetUserID extracts the user ID from the request context
-func GetUserID(c *fiber.Ctx) (primitive.ObjectID, error) {
-	userID, ok := c.Locals("userId").(primitive.ObjectID)
+func GetUserID(c *fiber.Ctx) (string, error) {
+	userID, ok := c.Locals("userId").(string)
 	if !ok {
-		return primitive.NilObjectID, fiber.ErrUnauthorized
+		return "", fiber.ErrUnauthorized
 	}
 	return userID, nil
 }

@@ -5,7 +5,6 @@ import (
 	"github.com/sainaif/holy-home/internal/config"
 	"github.com/sainaif/holy-home/internal/middleware"
 	"github.com/sainaif/holy-home/internal/services"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type UserHandler struct {
@@ -57,9 +56,8 @@ func (h *UserHandler) GetUsers(c *fiber.Ctx) error {
 
 // GetUser retrieves a specific user
 func (h *UserHandler) GetUser(c *fiber.Ctx) error {
-	id := c.Params("id")
-	userID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	userID := c.Params("id")
+	if userID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid user ID",
 		})
@@ -77,9 +75,8 @@ func (h *UserHandler) GetUser(c *fiber.Ctx) error {
 
 // UpdateUser updates a user
 func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
-	id := c.Params("id")
-	userID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	userID := c.Params("id")
+	if userID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid user ID",
 		})
@@ -212,9 +209,8 @@ func (h *UserHandler) GetMe(c *fiber.Ctx) error {
 
 // ForcePasswordChange forces a user to change their password on next login (ADMIN only)
 func (h *UserHandler) ForcePasswordChange(c *fiber.Ctx) error {
-	id := c.Params("id")
-	userID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	userID := c.Params("id")
+	if userID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid user ID",
 		})
@@ -234,9 +230,8 @@ func (h *UserHandler) ForcePasswordChange(c *fiber.Ctx) error {
 // GeneratePasswordResetLink generates a password reset link for a user (ADMIN only)
 func (h *UserHandler) GeneratePasswordResetLink(c *fiber.Ctx) error {
 	// Get target user ID from params
-	id := c.Params("id")
-	userID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	userID := c.Params("id")
+	if userID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid user ID",
 		})
@@ -311,9 +306,8 @@ func (h *UserHandler) GeneratePasswordResetLink(c *fiber.Ctx) error {
 
 // DeleteUser deletes a user (ADMIN only)
 func (h *UserHandler) DeleteUser(c *fiber.Ctx) error {
-	id := c.Params("id")
-	userID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	userID := c.Params("id")
+	if userID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid user ID",
 		})

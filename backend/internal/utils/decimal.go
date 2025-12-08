@@ -3,21 +3,18 @@ package utils
 import (
 	"fmt"
 	"math"
-
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"strconv"
 )
 
-// DecimalFromFloat converts float to Decimal128 for MongoDB
-func DecimalFromFloat(f float64) (primitive.Decimal128, error) {
-	return primitive.ParseDecimal128(fmt.Sprintf("%.2f", f))
+// FloatToDecimalString converts float to decimal string for SQLite storage
+func FloatToDecimalString(f float64) string {
+	return fmt.Sprintf("%.2f", f)
 }
 
-// DecimalToFloat converts Decimal128 back to float for math
-func DecimalToFloat(d primitive.Decimal128) (float64, error) {
-	s := d.String()
-	var f float64
-	_, err := fmt.Sscanf(s, "%f", &f)
-	return f, err
+// DecimalStringToFloat converts decimal string back to float for math
+func DecimalStringToFloat(s string) float64 {
+	f, _ := strconv.ParseFloat(s, 64)
+	return f
 }
 
 // RoundBankers does banker's rounding (round half to even)

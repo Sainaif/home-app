@@ -6,24 +6,40 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/sainaif/holy-home/internal/config"
 	"github.com/sainaif/holy-home/internal/models"
+	"github.com/sainaif/holy-home/internal/repository"
 	"github.com/sainaif/holy-home/internal/utils"
-
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type RecurringBillService struct {
-	db  *mongo.Database
-	cfg *config.Config
+	templates           repository.RecurringBillTemplateRepository
+	templateAllocations repository.RecurringBillAllocationRepository
+	bills               repository.BillRepository
+	allocations         repository.AllocationRepository
+	payments            repository.PaymentRepository
+	users               repository.UserRepository
+	cfg                 *config.Config
 }
 
-func NewRecurringBillService(db *mongo.Database, cfg *config.Config) *RecurringBillService {
+func NewRecurringBillService(
+	templates repository.RecurringBillTemplateRepository,
+	templateAllocations repository.RecurringBillAllocationRepository,
+	bills repository.BillRepository,
+	allocations repository.AllocationRepository,
+	payments repository.PaymentRepository,
+	users repository.UserRepository,
+	cfg *config.Config,
+) *RecurringBillService {
 	return &RecurringBillService{
-		db:  db,
-		cfg: cfg,
+		templates:           templates,
+		templateAllocations: templateAllocations,
+		bills:               bills,
+		allocations:         allocations,
+		payments:            payments,
+		users:               users,
+		cfg:                 cfg,
 	}
 }
 
@@ -36,6 +52,7 @@ func (s *RecurringBillService) CreateTemplate(ctx context.Context, template *mod
 
 	// Set timestamps
 	now := time.Now()
+	template.ID = uuid.New().String()
 	template.CreatedAt = now
 	template.UpdatedAt = now
 	template.IsActive = true
@@ -59,12 +76,9 @@ func (s *RecurringBillService) CreateTemplate(ctx context.Context, template *mod
 		}
 	}
 
-	result, err := s.db.Collection("recurring_bill_templates").InsertOne(ctx, template)
-	if err != nil {
+	if err := s.templates.Create(ctx, template); err != nil {
 		return err
 	}
-
-	template.ID = result.InsertedID.(primitive.ObjectID)
 
 	// Create the first bill immediately
 	if err := s.generateBillFromTemplate(ctx, template); err != nil {
@@ -75,78 +89,68 @@ func (s *RecurringBillService) CreateTemplate(ctx context.Context, template *mod
 }
 
 // GetTemplate retrieves a recurring bill template by ID
-func (s *RecurringBillService) GetTemplate(ctx context.Context, id primitive.ObjectID) (*models.RecurringBillTemplate, error) {
-	var template models.RecurringBillTemplate
-	err := s.db.Collection("recurring_bill_templates").FindOne(ctx, bson.M{"_id": id}).Decode(&template)
+func (s *RecurringBillService) GetTemplate(ctx context.Context, id string) (*models.RecurringBillTemplate, error) {
+	template, err := s.templates.GetByID(ctx, id)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("template not found")
-		}
-		return nil, err
+		return nil, errors.New("template not found")
 	}
-	return &template, nil
+	return template, nil
 }
 
 // ListTemplates retrieves all active recurring bill templates
 func (s *RecurringBillService) ListTemplates(ctx context.Context) ([]models.RecurringBillTemplate, error) {
-	// Only return active templates (not soft-deleted)
-	cursor, err := s.db.Collection("recurring_bill_templates").Find(ctx, bson.M{"is_active": true})
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var templates []models.RecurringBillTemplate
-	if err := cursor.All(ctx, &templates); err != nil {
-		return nil, err
-	}
-
-	return templates, nil
+	return s.templates.ListActive(ctx)
 }
 
 // UpdateTemplate updates an existing template
-func (s *RecurringBillService) UpdateTemplate(ctx context.Context, id primitive.ObjectID, updates map[string]interface{}) error {
+func (s *RecurringBillService) UpdateTemplate(ctx context.Context, id string, updates map[string]interface{}) error {
+	// Get existing template
+	template, err := s.templates.GetByID(ctx, id)
+	if err != nil {
+		return errors.New("template not found")
+	}
+
 	// Validate allocations if being updated
 	if allocations, ok := updates["allocations"].([]models.RecurringBillAllocation); ok {
 		if err := s.validateAllocations(allocations); err != nil {
 			return err
 		}
+		template.Allocations = allocations
 	}
 
-	updates["updated_at"] = time.Now()
-
-	result, err := s.db.Collection("recurring_bill_templates").UpdateOne(
-		ctx,
-		bson.M{"_id": id},
-		bson.M{"$set": updates},
-	)
-	if err != nil {
-		return err
+	// Apply updates
+	if customType, ok := updates["custom_type"].(string); ok {
+		template.CustomType = customType
+	}
+	if frequency, ok := updates["frequency"].(string); ok {
+		template.Frequency = frequency
+	}
+	if amount, ok := updates["amount"].(string); ok {
+		template.Amount = amount
+	}
+	if dayOfMonth, ok := updates["day_of_month"].(int); ok {
+		template.DayOfMonth = dayOfMonth
+	}
+	if notes, ok := updates["notes"].(*string); ok {
+		template.Notes = notes
 	}
 
-	if result.MatchedCount == 0 {
-		return errors.New("template not found")
-	}
+	template.UpdatedAt = time.Now()
 
-	return nil
+	return s.templates.Update(ctx, template)
 }
 
 // DeleteTemplate deletes a template (soft delete by setting IsActive to false)
-func (s *RecurringBillService) DeleteTemplate(ctx context.Context, id primitive.ObjectID) error {
-	result, err := s.db.Collection("recurring_bill_templates").UpdateOne(
-		ctx,
-		bson.M{"_id": id},
-		bson.M{"$set": bson.M{"is_active": false, "updated_at": time.Now()}},
-	)
+func (s *RecurringBillService) DeleteTemplate(ctx context.Context, id string) error {
+	template, err := s.templates.GetByID(ctx, id)
 	if err != nil {
-		return err
-	}
-
-	if result.MatchedCount == 0 {
 		return errors.New("template not found")
 	}
 
-	return nil
+	template.IsActive = false
+	template.UpdatedAt = time.Now()
+
+	return s.templates.Update(ctx, template)
 }
 
 // GenerateBillsFromTemplates generates bills from all active templates that are due
@@ -154,24 +158,15 @@ func (s *RecurringBillService) GenerateBillsFromTemplates(ctx context.Context) e
 	now := time.Now()
 
 	// Find all active templates where next_due_date <= now
-	cursor, err := s.db.Collection("recurring_bill_templates").Find(ctx, bson.M{
-		"is_active":     true,
-		"next_due_date": bson.M{"$lte": now},
-	})
+	templates, err := s.templates.ListDueBefore(ctx, now)
 	if err != nil {
-		return err
-	}
-	defer cursor.Close(ctx)
-
-	var templates []models.RecurringBillTemplate
-	if err := cursor.All(ctx, &templates); err != nil {
 		return err
 	}
 
 	// Generate bills for each template
 	for _, template := range templates {
 		if err := s.generateBillFromTemplate(ctx, &template); err != nil {
-			fmt.Printf("Error generating bill from template %s: %v\n", template.ID.Hex(), err)
+			fmt.Printf("Error generating bill from template %s: %v\n", template.ID, err)
 			continue
 		}
 	}
@@ -188,7 +183,9 @@ func (s *RecurringBillService) generateBillFromTemplate(ctx context.Context, tem
 
 	// Create the bill
 	allocationType := "simple"
+	billID := uuid.New().String()
 	bill := &models.Bill{
+		ID:                  billID,
 		Type:                "inne",
 		CustomType:          &template.CustomType,
 		AllocationType:      &allocationType,
@@ -203,15 +200,13 @@ func (s *RecurringBillService) generateBillFromTemplate(ctx context.Context, tem
 	}
 
 	// Insert the bill
-	result, err := s.db.Collection("bills").InsertOne(ctx, bill)
-	if err != nil {
+	if err := s.bills.Create(ctx, bill); err != nil {
 		return err
 	}
-	bill.ID = result.InsertedID.(primitive.ObjectID)
 
 	// Create allocations based on template
 	for _, allocTemplate := range template.Allocations {
-		var allocatedAmount primitive.Decimal128
+		var allocatedAmount string
 
 		// Debug logging to track allocation creation
 		fmt.Printf("[RecurringBill] Creating allocation - Type: %s, SubjectType: %s\n", allocTemplate.AllocationType, allocTemplate.SubjectType)
@@ -219,51 +214,37 @@ func (s *RecurringBillService) generateBillFromTemplate(ctx context.Context, tem
 		switch allocTemplate.AllocationType {
 		case "fixed":
 			allocatedAmount = *allocTemplate.FixedAmount
-			amountFloat, _ := utils.DecimalToFloat(allocatedAmount)
+			amountFloat := utils.DecimalStringToFloat(allocatedAmount)
 			fmt.Printf("[RecurringBill] Fixed allocation: %.2f PLN\n", amountFloat)
 		case "percentage":
-			amountFloat, _ := utils.DecimalToFloat(template.Amount)
+			amountFloat := utils.DecimalStringToFloat(template.Amount)
 			percentage := *allocTemplate.Percentage / 100.0
 			allocatedFloat := amountFloat * percentage
 			roundedAmount := utils.RoundPLN(allocatedFloat)
-			allocatedAmount, _ = utils.DecimalFromFloat(roundedAmount)
+			allocatedAmount = utils.FloatToDecimalString(roundedAmount)
 			fmt.Printf("[RecurringBill] Percentage allocation: %.2f%% of %.2f = %.2f PLN\n", *allocTemplate.Percentage, amountFloat, roundedAmount)
 		case "fraction":
-			amountFloat, _ := utils.DecimalToFloat(template.Amount)
+			amountFloat := utils.DecimalStringToFloat(template.Amount)
 			fraction := float64(*allocTemplate.FractionNum) / float64(*allocTemplate.FractionDenom)
 			allocatedFloat := amountFloat * fraction
 			roundedAmount := utils.RoundPLN(allocatedFloat)
-			allocatedAmount, _ = utils.DecimalFromFloat(roundedAmount)
+			allocatedAmount = utils.FloatToDecimalString(roundedAmount)
 			fmt.Printf("[RecurringBill] Fraction allocation: %d/%d of %.2f = %.2f PLN\n", *allocTemplate.FractionNum, *allocTemplate.FractionDenom, amountFloat, roundedAmount)
 		}
 
-		allocation := bson.M{
-			"bill_id":       bill.ID,
-			"subject_type":  allocTemplate.SubjectType,
-			"subject_id":    allocTemplate.SubjectID,
-			"allocated_pln": allocatedAmount,
-			"created_at":    now,
-		}
-
-		if _, err := s.db.Collection("allocations").InsertOne(ctx, allocation); err != nil {
+		if err := s.allocations.Create(ctx, billID, allocTemplate.SubjectType, allocTemplate.SubjectID, allocatedAmount); err != nil {
 			return fmt.Errorf("failed to create allocation: %w", err)
 		}
 	}
 
 	// Update template's next due date, current bill ID, and last generated timestamp
 	nextDueDate := s.calculateNextDueDate(template.NextDueDate, template.DayOfMonth, template.Frequency)
-	_, err = s.db.Collection("recurring_bill_templates").UpdateOne(
-		ctx,
-		bson.M{"_id": template.ID},
-		bson.M{"$set": bson.M{
-			"current_bill_id":   bill.ID,
-			"next_due_date":     nextDueDate,
-			"last_generated_at": now,
-			"updated_at":        now,
-		}},
-	)
+	template.CurrentBillID = &billID
+	template.NextDueDate = nextDueDate
+	template.LastGeneratedAt = &now
+	template.UpdatedAt = now
 
-	return err
+	return s.templates.Update(ctx, template)
 }
 
 // calculateNextDueDate calculates the next due date based on frequency
@@ -310,27 +291,21 @@ func (s *RecurringBillService) calculatePeriod(dueDate time.Time, frequency stri
 
 // CheckAndGenerateNextBill checks if a bill is from a recurring template and all payments are made,
 // then generates the next bill if ready
-func (s *RecurringBillService) CheckAndGenerateNextBill(ctx context.Context, billID primitive.ObjectID) error {
+func (s *RecurringBillService) CheckAndGenerateNextBill(ctx context.Context, billID string) error {
 	// Find the recurring template that has this bill as its current bill
-	var template models.RecurringBillTemplate
-	err := s.db.Collection("recurring_bill_templates").FindOne(ctx, bson.M{
-		"current_bill_id": billID,
-		"is_active":       true,
-	}).Decode(&template)
-
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			// Not a recurring bill or already processed, that's okay
-			return nil
-		}
-		return err
+	bill, err := s.bills.GetByRecurringTemplateID(ctx, billID)
+	if err != nil || bill == nil {
+		// Not a recurring bill or already processed, that's okay
+		return nil
 	}
 
-	// Get the bill to check all allocations
-	var bill models.Bill
-	err = s.db.Collection("bills").FindOne(ctx, bson.M{"_id": billID}).Decode(&bill)
-	if err != nil {
-		return err
+	if bill.RecurringTemplateID == nil {
+		return nil
+	}
+
+	template, err := s.templates.GetByID(ctx, *bill.RecurringTemplateID)
+	if err != nil || !template.IsActive {
+		return nil
 	}
 
 	// Only generate next bill if the current bill is posted (not draft)
@@ -339,43 +314,26 @@ func (s *RecurringBillService) CheckAndGenerateNextBill(ctx context.Context, bil
 	}
 
 	// Get all allocations for this bill
-	cursor, err := s.db.Collection("allocations").Find(ctx, bson.M{"bill_id": billID})
+	storedAllocations, err := s.allocations.GetByBillID(ctx, billID)
 	if err != nil {
-		return err
-	}
-	defer cursor.Close(ctx)
-
-	var allocations []struct {
-		SubjectID   primitive.ObjectID `bson:"subject_id"`
-		SubjectType string             `bson:"subject_type"`
-	}
-	if err := cursor.All(ctx, &allocations); err != nil {
 		return err
 	}
 
 	// Get all payments for this bill
-	paymentCursor, err := s.db.Collection("payments").Find(ctx, bson.M{"bill_id": billID})
+	payments, err := s.payments.ListByBillID(ctx, billID)
 	if err != nil {
-		return err
-	}
-	defer paymentCursor.Close(ctx)
-
-	var payments []struct {
-		PayerUserID primitive.ObjectID `bson:"payer_user_id"`
-	}
-	if err := paymentCursor.All(ctx, &payments); err != nil {
 		return err
 	}
 
 	// Build a map of users who have paid
-	paidUsers := make(map[primitive.ObjectID]bool)
+	paidUsers := make(map[string]bool)
 	for _, payment := range payments {
 		paidUsers[payment.PayerUserID] = true
 	}
 
 	// Check if all users with allocations have paid
 	allPaid := true
-	for _, alloc := range allocations {
+	for _, alloc := range storedAllocations {
 		if alloc.SubjectType == "user" {
 			if !paidUsers[alloc.SubjectID] {
 				allPaid = false
@@ -383,19 +341,10 @@ func (s *RecurringBillService) CheckAndGenerateNextBill(ctx context.Context, bil
 			}
 		} else if alloc.SubjectType == "group" {
 			// Get all users in this group
-			userCursor, err := s.db.Collection("users").Find(ctx, bson.M{"group_id": alloc.SubjectID})
+			groupUsers, err := s.users.ListByGroupID(ctx, alloc.SubjectID)
 			if err != nil {
 				return err
 			}
-
-			var groupUsers []struct {
-				ID primitive.ObjectID `bson:"_id"`
-			}
-			if err := userCursor.All(ctx, &groupUsers); err != nil {
-				userCursor.Close(ctx)
-				return err
-			}
-			userCursor.Close(ctx)
 
 			// Check if any group member hasn't paid
 			for _, user := range groupUsers {
@@ -412,7 +361,7 @@ func (s *RecurringBillService) CheckAndGenerateNextBill(ctx context.Context, bil
 
 	// If all users have paid, generate the next bill
 	if allPaid {
-		return s.generateBillFromTemplate(ctx, &template)
+		return s.generateBillFromTemplate(ctx, template)
 	}
 
 	return nil

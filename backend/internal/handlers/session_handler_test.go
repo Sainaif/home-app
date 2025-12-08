@@ -9,19 +9,19 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // MockSession represents a session for testing
 type MockSession struct {
-	ID        primitive.ObjectID `json:"id"`
-	UserID    primitive.ObjectID `json:"userId"`
-	Name      string             `json:"name"`
-	IPAddress string             `json:"ipAddress"`
-	UserAgent string             `json:"userAgent"`
-	CreatedAt time.Time          `json:"createdAt"`
-	ExpiresAt time.Time          `json:"expiresAt"`
+	ID        string    `json:"id"`
+	UserID    string    `json:"userId"`
+	Name      string    `json:"name"`
+	IPAddress string    `json:"ipAddress"`
+	UserAgent string    `json:"userAgent"`
+	CreatedAt time.Time `json:"createdAt"`
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 func TestGetSessions_Success(t *testing.T) {
@@ -30,7 +30,7 @@ func TestGetSessions_Success(t *testing.T) {
 	// Mock session data
 	sessions := []MockSession{
 		{
-			ID:        primitive.NewObjectID(),
+			ID:        uuid.New().String(),
 			Name:      "Chrome on Windows",
 			IPAddress: "192.168.1.1",
 			UserAgent: "Mozilla/5.0 Chrome",
@@ -38,7 +38,7 @@ func TestGetSessions_Success(t *testing.T) {
 			ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
 		},
 		{
-			ID:        primitive.NewObjectID(),
+			ID:        uuid.New().String(),
 			Name:      "Firefox on MacOS",
 			IPAddress: "192.168.1.2",
 			UserAgent: "Mozilla/5.0 Firefox",
@@ -84,12 +84,11 @@ func TestGetSessions_Unauthorized(t *testing.T) {
 func TestRenameSession_Success(t *testing.T) {
 	app := fiber.New()
 
-	sessionID := primitive.NewObjectID()
+	sessionID := uuid.New().String()
 
 	app.Put("/sessions/:id", func(c *fiber.Ctx) error {
 		id := c.Params("id")
-		_, err := primitive.ObjectIDFromHex(id)
-		if err != nil {
+		if _, err := uuid.Parse(id); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "Invalid session ID",
 			})
@@ -120,7 +119,7 @@ func TestRenameSession_Success(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req := httptest.NewRequest(http.MethodPut, "/sessions/"+sessionID.Hex(), bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPut, "/sessions/"+sessionID, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 
@@ -134,8 +133,7 @@ func TestRenameSession_InvalidID(t *testing.T) {
 
 	app.Put("/sessions/:id", func(c *fiber.Ctx) error {
 		id := c.Params("id")
-		_, err := primitive.ObjectIDFromHex(id)
-		if err != nil {
+		if _, err := uuid.Parse(id); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "Invalid session ID",
 			})
@@ -159,7 +157,7 @@ func TestRenameSession_InvalidID(t *testing.T) {
 func TestRenameSession_EmptyName(t *testing.T) {
 	app := fiber.New()
 
-	sessionID := primitive.NewObjectID()
+	sessionID := uuid.New().String()
 
 	app.Put("/sessions/:id", func(c *fiber.Ctx) error {
 		var req struct {
@@ -185,7 +183,7 @@ func TestRenameSession_EmptyName(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req := httptest.NewRequest(http.MethodPut, "/sessions/"+sessionID.Hex(), bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPut, "/sessions/"+sessionID, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := app.Test(req)
@@ -196,12 +194,11 @@ func TestRenameSession_EmptyName(t *testing.T) {
 func TestDeleteSession_Success(t *testing.T) {
 	app := fiber.New()
 
-	sessionID := primitive.NewObjectID()
+	sessionID := uuid.New().String()
 
 	app.Delete("/sessions/:id", func(c *fiber.Ctx) error {
 		id := c.Params("id")
-		_, err := primitive.ObjectIDFromHex(id)
-		if err != nil {
+		if _, err := uuid.Parse(id); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "Invalid session ID",
 			})
@@ -212,7 +209,7 @@ func TestDeleteSession_Success(t *testing.T) {
 		})
 	})
 
-	req := httptest.NewRequest(http.MethodDelete, "/sessions/"+sessionID.Hex(), nil)
+	req := httptest.NewRequest(http.MethodDelete, "/sessions/"+sessionID, nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 
 	resp, err := app.Test(req)
@@ -225,8 +222,7 @@ func TestDeleteSession_InvalidID(t *testing.T) {
 
 	app.Delete("/sessions/:id", func(c *fiber.Ctx) error {
 		id := c.Params("id")
-		_, err := primitive.ObjectIDFromHex(id)
-		if err != nil {
+		if _, err := uuid.Parse(id); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "Invalid session ID",
 			})
@@ -265,13 +261,13 @@ func TestDeleteAllSessions_Success(t *testing.T) {
 func TestDeleteAllSessions_KeepCurrent(t *testing.T) {
 	app := fiber.New()
 
-	currentSessionID := primitive.NewObjectID()
+	currentSessionID := uuid.New().String()
 
 	app.Delete("/sessions", func(c *fiber.Ctx) error {
 		keepCurrent := c.Query("keepCurrent")
 		if keepCurrent != "" {
 			// Validate the keepCurrent session ID
-			if _, err := primitive.ObjectIDFromHex(keepCurrent); err != nil {
+			if _, err := uuid.Parse(keepCurrent); err != nil {
 				// Invalid ID is ignored, not an error
 			}
 		}
@@ -280,7 +276,7 @@ func TestDeleteAllSessions_KeepCurrent(t *testing.T) {
 		})
 	})
 
-	req := httptest.NewRequest(http.MethodDelete, "/sessions?keepCurrent="+currentSessionID.Hex(), nil)
+	req := httptest.NewRequest(http.MethodDelete, "/sessions?keepCurrent="+currentSessionID, nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 
 	resp, err := app.Test(req)

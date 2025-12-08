@@ -4,7 +4,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sainaif/holy-home/internal/middleware"
 	"github.com/sainaif/holy-home/internal/services"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type GroupHandler struct {
@@ -72,9 +71,8 @@ func (h *GroupHandler) GetGroups(c *fiber.Ctx) error {
 
 // GetGroup retrieves a specific group
 func (h *GroupHandler) GetGroup(c *fiber.Ctx) error {
-	id := c.Params("id")
-	groupID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	groupID := c.Params("id")
+	if groupID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid group ID",
 		})
@@ -105,9 +103,8 @@ func (h *GroupHandler) UpdateGroup(c *fiber.Ctx) error {
 		})
 	}
 
-	id := c.Params("id")
-	groupID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	groupID := c.Params("id")
+	if groupID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid group ID",
 		})
@@ -153,9 +150,8 @@ func (h *GroupHandler) DeleteGroup(c *fiber.Ctx) error {
 		})
 	}
 
-	id := c.Params("id")
-	groupID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	groupID := c.Params("id")
+	if groupID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid group ID",
 		})

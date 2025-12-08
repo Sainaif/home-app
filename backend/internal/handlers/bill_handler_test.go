@@ -9,22 +9,22 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // MockBill represents a bill for testing
 type MockBill struct {
-	ID             primitive.ObjectID `json:"id"`
-	Type           string             `json:"type"`
-	CustomType     string             `json:"customType,omitempty"`
-	AllocationType string             `json:"allocationType"`
-	TotalAmountPLN float64            `json:"totalAmountPLN"`
-	TotalUnits     float64            `json:"totalUnits,omitempty"`
-	PeriodStart    time.Time          `json:"periodStart"`
-	PeriodEnd      time.Time          `json:"periodEnd"`
-	Status         string             `json:"status"`
-	Notes          string             `json:"notes,omitempty"`
+	ID             string    `json:"id"`
+	Type           string    `json:"type"`
+	CustomType     string    `json:"customType,omitempty"`
+	AllocationType string    `json:"allocationType"`
+	TotalAmountPLN float64   `json:"totalAmountPLN"`
+	TotalUnits     float64   `json:"totalUnits,omitempty"`
+	PeriodStart    time.Time `json:"periodStart"`
+	PeriodEnd      time.Time `json:"periodEnd"`
+	Status         string    `json:"status"`
+	Notes          string    `json:"notes,omitempty"`
 }
 
 func TestGetBills_Success(t *testing.T) {
@@ -32,7 +32,7 @@ func TestGetBills_Success(t *testing.T) {
 
 	mockBills := []MockBill{
 		{
-			ID:             primitive.NewObjectID(),
+			ID:             uuid.New().String(),
 			Type:           "electricity",
 			AllocationType: "metered",
 			TotalAmountPLN: 250.50,
@@ -42,7 +42,7 @@ func TestGetBills_Success(t *testing.T) {
 			Status:         "draft",
 		},
 		{
-			ID:             primitive.NewObjectID(),
+			ID:             uuid.New().String(),
 			Type:           "gas",
 			AllocationType: "metered",
 			TotalAmountPLN: 180.00,
@@ -85,12 +85,12 @@ func TestGetBills_FilterByStatus(t *testing.T) {
 
 	mockBills := []MockBill{
 		{
-			ID:     primitive.NewObjectID(),
+			ID:     uuid.New().String(),
 			Type:   "electricity",
 			Status: "draft",
 		},
 		{
-			ID:     primitive.NewObjectID(),
+			ID:     uuid.New().String(),
 			Type:   "gas",
 			Status: "posted",
 		},
@@ -126,7 +126,7 @@ func TestGetBills_FilterByStatus(t *testing.T) {
 func TestGetBill_Success(t *testing.T) {
 	app := fiber.New()
 
-	billID := primitive.NewObjectID()
+	billID := uuid.New().String()
 	mockBill := MockBill{
 		ID:             billID,
 		Type:           "electricity",
@@ -140,8 +140,7 @@ func TestGetBill_Success(t *testing.T) {
 
 	app.Get("/bills/:id", func(c *fiber.Ctx) error {
 		id := c.Params("id")
-		_, err := primitive.ObjectIDFromHex(id)
-		if err != nil {
+		if id == "" {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "Invalid bill ID",
 			})
@@ -150,7 +149,7 @@ func TestGetBill_Success(t *testing.T) {
 		return c.JSON(mockBill)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/bills/"+billID.Hex(), nil)
+	req := httptest.NewRequest(http.MethodGet, "/bills/"+billID, nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 
 	resp, err := app.Test(req)
@@ -167,8 +166,8 @@ func TestGetBill_InvalidID(t *testing.T) {
 
 	app.Get("/bills/:id", func(c *fiber.Ctx) error {
 		id := c.Params("id")
-		_, err := primitive.ObjectIDFromHex(id)
-		if err != nil {
+		// Validate UUID format
+		if _, err := uuid.Parse(id); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "Invalid bill ID",
 			})
@@ -188,8 +187,7 @@ func TestGetBill_NotFound(t *testing.T) {
 
 	app.Get("/bills/:id", func(c *fiber.Ctx) error {
 		id := c.Params("id")
-		_, err := primitive.ObjectIDFromHex(id)
-		if err != nil {
+		if _, err := uuid.Parse(id); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "Invalid bill ID",
 			})
@@ -200,8 +198,8 @@ func TestGetBill_NotFound(t *testing.T) {
 		})
 	})
 
-	billID := primitive.NewObjectID()
-	req := httptest.NewRequest(http.MethodGet, "/bills/"+billID.Hex(), nil)
+	billID := uuid.New().String()
+	req := httptest.NewRequest(http.MethodGet, "/bills/"+billID, nil)
 
 	resp, err := app.Test(req)
 	assert.NoError(t, err)
@@ -238,7 +236,7 @@ func TestCreateBill_Success(t *testing.T) {
 		}
 
 		return c.Status(fiber.StatusCreated).JSON(MockBill{
-			ID:             primitive.NewObjectID(),
+			ID:             uuid.New().String(),
 			Type:           req.Type,
 			TotalAmountPLN: req.TotalAmountPLN,
 			TotalUnits:     req.TotalUnits,
@@ -345,12 +343,11 @@ func TestCreateBill_NegativeAmount(t *testing.T) {
 func TestUpdateBill_Success(t *testing.T) {
 	app := fiber.New()
 
-	billID := primitive.NewObjectID()
+	billID := uuid.New().String()
 
 	app.Put("/bills/:id", func(c *fiber.Ctx) error {
 		id := c.Params("id")
-		_, err := primitive.ObjectIDFromHex(id)
-		if err != nil {
+		if _, err := uuid.Parse(id); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "Invalid bill ID",
 			})
@@ -377,7 +374,7 @@ func TestUpdateBill_Success(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req := httptest.NewRequest(http.MethodPut, "/bills/"+billID.Hex(), bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPut, "/bills/"+billID, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-token")
 
@@ -389,12 +386,11 @@ func TestUpdateBill_Success(t *testing.T) {
 func TestDeleteBill_Success(t *testing.T) {
 	app := fiber.New()
 
-	billID := primitive.NewObjectID()
+	billID := uuid.New().String()
 
 	app.Delete("/bills/:id", func(c *fiber.Ctx) error {
 		id := c.Params("id")
-		_, err := primitive.ObjectIDFromHex(id)
-		if err != nil {
+		if _, err := uuid.Parse(id); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "Invalid bill ID",
 			})
@@ -405,7 +401,7 @@ func TestDeleteBill_Success(t *testing.T) {
 		})
 	})
 
-	req := httptest.NewRequest(http.MethodDelete, "/bills/"+billID.Hex(), nil)
+	req := httptest.NewRequest(http.MethodDelete, "/bills/"+billID, nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 
 	resp, err := app.Test(req)
@@ -418,8 +414,7 @@ func TestDeleteBill_InvalidID(t *testing.T) {
 
 	app.Delete("/bills/:id", func(c *fiber.Ctx) error {
 		id := c.Params("id")
-		_, err := primitive.ObjectIDFromHex(id)
-		if err != nil {
+		if _, err := uuid.Parse(id); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "Invalid bill ID",
 			})
@@ -437,12 +432,11 @@ func TestDeleteBill_InvalidID(t *testing.T) {
 func TestPostBill_Success(t *testing.T) {
 	app := fiber.New()
 
-	billID := primitive.NewObjectID()
+	billID := uuid.New().String()
 
 	app.Post("/bills/:id/post", func(c *fiber.Ctx) error {
 		id := c.Params("id")
-		_, err := primitive.ObjectIDFromHex(id)
-		if err != nil {
+		if _, err := uuid.Parse(id); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "Invalid bill ID",
 			})
@@ -453,7 +447,7 @@ func TestPostBill_Success(t *testing.T) {
 		})
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/bills/"+billID.Hex()+"/post", nil)
+	req := httptest.NewRequest(http.MethodPost, "/bills/"+billID+"/post", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 
 	resp, err := app.Test(req)
@@ -464,12 +458,11 @@ func TestPostBill_Success(t *testing.T) {
 func TestPostBill_AlreadyPosted(t *testing.T) {
 	app := fiber.New()
 
-	billID := primitive.NewObjectID()
+	billID := uuid.New().String()
 
 	app.Post("/bills/:id/post", func(c *fiber.Ctx) error {
 		id := c.Params("id")
-		_, err := primitive.ObjectIDFromHex(id)
-		if err != nil {
+		if _, err := uuid.Parse(id); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "Invalid bill ID",
 			})
@@ -481,7 +474,7 @@ func TestPostBill_AlreadyPosted(t *testing.T) {
 		})
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/bills/"+billID.Hex()+"/post", nil)
+	req := httptest.NewRequest(http.MethodPost, "/bills/"+billID+"/post", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 
 	resp, err := app.Test(req)

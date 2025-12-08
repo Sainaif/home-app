@@ -562,5 +562,21 @@
   },
   "footer": {
     "createdBy": "Created by Sainaif"
+  },
+  "migration": {
+    "title": "Database Migration",
+    "description": "Import data from MongoDB backup",
+    "existingDataWarning": "Database already contains data. Importing will overwrite existing records.",
+    "confirmOverwrite": "I understand and want to proceed",
+    "lastMigration": "Last migration",
+    "dragDropHint": "Drag and drop your backup file here, or",
+    "selectBackupFile": "select a file",
+    "importing": "Importing data...",
+    "startMigration": "Start Migration",
+    "success": "Migration completed successfully",
+    "failed": "Migration completed with errors",
+    "recordsMigrated": "Records migrated",
+    "errors": "Errors",
+    "startNew": "Start new migration"
   }
 }

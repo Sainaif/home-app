@@ -4,7 +4,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sainaif/holy-home/internal/middleware"
 	"github.com/sainaif/holy-home/internal/services"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type SessionHandler struct {
@@ -39,8 +38,7 @@ func (h *SessionHandler) GetSessions(c *fiber.Ctx) error {
 // RenameSession renames a session
 func (h *SessionHandler) RenameSession(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
-	sessionObjID, err := primitive.ObjectIDFromHex(sessionID)
-	if err != nil {
+	if sessionID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid session ID",
 		})
@@ -69,7 +67,7 @@ func (h *SessionHandler) RenameSession(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := h.sessionService.RenameSession(c.Context(), sessionObjID, userID, req.Name); err != nil {
+	if err := h.sessionService.RenameSession(c.Context(), sessionID, userID, req.Name); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
 		})
@@ -83,8 +81,7 @@ func (h *SessionHandler) RenameSession(c *fiber.Ctx) error {
 // DeleteSession deletes a session
 func (h *SessionHandler) DeleteSession(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
-	sessionObjID, err := primitive.ObjectIDFromHex(sessionID)
-	if err != nil {
+	if sessionID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid session ID",
 		})
@@ -97,7 +94,7 @@ func (h *SessionHandler) DeleteSession(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := h.sessionService.DeleteSession(c.Context(), sessionObjID, userID); err != nil {
+	if err := h.sessionService.DeleteSession(c.Context(), sessionID, userID); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
 		})
@@ -119,12 +116,10 @@ func (h *SessionHandler) DeleteAllSessions(c *fiber.Ctx) error {
 
 	// Optional: keep current session if specified
 	currentSessionID := c.Query("keepCurrent")
-	var exceptSessionID *primitive.ObjectID
+	var exceptSessionID *string
 
 	if currentSessionID != "" {
-		if objID, err := primitive.ObjectIDFromHex(currentSessionID); err == nil {
-			exceptSessionID = &objID
-		}
+		exceptSessionID = &currentSessionID
 	}
 
 	if err := h.sessionService.RevokeAllUserSessions(c.Context(), userID, exceptSessionID); err != nil {

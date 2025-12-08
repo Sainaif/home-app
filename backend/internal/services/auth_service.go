@@ -9,15 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
+	"github.com/google/uuid"
 	"github.com/sainaif/holy-home/internal/config"
 	"github.com/sainaif/holy-home/internal/models"
+	"github.com/sainaif/holy-home/internal/repository"
 	"github.com/sainaif/holy-home/internal/utils"
 )
 
@@ -38,7 +35,9 @@ func isValidEmail(email string) bool {
 }
 
 type AuthService struct {
-	db             *mongo.Database
+	users          repository.UserRepository
+	passkeys       repository.PasskeyCredentialRepository
+	roles          repository.RoleRepository
 	cfg            *config.Config
 	webAuthn       *webauthn.WebAuthn
 	sessions       map[string]*webAuthnSession // In-memory session storage with TTL
@@ -47,7 +46,13 @@ type AuthService struct {
 	stopCleanup    chan struct{} // Signal to stop cleanup goroutine
 }
 
-func NewAuthService(db *mongo.Database, cfg *config.Config, sessionService *SessionService) *AuthService {
+func NewAuthService(
+	users repository.UserRepository,
+	passkeys repository.PasskeyCredentialRepository,
+	roles repository.RoleRepository,
+	cfg *config.Config,
+	sessionService *SessionService,
+) *AuthService {
 	// Initialize WebAuthn with configuration
 	wa, err := utils.NewWebAuthn(
 		cfg.App.Domain,
@@ -60,7 +65,9 @@ func NewAuthService(db *mongo.Database, cfg *config.Config, sessionService *Sess
 	}
 
 	service := &AuthService{
-		db:             db,
+		users:          users,
+		passkeys:       passkeys,
+		roles:          roles,
 		cfg:            cfg,
 		webAuthn:       wa,
 		sessions:       make(map[string]*webAuthnSession),
@@ -132,7 +139,7 @@ func (s *AuthService) Login(ctx context.Context, req LoginRequest, ipAddress, us
 	}
 
 	// Find user by email or username based on config
-	var user models.User
+	var user *models.User
 	var err error
 
 	// Check if identifier looks like an email
@@ -140,12 +147,10 @@ func (s *AuthService) Login(ctx context.Context, req LoginRequest, ipAddress, us
 
 	if isEmail && s.cfg.Auth.AllowEmailLogin {
 		// Try to find by email
-		findOpts := options.FindOne().SetCollation(caseInsensitiveEmailCollation)
-		err = s.db.Collection("users").FindOne(ctx, bson.M{"email": identifier}, findOpts).Decode(&user)
+		user, err = s.users.GetByEmail(ctx, identifier)
 	} else if !isEmail && s.cfg.Auth.AllowUsernameLogin {
 		// Try to find by username (case-insensitive)
-		findOpts := options.FindOne().SetCollation(&options.Collation{Locale: "en", Strength: 2})
-		err = s.db.Collection("users").FindOne(ctx, bson.M{"username": identifier}, findOpts).Decode(&user)
+		user, err = s.users.GetByUsername(ctx, identifier)
 	} else if isEmail && !s.cfg.Auth.AllowEmailLogin {
 		return nil, errors.New("email login is disabled")
 	} else if !isEmail && !s.cfg.Auth.AllowUsernameLogin {
@@ -155,10 +160,7 @@ func (s *AuthService) Login(ctx context.Context, req LoginRequest, ipAddress, us
 	}
 
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("invalid credentials")
-		}
-		return nil, fmt.Errorf("database error: %w", err)
+		return nil, errors.New("invalid credentials")
 	}
 
 	if !user.IsActive {
@@ -188,8 +190,6 @@ func (s *AuthService) Login(ctx context.Context, req LoginRequest, ipAddress, us
 			decrypted, err := utils.DecryptTOTPSecret(user.TOTPSecret, s.cfg.Auth.TOTPEncryptionKey)
 			if err != nil {
 				// Decryption failed - this could be a legacy unencrypted secret
-				// In production with encryption enabled, this should not happen for new secrets
-				// Log the error for monitoring but allow fallback for migration period
 				fmt.Printf("Warning: TOTP decryption failed for user %s (may be legacy unencrypted secret): %v\n", user.Email, err)
 				decryptedSecret = user.TOTPSecret
 			} else {
@@ -246,7 +246,6 @@ func (s *AuthService) RefreshTokens(ctx context.Context, refreshToken string, ip
 	}
 
 	// Validate session exists (if session service is available)
-	// Note: This is optional for backward compatibility - if session doesn't exist, we'll create one
 	var sessionExists bool
 	if s.sessionService != nil {
 		_, err := s.sessionService.ValidateSession(ctx, refreshToken)
@@ -254,13 +253,9 @@ func (s *AuthService) RefreshTokens(ctx context.Context, refreshToken string, ip
 	}
 
 	// Find user
-	var user models.User
-	err = s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	user, err := s.users.GetByID(ctx, userID)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("user not found")
-		}
-		return nil, fmt.Errorf("database error: %w", err)
+		return nil, errors.New("user not found")
 	}
 
 	if !user.IsActive {
@@ -307,10 +302,9 @@ func (s *AuthService) RefreshTokens(ctx context.Context, refreshToken string, ip
 }
 
 // Enable2FA generates a new TOTP secret for the user
-func (s *AuthService) Enable2FA(ctx context.Context, userID primitive.ObjectID) (string, string, error) {
+func (s *AuthService) Enable2FA(ctx context.Context, userID string) (string, string, error) {
 	// Get user
-	var user models.User
-	err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	user, err := s.users.GetByID(ctx, userID)
 	if err != nil {
 		return "", "", fmt.Errorf("user not found: %w", err)
 	}
@@ -332,12 +326,7 @@ func (s *AuthService) Enable2FA(ctx context.Context, userID primitive.ObjectID) 
 	}
 
 	// Update user with encrypted TOTP secret
-	_, err = s.db.Collection("users").UpdateOne(
-		ctx,
-		bson.M{"_id": userID},
-		bson.M{"$set": bson.M{"totp_secret": secretToStore}},
-	)
-	if err != nil {
+	if err := s.users.UpdateTOTPSecret(ctx, userID, secretToStore); err != nil {
 		return "", "", fmt.Errorf("failed to save TOTP secret: %w", err)
 	}
 
@@ -348,33 +337,34 @@ func (s *AuthService) Enable2FA(ctx context.Context, userID primitive.ObjectID) 
 }
 
 // Disable2FA removes the TOTP secret for the user
-func (s *AuthService) Disable2FA(ctx context.Context, userID primitive.ObjectID) error {
-	_, err := s.db.Collection("users").UpdateOne(
-		ctx,
-		bson.M{"_id": userID},
-		bson.M{"$unset": bson.M{"totp_secret": ""}},
-	)
-	if err != nil {
+func (s *AuthService) Disable2FA(ctx context.Context, userID string) error {
+	if err := s.users.UpdateTOTPSecret(ctx, userID, ""); err != nil {
 		return fmt.Errorf("failed to disable 2FA: %w", err)
 	}
 	return nil
 }
 
 // BeginPasskeyRegistration starts the passkey registration process
-func (s *AuthService) BeginPasskeyRegistration(ctx context.Context, userID primitive.ObjectID) (*protocol.CredentialCreation, error) {
+func (s *AuthService) BeginPasskeyRegistration(ctx context.Context, userID string) (*protocol.CredentialCreation, error) {
 	if s.webAuthn == nil {
 		return nil, errors.New("WebAuthn not initialized")
 	}
 
 	// Get user
-	var user models.User
-	err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	user, err := s.users.GetByID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
 	}
 
+	// Load passkey credentials
+	creds, err := s.passkeys.GetByUserID(ctx, userID)
+	if err != nil {
+		creds = []models.PasskeyCredential{}
+	}
+	user.PasskeyCredentials = creds
+
 	// Wrap user for WebAuthn
-	webAuthnUser := utils.WebAuthnUser{User: &user}
+	webAuthnUser := utils.WebAuthnUser{User: user}
 
 	// Begin registration
 	options, session, err := s.webAuthn.BeginRegistration(webAuthnUser)
@@ -384,7 +374,7 @@ func (s *AuthService) BeginPasskeyRegistration(ctx context.Context, userID primi
 
 	// Store session with TTL
 	s.sessionsMu.Lock()
-	s.sessions[userID.Hex()] = &webAuthnSession{
+	s.sessions[userID] = &webAuthnSession{
 		data:      session,
 		expiresAt: time.Now().Add(webAuthnSessionTTL),
 	}
@@ -394,34 +384,40 @@ func (s *AuthService) BeginPasskeyRegistration(ctx context.Context, userID primi
 }
 
 // FinishPasskeyRegistration completes the passkey registration process
-func (s *AuthService) FinishPasskeyRegistration(ctx context.Context, userID primitive.ObjectID, credentialName string, response []byte) error {
+func (s *AuthService) FinishPasskeyRegistration(ctx context.Context, userID string, credentialName string, response []byte) error {
 	if s.webAuthn == nil {
 		return errors.New("WebAuthn not initialized")
 	}
 
 	// Get session
 	s.sessionsMu.Lock()
-	sessionWrapper, exists := s.sessions[userID.Hex()]
+	sessionWrapper, exists := s.sessions[userID]
 	if !exists || time.Now().After(sessionWrapper.expiresAt) {
 		if exists {
-			delete(s.sessions, userID.Hex())
+			delete(s.sessions, userID)
 		}
 		s.sessionsMu.Unlock()
 		return errors.New("session not found or expired")
 	}
 	session := sessionWrapper.data
-	delete(s.sessions, userID.Hex())
+	delete(s.sessions, userID)
 	s.sessionsMu.Unlock()
 
 	// Get user
-	var user models.User
-	err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	user, err := s.users.GetByID(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("user not found: %w", err)
 	}
 
+	// Load passkey credentials
+	creds, err := s.passkeys.GetByUserID(ctx, userID)
+	if err != nil {
+		creds = []models.PasskeyCredential{}
+	}
+	user.PasskeyCredentials = creds
+
 	// Wrap user for WebAuthn
-	webAuthnUser := utils.WebAuthnUser{User: &user}
+	webAuthnUser := utils.WebAuthnUser{User: user}
 
 	// Parse credential creation response
 	parsedResponse, err := utils.ParseCredentialCreationResponse(response)
@@ -438,13 +434,8 @@ func (s *AuthService) FinishPasskeyRegistration(ctx context.Context, userID prim
 	// Convert to our model
 	passkeyCredential := utils.ConvertWebAuthnCredential(credential, credentialName)
 
-	// Add credential to user
-	_, err = s.db.Collection("users").UpdateOne(
-		ctx,
-		bson.M{"_id": userID},
-		bson.M{"$push": bson.M{"passkey_credentials": passkeyCredential}},
-	)
-	if err != nil {
+	// Add credential to passkeys table
+	if err := s.passkeys.Create(ctx, userID, &passkeyCredential); err != nil {
 		return fmt.Errorf("failed to save credential: %w", err)
 	}
 
@@ -463,26 +454,24 @@ func (s *AuthService) BeginPasskeyLogin(ctx context.Context, email string) (*pro
 	}
 
 	// Find user by email
-	var user models.User
-	findOpts := options.FindOne().SetCollation(caseInsensitiveEmailCollation)
-	err := s.db.Collection("users").FindOne(ctx, bson.M{"email": email}, findOpts).Decode(&user)
+	user, err := s.users.GetByEmail(ctx, email)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("user not found")
-		}
-		return nil, fmt.Errorf("database error: %w", err)
+		return nil, errors.New("user not found")
 	}
 
 	if !user.IsActive {
 		return nil, errors.New("user account is disabled")
 	}
 
-	if len(user.PasskeyCredentials) == 0 {
+	// Load passkey credentials
+	creds, err := s.passkeys.GetByUserID(ctx, user.ID)
+	if err != nil || len(creds) == 0 {
 		return nil, errors.New("invalid credentials")
 	}
+	user.PasskeyCredentials = creds
 
 	// Wrap user for WebAuthn
-	webAuthnUser := utils.WebAuthnUser{User: &user}
+	webAuthnUser := utils.WebAuthnUser{User: user}
 
 	// Begin login
 	options, session, err := s.webAuthn.BeginLogin(webAuthnUser)
@@ -492,7 +481,7 @@ func (s *AuthService) BeginPasskeyLogin(ctx context.Context, email string) (*pro
 
 	// Store session with TTL
 	s.sessionsMu.Lock()
-	s.sessions[user.ID.Hex()] = &webAuthnSession{
+	s.sessions[user.ID] = &webAuthnSession{
 		data:      session,
 		expiresAt: time.Now().Add(webAuthnSessionTTL),
 	}
@@ -538,29 +527,34 @@ func (s *AuthService) FinishPasskeyLogin(ctx context.Context, email string, resp
 	}
 
 	// Find user by email
-	var user models.User
-	findOpts := options.FindOne().SetCollation(caseInsensitiveEmailCollation)
-	err := s.db.Collection("users").FindOne(ctx, bson.M{"email": email}, findOpts).Decode(&user)
+	user, err := s.users.GetByEmail(ctx, email)
 	if err != nil {
 		return nil, errors.New("invalid credentials")
 	}
 
 	// Get session
 	s.sessionsMu.Lock()
-	sessionWrapper, exists := s.sessions[user.ID.Hex()]
+	sessionWrapper, exists := s.sessions[user.ID]
 	if !exists || time.Now().After(sessionWrapper.expiresAt) {
 		if exists {
-			delete(s.sessions, user.ID.Hex())
+			delete(s.sessions, user.ID)
 		}
 		s.sessionsMu.Unlock()
 		return nil, errors.New("session not found or expired")
 	}
 	session := sessionWrapper.data
-	delete(s.sessions, user.ID.Hex())
+	delete(s.sessions, user.ID)
 	s.sessionsMu.Unlock()
 
+	// Load passkey credentials
+	creds, err := s.passkeys.GetByUserID(ctx, user.ID)
+	if err != nil {
+		return nil, errors.New("invalid credentials")
+	}
+	user.PasskeyCredentials = creds
+
 	// Wrap user for WebAuthn
-	webAuthnUser := utils.WebAuthnUser{User: &user}
+	webAuthnUser := utils.WebAuthnUser{User: user}
 
 	// Parse credential assertion response
 	parsedResponse, err := utils.ParseCredentialRequestResponse(response)
@@ -576,20 +570,11 @@ func (s *AuthService) FinishPasskeyLogin(ctx context.Context, email string, resp
 
 	// Update credential sign count and last used time
 	now := time.Now()
-	_, err = s.db.Collection("users").UpdateOne(
-		ctx,
-		bson.M{
-			"_id":                    user.ID,
-			"passkey_credentials.id": credential.ID,
-		},
-		bson.M{"$set": bson.M{
-			"passkey_credentials.$.sign_count":   credential.Authenticator.SignCount,
-			"passkey_credentials.$.last_used_at": now,
-		}},
-	)
-	if err != nil {
-		// Log but don't fail - authentication was successful
-		fmt.Printf("Warning: Failed to update credential: %v\n", err)
+	if err := s.passkeys.UpdateSignCount(ctx, credential.ID, credential.Authenticator.SignCount); err != nil {
+		fmt.Printf("Warning: Failed to update sign count: %v\n", err)
+	}
+	if err := s.passkeys.UpdateLastUsed(ctx, credential.ID, now); err != nil {
+		fmt.Printf("Warning: Failed to update last used: %v\n", err)
 	}
 
 	// Generate tokens
@@ -659,16 +644,11 @@ func (s *AuthService) FinishPasskeyDiscoverableLogin(ctx context.Context, respon
 
 	// Create user handler for discoverable login
 	userHandler := func(rawID, userHandle []byte) (webauthn.User, error) {
-		// Convert user handle to ObjectID
-		userIDHex := string(userHandle)
-		userID, err := primitive.ObjectIDFromHex(userIDHex)
-		if err != nil {
-			return nil, errors.New("invalid user handle")
-		}
+		// User handle is the user ID
+		userID := string(userHandle)
 
 		// Find user by ID
-		var user models.User
-		err = s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+		user, err := s.users.GetByID(ctx, userID)
 		if err != nil {
 			return nil, errors.New("user not found")
 		}
@@ -677,7 +657,14 @@ func (s *AuthService) FinishPasskeyDiscoverableLogin(ctx context.Context, respon
 			return nil, errors.New("user account is disabled")
 		}
 
-		return utils.WebAuthnUser{User: &user}, nil
+		// Load passkey credentials
+		creds, err := s.passkeys.GetByUserID(ctx, userID)
+		if err != nil {
+			return nil, errors.New("failed to load credentials")
+		}
+		user.PasskeyCredentials = creds
+
+		return utils.WebAuthnUser{User: user}, nil
 	}
 
 	// Validate discoverable login
@@ -687,32 +674,19 @@ func (s *AuthService) FinishPasskeyDiscoverableLogin(ctx context.Context, respon
 	}
 
 	// Get the user from the user handle for token generation
-	userIDHex := string(parsedResponse.Response.UserHandle)
-	userID, err := primitive.ObjectIDFromHex(userIDHex)
+	userID := string(parsedResponse.Response.UserHandle)
+	user, err := s.users.GetByID(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid user handle: %w", err)
-	}
-	var user models.User
-	if err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user); err != nil {
 		return nil, fmt.Errorf("failed to fetch user: %w", err)
 	}
 
 	// Update credential sign count and last used time
 	now := time.Now()
-	_, err = s.db.Collection("users").UpdateOne(
-		ctx,
-		bson.M{
-			"_id":                    user.ID,
-			"passkey_credentials.id": credential.ID,
-		},
-		bson.M{"$set": bson.M{
-			"passkey_credentials.$.sign_count":   credential.Authenticator.SignCount,
-			"passkey_credentials.$.last_used_at": now,
-		}},
-	)
-	if err != nil {
-		// Log but don't fail - authentication was successful
-		fmt.Printf("Warning: Failed to update credential: %v\n", err)
+	if err := s.passkeys.UpdateSignCount(ctx, credential.ID, credential.Authenticator.SignCount); err != nil {
+		fmt.Printf("Warning: Failed to update sign count: %v\n", err)
+	}
+	if err := s.passkeys.UpdateLastUsed(ctx, credential.ID, now); err != nil {
+		fmt.Printf("Warning: Failed to update last used: %v\n", err)
 	}
 
 	// Generate tokens
@@ -750,28 +724,13 @@ func (s *AuthService) FinishPasskeyDiscoverableLogin(ctx context.Context, respon
 }
 
 // ListPasskeys returns all passkeys for a user
-func (s *AuthService) ListPasskeys(ctx context.Context, userID primitive.ObjectID) ([]models.PasskeyCredential, error) {
-	var user models.User
-	err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
-	if err != nil {
-		return nil, fmt.Errorf("user not found: %w", err)
-	}
-
-	return user.PasskeyCredentials, nil
+func (s *AuthService) ListPasskeys(ctx context.Context, userID string) ([]models.PasskeyCredential, error) {
+	return s.passkeys.GetByUserID(ctx, userID)
 }
 
 // DeletePasskey removes a passkey from a user
-func (s *AuthService) DeletePasskey(ctx context.Context, userID primitive.ObjectID, credentialID []byte) error {
-	_, err := s.db.Collection("users").UpdateOne(
-		ctx,
-		bson.M{"_id": userID},
-		bson.M{"$pull": bson.M{"passkey_credentials": bson.M{"id": credentialID}}},
-	)
-	if err != nil {
-		return fmt.Errorf("failed to delete passkey: %w", err)
-	}
-
-	return nil
+func (s *AuthService) DeletePasskey(ctx context.Context, userID string, credentialID []byte) error {
+	return s.passkeys.Delete(ctx, userID, credentialID)
 }
 
 // Logout revokes the session associated with the refresh token
@@ -784,15 +743,17 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 
 // BootstrapAdmin creates the admin user if it doesn't exist
 func (s *AuthService) BootstrapAdmin(ctx context.Context) error {
-	// Check if admin already exists
-	count, err := s.db.Collection("users").CountDocuments(ctx, bson.M{"role": "ADMIN"})
+	// Check if any admin already exists
+	users, err := s.users.List(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to check for existing admin: %w", err)
 	}
 
-	if count > 0 {
-		// Admin already exists
-		return nil
+	for _, u := range users {
+		if u.Role == "ADMIN" {
+			// Admin already exists
+			return nil
+		}
 	}
 
 	// Hash password if it's plain text (for development)
@@ -810,7 +771,7 @@ func (s *AuthService) BootstrapAdmin(ctx context.Context) error {
 
 	// Create admin user from config
 	admin := models.User{
-		ID:           primitive.NewObjectID(),
+		ID:           uuid.New().String(),
 		Email:        adminEmail,
 		PasswordHash: passwordHash,
 		Role:         "ADMIN",
@@ -818,8 +779,7 @@ func (s *AuthService) BootstrapAdmin(ctx context.Context) error {
 		CreatedAt:    time.Now(),
 	}
 
-	_, err = s.db.Collection("users").InsertOne(ctx, admin)
-	if err != nil {
+	if err := s.users.Create(ctx, &admin); err != nil {
 		return fmt.Errorf("failed to create admin user: %w", err)
 	}
 

@@ -8,50 +8,49 @@ import (
 	"strconv"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-
-	"github.com/sainaif/holy-home/internal/models"
+	"github.com/sainaif/holy-home/internal/repository"
 	"github.com/sainaif/holy-home/internal/utils"
 )
 
 type ExportService struct {
-	db *mongo.Database
+	bills            repository.BillRepository
+	consumptions     repository.ConsumptionRepository
+	loans            repository.LoanRepository
+	loanPayments     repository.LoanPaymentRepository
+	chores           repository.ChoreRepository
+	choreAssignments repository.ChoreAssignmentRepository
+	users            repository.UserRepository
+	groups           repository.GroupRepository
 }
 
-func NewExportService(db *mongo.Database) *ExportService {
-	return &ExportService{db: db}
+func NewExportService(
+	bills repository.BillRepository,
+	consumptions repository.ConsumptionRepository,
+	loans repository.LoanRepository,
+	loanPayments repository.LoanPaymentRepository,
+	chores repository.ChoreRepository,
+	choreAssignments repository.ChoreAssignmentRepository,
+	users repository.UserRepository,
+	groups repository.GroupRepository,
+) *ExportService {
+	return &ExportService{
+		bills:            bills,
+		consumptions:     consumptions,
+		loans:            loans,
+		loanPayments:     loanPayments,
+		chores:           chores,
+		choreAssignments: choreAssignments,
+		users:            users,
+		groups:           groups,
+	}
 }
 
 // ExportBillsCSV exports bills and allocations to CSV
 func (s *ExportService) ExportBillsCSV(ctx context.Context, billType *string, from *time.Time, to *time.Time) ([]byte, error) {
-	// Build filter
-	filter := bson.M{}
-	if billType != nil {
-		filter["type"] = *billType
-	}
-	if from != nil || to != nil {
-		dateFilter := bson.M{}
-		if from != nil {
-			dateFilter["$gte"] = *from
-		}
-		if to != nil {
-			dateFilter["$lte"] = *to
-		}
-		filter["period_start"] = dateFilter
-	}
-
-	// Get bills
-	cursor, err := s.db.Collection("bills").Find(ctx, filter)
+	// Get bills with optional filtering
+	bills, err := s.bills.ListFiltered(ctx, billType, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
-	}
-	defer cursor.Close(ctx)
-
-	var bills []models.Bill
-	if err := cursor.All(ctx, &bills); err != nil {
-		return nil, fmt.Errorf("failed to decode bills: %w", err)
 	}
 
 	// Create CSV buffer
@@ -66,8 +65,12 @@ func (s *ExportService) ExportBillsCSV(ctx context.Context, billType *string, fr
 
 	// Write bill rows
 	for _, bill := range bills {
-		amount, _ := utils.DecimalToFloat(bill.TotalAmountPLN)
-		units, _ := utils.DecimalToFloat(bill.TotalUnits)
+		amount := utils.DecimalStringToFloat(bill.TotalAmountPLN)
+
+		var units float64
+		if bill.TotalUnits != "" {
+			units = utils.DecimalStringToFloat(bill.TotalUnits)
+		}
 
 		notes := ""
 		if bill.Notes != nil {
@@ -75,7 +78,7 @@ func (s *ExportService) ExportBillsCSV(ctx context.Context, billType *string, fr
 		}
 
 		row := []string{
-			bill.ID.Hex(),
+			bill.ID,
 			bill.Type,
 			bill.PeriodStart.Format("2006-01-02"),
 			bill.PeriodEnd.Format("2006-01-02"),
@@ -101,25 +104,18 @@ func (s *ExportService) ExportBillsCSV(ctx context.Context, billType *string, fr
 // ExportBalancesCSV exports loan balances
 func (s *ExportService) ExportBalancesCSV(ctx context.Context) ([]byte, error) {
 	// Get all loans
-	cursor, err := s.db.Collection("loans").Find(ctx, bson.M{})
+	loans, err := s.loans.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
 	}
-	defer cursor.Close(ctx)
-
-	var loans []models.Loan
-	if err := cursor.All(ctx, &loans); err != nil {
-		return nil, fmt.Errorf("failed to decode loans: %w", err)
-	}
 
 	// Get user details
-	userMap := make(map[primitive.ObjectID]string)
+	userMap := make(map[string]string) // userID -> email
 	for _, loan := range loans {
-		for _, userID := range []primitive.ObjectID{loan.LenderID, loan.BorrowerID} {
+		for _, userID := range []string{loan.LenderID, loan.BorrowerID} {
 			if _, exists := userMap[userID]; !exists {
-				var user models.User
-				err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
-				if err == nil {
+				user, err := s.users.GetByID(ctx, userID)
+				if err == nil && user != nil {
 					userMap[userID] = user.Email
 				}
 			}
@@ -127,15 +123,13 @@ func (s *ExportService) ExportBalancesCSV(ctx context.Context) ([]byte, error) {
 	}
 
 	// Get payments for each loan
-	loanPayments := make(map[primitive.ObjectID]float64)
-	paymentCursor, err := s.db.Collection("loan_payments").Find(ctx, bson.M{})
-	if err == nil {
-		defer paymentCursor.Close(ctx)
-		var payments []models.LoanPayment
-		if paymentCursor.All(ctx, &payments) == nil {
+	loanPaymentsMap := make(map[string]float64)
+	for _, loan := range loans {
+		payments, err := s.loanPayments.ListByLoanID(ctx, loan.ID)
+		if err == nil {
 			for _, payment := range payments {
-				amount, _ := utils.DecimalToFloat(payment.AmountPLN)
-				loanPayments[payment.LoanID] += amount
+				amount := utils.DecimalStringToFloat(payment.AmountPLN)
+				loanPaymentsMap[loan.ID] += amount
 			}
 		}
 	}
@@ -155,12 +149,12 @@ func (s *ExportService) ExportBalancesCSV(ctx context.Context) ([]byte, error) {
 		lenderEmail := userMap[loan.LenderID]
 		borrowerEmail := userMap[loan.BorrowerID]
 
-		originalAmount, _ := utils.DecimalToFloat(loan.AmountPLN)
-		paidAmount := loanPayments[loan.ID]
+		originalAmount := utils.DecimalStringToFloat(loan.AmountPLN)
+		paidAmount := loanPaymentsMap[loan.ID]
 		remaining := originalAmount - paidAmount
 
 		row := []string{
-			loan.ID.Hex(),
+			loan.ID,
 			lenderEmail,
 			borrowerEmail,
 			fmt.Sprintf("%.2f", originalAmount),
@@ -184,47 +178,30 @@ func (s *ExportService) ExportBalancesCSV(ctx context.Context) ([]byte, error) {
 }
 
 // ExportChoresCSV exports chore assignments
-func (s *ExportService) ExportChoresCSV(ctx context.Context, userID *primitive.ObjectID, status *string) ([]byte, error) {
-	// Build filter
-	filter := bson.M{}
-	if userID != nil {
-		filter["assignee_user_id"] = *userID
-	}
-	if status != nil {
-		filter["status"] = *status
-	}
-
-	// Get assignments
-	cursor, err := s.db.Collection("chore_assignments").Find(ctx, filter)
+func (s *ExportService) ExportChoresCSV(ctx context.Context, userID *string, status *string) ([]byte, error) {
+	// Get assignments with optional filtering
+	assignments, err := s.choreAssignments.ListFiltered(ctx, userID, status)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
 	}
-	defer cursor.Close(ctx)
-
-	var assignments []models.ChoreAssignment
-	if err := cursor.All(ctx, &assignments); err != nil {
-		return nil, fmt.Errorf("failed to decode assignments: %w", err)
-	}
 
 	// Get chore and user details
-	choreMap := make(map[primitive.ObjectID]string)
-	userMap := make(map[primitive.ObjectID]string)
+	choreMap := make(map[string]string)
+	userMap := make(map[string]string)
 
 	for _, assign := range assignments {
 		// Get chore name
 		if _, exists := choreMap[assign.ChoreID]; !exists {
-			var chore models.Chore
-			err := s.db.Collection("chores").FindOne(ctx, bson.M{"_id": assign.ChoreID}).Decode(&chore)
-			if err == nil {
+			chore, err := s.chores.GetByID(ctx, assign.ChoreID)
+			if err == nil && chore != nil {
 				choreMap[assign.ChoreID] = chore.Name
 			}
 		}
 
 		// Get user email
 		if _, exists := userMap[assign.AssigneeUserID]; !exists {
-			var user models.User
-			err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": assign.AssigneeUserID}).Decode(&user)
-			if err == nil {
+			user, err := s.users.GetByID(ctx, assign.AssigneeUserID)
+			if err == nil && user != nil {
 				userMap[assign.AssigneeUserID] = user.Email
 			}
 		}
@@ -251,7 +228,7 @@ func (s *ExportService) ExportChoresCSV(ctx context.Context, userID *primitive.O
 		}
 
 		row := []string{
-			assign.ID.Hex(),
+			assign.ID,
 			choreName,
 			userEmail,
 			assign.DueDate.Format("2006-01-02"),
@@ -273,62 +250,47 @@ func (s *ExportService) ExportChoresCSV(ctx context.Context, userID *primitive.O
 }
 
 // ExportConsumptionsCSV exports consumption history
-func (s *ExportService) ExportConsumptionsCSV(ctx context.Context, userID *primitive.ObjectID, from *time.Time, to *time.Time) ([]byte, error) {
-	// Build filter
-	filter := bson.M{}
-	if userID != nil {
-		filter["user_id"] = *userID
+func (s *ExportService) ExportConsumptionsCSV(ctx context.Context, subjectID *string, from *time.Time, to *time.Time) ([]byte, error) {
+	// Get consumptions with optional filtering
+	// Note: subjectID filter applies to user type by default
+	var subjectType *string
+	if subjectID != nil {
+		st := "user"
+		subjectType = &st
 	}
-	if from != nil || to != nil {
-		dateFilter := bson.M{}
-		if from != nil {
-			dateFilter["$gte"] = *from
-		}
-		if to != nil {
-			dateFilter["$lte"] = *to
-		}
-		filter["recorded_at"] = dateFilter
-	}
-
-	// Get consumptions
-	cursor, err := s.db.Collection("consumptions").Find(ctx, filter)
+	consumptions, err := s.consumptions.ListFiltered(ctx, subjectType, subjectID, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
 	}
-	defer cursor.Close(ctx)
 
-	var consumptions []models.Consumption
-	if err := cursor.All(ctx, &consumptions); err != nil {
-		return nil, fmt.Errorf("failed to decode consumptions: %w", err)
-	}
-
-	// Get bill and user details
-	billMap := make(map[primitive.ObjectID]models.Bill)
-	userMap := make(map[primitive.ObjectID]string)
+	// Get bill and subject details
+	billMap := make(map[string]billInfo)
+	subjectMap := make(map[string]string)
 
 	for _, cons := range consumptions {
 		// Get bill
 		if _, exists := billMap[cons.BillID]; !exists {
-			var bill models.Bill
-			err := s.db.Collection("bills").FindOne(ctx, bson.M{"_id": cons.BillID}).Decode(&bill)
-			if err == nil {
-				billMap[cons.BillID] = bill
+			bill, err := s.bills.GetByID(ctx, cons.BillID)
+			if err == nil && bill != nil {
+				billMap[cons.BillID] = billInfo{
+					Type:        bill.Type,
+					PeriodStart: bill.PeriodStart,
+					PeriodEnd:   bill.PeriodEnd,
+				}
 			}
 		}
 
 		// Get subject (user or group) name
-		if _, exists := userMap[cons.SubjectID]; !exists {
+		if _, exists := subjectMap[cons.SubjectID]; !exists {
 			if cons.SubjectType == "group" {
-				var group models.Group
-				err := s.db.Collection("groups").FindOne(ctx, bson.M{"_id": cons.SubjectID}).Decode(&group)
-				if err == nil {
-					userMap[cons.SubjectID] = group.Name
+				group, err := s.groups.GetByID(ctx, cons.SubjectID)
+				if err == nil && group != nil {
+					subjectMap[cons.SubjectID] = group.Name
 				}
 			} else {
-				var user models.User
-				err := s.db.Collection("users").FindOne(ctx, bson.M{"_id": cons.SubjectID}).Decode(&user)
-				if err == nil {
-					userMap[cons.SubjectID] = user.Email
+				user, err := s.users.GetByID(ctx, cons.SubjectID)
+				if err == nil && user != nil {
+					subjectMap[cons.SubjectID] = user.Email
 				}
 			}
 		}
@@ -347,20 +309,20 @@ func (s *ExportService) ExportConsumptionsCSV(ctx context.Context, userID *primi
 	// Write consumption rows
 	for _, cons := range consumptions {
 		bill := billMap[cons.BillID]
-		subjectName := userMap[cons.SubjectID]
+		subjectName := subjectMap[cons.SubjectID]
 
-		units, _ := utils.DecimalToFloat(cons.Units)
+		units := utils.DecimalStringToFloat(cons.Units)
 
 		meterValue := ""
 		if cons.MeterValue != nil {
-			mv, _ := utils.DecimalToFloat(*cons.MeterValue)
+			mv := utils.DecimalStringToFloat(*cons.MeterValue)
 			meterValue = strconv.FormatFloat(mv, 'f', 3, 64)
 		}
 
 		period := fmt.Sprintf("%s to %s", bill.PeriodStart.Format("2006-01-02"), bill.PeriodEnd.Format("2006-01-02"))
 
 		row := []string{
-			cons.ID.Hex(),
+			cons.ID,
 			bill.Type,
 			period,
 			subjectName,
@@ -381,4 +343,10 @@ func (s *ExportService) ExportConsumptionsCSV(ctx context.Context, userID *primi
 	}
 
 	return buf.Bytes(), nil
+}
+
+type billInfo struct {
+	Type        string
+	PeriodStart time.Time
+	PeriodEnd   time.Time
 }
