@@ -469,7 +469,12 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 
 	// Clear existing data if requested (for overwrite mode)
 	if clearExisting {
-		// Order matters: delete in reverse dependency order
+		// Disable foreign key checks to allow clearing in any order
+		if _, err := tx.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("disabling foreign keys: %v", err))
+		}
+
+		// Clear all tables
 		tables := []string{
 			"supply_contributions", "supply_items", "supply_settings",
 			"notifications", "notification_preferences", "web_push_subscriptions",
@@ -478,15 +483,20 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 			"payments", "allocations", "consumptions", "bills",
 			"recurring_bill_allocations", "recurring_bill_templates",
 			"passkey_credentials", "sessions", "password_reset_tokens",
-			"audit_logs", "approval_requests",
-			"users", "groups",
-			"migration_metadata",
+			"audit_logs", "approval_requests", "user_roles",
+			"users", "groups", "roles", "permissions",
+			"migration_metadata", "app_settings",
 		}
 		for _, table := range tables {
 			if _, err := tx.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
 				// Ignore errors for tables that might not exist
 				result.Warnings = append(result.Warnings, fmt.Sprintf("clearing %s: %v", table, err))
 			}
+		}
+
+		// Re-enable foreign key checks
+		if _, err := tx.ExecContext(ctx, "PRAGMA foreign_keys=ON"); err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("re-enabling foreign keys: %v", err))
 		}
 	}
 
