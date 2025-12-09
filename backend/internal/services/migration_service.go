@@ -9,6 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/sainaif/holy-home/internal/config"
 	"github.com/sainaif/holy-home/internal/repository"
+	"github.com/sainaif/holy-home/internal/utils"
 )
 
 // MigrationService handles MongoDB to SQLite migration
@@ -1118,14 +1119,22 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 	}
 
 	// 2. Users (depends on groups)
+	// Generate a default password hash for all migrated users
+	// Default password: ChangeME123!$ - users must change on first login
+	defaultPasswordHash, err := utils.HashPassword("ChangeME123!$")
+	if err != nil {
+		result.Errors = append(result.Errors, fmt.Sprintf("failed to hash default password: %v", err))
+		return result, err
+	}
+
 	for _, u := range mongoBackup.Users {
 		groupID := u.GetGroupID()
 
 		_, err := tx.ExecContext(ctx, `
 			INSERT OR REPLACE INTO users (id, email, username, name, password_hash, role, group_id, is_active, must_change_password, totp_secret, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, u.GetID(), u.Email, u.Username, u.Name, u.PasswordHash, u.Role, groupID,
-			boolToInt(u.GetIsActive()), boolToInt(u.GetMustChangePassword()), u.TOTPSecret, u.GetCreatedAt().Format(time.RFC3339))
+		`, u.GetID(), u.Email, u.Username, u.Name, defaultPasswordHash, u.Role, groupID,
+			boolToInt(u.GetIsActive()), 1, u.TOTPSecret, u.GetCreatedAt().Format(time.RFC3339))
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("user %s: %v", u.Email, err))
 			continue
