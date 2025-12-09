@@ -46,8 +46,8 @@ func (s *PaymentService) RecordPayment(ctx context.Context, req RecordPaymentReq
 		return nil, fmt.Errorf("bill %s does not exist", req.BillID)
 	}
 
-	if bill.Status != "posted" {
-		return nil, fmt.Errorf("can only record payments for posted bills (current status: %s)", bill.Status)
+	if bill.Status != "posted" && bill.Status != "closed" {
+		return nil, fmt.Errorf("can only record payments for posted or closed bills (current status: %s)", bill.Status)
 	}
 
 	// Create payment record
