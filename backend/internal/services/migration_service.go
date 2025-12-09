@@ -553,25 +553,25 @@ func (lp *mongoLoanPayment) GetPaidAt() time.Time {
 }
 
 type mongoChore struct {
-	ID                      mongoObjectID `json:"id"`
-	LegacyID                mongoObjectID `json:"_id"`
-	Name                    string        `json:"name"`
-	Description             string        `json:"description"`
-	Frequency               string        `json:"frequency"`
-	CustomInterval          int           `json:"customInterval"`
-	LegacyCustomInterval    int           `json:"custom_interval"`
-	Difficulty              int           `json:"difficulty"`
-	Priority                int           `json:"priority"`
-	AssignmentMode          string        `json:"assignmentMode"`
-	LegacyAssignmentMode    string        `json:"assignment_mode"`
-	NotificationsEnabled    bool          `json:"notificationsEnabled"`
-	LegacyNotificationsOn   bool          `json:"notifications_enabled"`
-	ReminderHours           int           `json:"reminderHours"`
-	LegacyReminderHours     int           `json:"reminder_hours"`
-	IsActive                bool          `json:"isActive"`
-	LegacyIsActive          bool          `json:"is_active"`
-	CreatedAt               flexibleTime  `json:"createdAt"`
-	LegacyCreatedAt         flexibleTime  `json:"created_at"`
+	ID                    mongoObjectID `json:"id"`
+	LegacyID              mongoObjectID `json:"_id"`
+	Name                  string        `json:"name"`
+	Description           string        `json:"description"`
+	Frequency             string        `json:"frequency"`
+	CustomInterval        int           `json:"customInterval"`
+	LegacyCustomInterval  int           `json:"custom_interval"`
+	Difficulty            int           `json:"difficulty"`
+	Priority              int           `json:"priority"`
+	AssignmentMode        string        `json:"assignmentMode"`
+	LegacyAssignmentMode  string        `json:"assignment_mode"`
+	NotificationsEnabled  bool          `json:"notificationsEnabled"`
+	LegacyNotificationsOn bool          `json:"notifications_enabled"`
+	ReminderHours         int           `json:"reminderHours"`
+	LegacyReminderHours   int           `json:"reminder_hours"`
+	IsActive              bool          `json:"isActive"`
+	LegacyIsActive        bool          `json:"is_active"`
+	CreatedAt             flexibleTime  `json:"createdAt"`
+	LegacyCreatedAt       flexibleTime  `json:"created_at"`
 }
 
 func (ch *mongoChore) GetID() string {
@@ -612,20 +612,20 @@ func (ch *mongoChore) GetCreatedAt() time.Time {
 }
 
 type mongoChoreAssignment struct {
-	ID                 mongoObjectID `json:"id"`
-	LegacyID           mongoObjectID `json:"_id"`
-	ChoreID            mongoObjectID `json:"choreId"`
-	LegacyChoreID      mongoObjectID `json:"chore_id"`
-	AssigneeUserID     mongoObjectID `json:"assigneeUserId"`
-	LegacyAssigneeUID  mongoObjectID `json:"assignee_user_id"`
-	DueDate            flexibleTime  `json:"dueDate"`
-	LegacyDueDate      flexibleTime  `json:"due_date"`
-	Status             string        `json:"status"`
-	CompletedAt        *flexibleTime `json:"completedAt"`
-	LegacyCompletedAt  *flexibleTime `json:"completed_at"`
-	Points             int           `json:"points"`
-	IsOnTime           bool          `json:"isOnTime"`
-	LegacyIsOnTime     bool          `json:"is_on_time"`
+	ID                mongoObjectID `json:"id"`
+	LegacyID          mongoObjectID `json:"_id"`
+	ChoreID           mongoObjectID `json:"choreId"`
+	LegacyChoreID     mongoObjectID `json:"chore_id"`
+	AssigneeUserID    mongoObjectID `json:"assigneeUserId"`
+	LegacyAssigneeUID mongoObjectID `json:"assignee_user_id"`
+	DueDate           flexibleTime  `json:"dueDate"`
+	LegacyDueDate     flexibleTime  `json:"due_date"`
+	Status            string        `json:"status"`
+	CompletedAt       *flexibleTime `json:"completedAt"`
+	LegacyCompletedAt *flexibleTime `json:"completed_at"`
+	Points            int           `json:"points"`
+	IsOnTime          bool          `json:"isOnTime"`
+	LegacyIsOnTime    bool          `json:"is_on_time"`
 }
 
 func (ca *mongoChoreAssignment) GetID() string {
@@ -675,21 +675,21 @@ type mongoChoreSettings struct {
 }
 
 type mongoNotification struct {
-	ID                  mongoObjectID  `json:"id"`
-	LegacyID            mongoObjectID  `json:"_id"`
-	Channel             string         `json:"channel"`
-	TemplateID          string         `json:"templateId"`
-	LegacyTemplateID    string         `json:"template_id"`
-	ScheduledFor        flexibleTime   `json:"scheduledFor"`
-	LegacyScheduledFor  flexibleTime   `json:"scheduled_for"`
-	SentAt              *flexibleTime  `json:"sentAt"`
-	LegacySentAt        *flexibleTime  `json:"sent_at"`
-	Status              string         `json:"status"`
-	Read                bool           `json:"read"`
-	UserID              *mongoObjectID `json:"userId"`
-	LegacyUserID        *mongoObjectID `json:"user_id"`
-	Title               string         `json:"title"`
-	Body                string         `json:"body"`
+	ID                 mongoObjectID  `json:"id"`
+	LegacyID           mongoObjectID  `json:"_id"`
+	Channel            string         `json:"channel"`
+	TemplateID         string         `json:"templateId"`
+	LegacyTemplateID   string         `json:"template_id"`
+	ScheduledFor       flexibleTime   `json:"scheduledFor"`
+	LegacyScheduledFor flexibleTime   `json:"scheduled_for"`
+	SentAt             *flexibleTime  `json:"sentAt"`
+	LegacySentAt       *flexibleTime  `json:"sent_at"`
+	Status             string         `json:"status"`
+	Read               bool           `json:"read"`
+	UserID             *mongoObjectID `json:"userId"`
+	LegacyUserID       *mongoObjectID `json:"user_id"`
+	Title              string         `json:"title"`
+	Body               string         `json:"body"`
 }
 
 func (n *mongoNotification) GetID() string {
