@@ -2728,11 +2728,11 @@ classDiagram
         +ObjectID group_id
         +bool is_active
         +bool must_change_password
-        +array passkey_credentials
-        +Login(email, password) bool
-        +ChangePassword(oldPass, newPass) error
+        +Credential[] passkey_credentials
+        +Login(email: string, password: string) bool
+        +ChangePassword(oldPass: string, newPass: string) void
         +Enable2FA() string
-        +ValidateTotp(code) bool
+        +ValidateTotp(code: string) bool
     }
 
     class Group {
@@ -2747,9 +2747,9 @@ classDiagram
         +string name
         +string display_name
         +bool is_system
-        +[]string permissions
-        +HasPermission(perm) bool
-        +AddPermission(perm) error
+        +string[] permissions
+        +HasPermission(perm: string) bool
+        +AddPermission(perm: string) void
     }
 
     class Permission {
@@ -2772,10 +2772,16 @@ classDiagram
         +string status
         +Date due_date
         +ObjectID created_by
-        +Post() error
-        +Close() error
-        +Reopen() error
-        +AllocateCosts() error
+        +Create() void
+        +Update(data: BillData) void
+        +DeleteDraft() void
+        +Post() void
+        +Close() void
+        +Reopen() void
+        +AddConsumption(consumption: Consumption) void
+        +AddPayment(payment: Payment) void
+        +AllocateCosts() void
+        +CalculatePricePerUnit() Decimal128
     }
 
     class BillAllocation {
@@ -2784,7 +2790,8 @@ classDiagram
         +ObjectID user_id
         +float allocated_units
         +Decimal128 allocated_amount_pln
-        +Calculate() error
+        +Calculate(bill: Bill) void
+        +Save() void
     }
 
     class Consumption {
@@ -2796,7 +2803,9 @@ classDiagram
         +Date recorded_at
         +string source
         +bool is_valid
-        +MarkInvalid() error
+        +Record() void
+        +UpdateMeter(value: float) void
+        +MarkInvalid() void
     }
 
     class Payment {
@@ -2807,6 +2816,8 @@ classDiagram
         +Date paid_at
         +string method
         +string reference
+        +Record() void
+        +Validate() bool
     }
 
     %% Skanowanie faktur (OCR + AI)
@@ -2846,8 +2857,8 @@ classDiagram
         +string status
         +string note
         +Date due_date
-        +AddPayment(amount) error
-        +Settle() error
+        +AddPayment(amount) void
+        +Settle() void
     }
 
     class LoanPayment {
@@ -2871,7 +2882,7 @@ classDiagram
         +string assignment_mode
         +bool is_active
         +Assign(user_id) ChoreAssignment
-        +Rotate() error
+        +Rotate() void
     }
 
     class ChoreAssignment {
@@ -2883,8 +2894,8 @@ classDiagram
         +Date completed_at
         +int points
         +bool is_on_time
-        +MarkComplete() error
-        +Swap(other_user_id) error
+        +MarkComplete() void
+        +Swap(other_user_id) void
     }
 
     %% Zakupy
@@ -2898,8 +2909,8 @@ classDiagram
         +int priority
         +Date last_restocked_at
         +bool needs_refund
-        +Restock(quantity, cost) error
-        +Consume(quantity) error
+        +Restock(quantity, cost) void
+        +Consume(quantity) void
     }
 
     class SupplySettings {
@@ -2908,7 +2919,7 @@ classDiagram
         +int contribution_day
         +Decimal128 current_budget_pln
         +Date last_contribution_at
-        +AdjustBudget(amount) error
+        +AdjustBudget(amount) void
     }
 
     class SupplyItemHistory {
@@ -2931,7 +2942,7 @@ classDiagram
         +Date created_at
         +Date expires_at
         +Refresh() string
-        +Revoke() error
+        +Revoke() void
     }
 
     class AuditLog {
@@ -2943,7 +2954,7 @@ classDiagram
         +JSON details
         +string ip_address
         +string status
-        +Log(action, resource) error
+        +Log(action, resource) void
     }
 
     %% Relacje - Użytkownicy
