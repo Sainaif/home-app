@@ -53,6 +53,7 @@ RUN apk add --no-cache \
     sqlite \
     sqlite-libs \
     su-exec \
+    wget \
     && addgroup -S app \
     && adduser -S app -G app \
     && mkdir -p /data \
