@@ -432,6 +432,9 @@ onMounted(async () => {
   if (authStore.isAuthenticated) {
     refreshPermissionsIfNeeded()
 
+    // Fetch notification preferences (only when authenticated)
+    await notificationStore.fetchPreferences()
+
     // Request browser notification permission
     await requestNotificationPermission()
     await notificationStore.subscribe()

@@ -102,7 +102,8 @@ export const useNotificationStore = defineStore('notification', () => {
     }
   }
 
-  fetchPreferences();
+  // Note: fetchPreferences() is NOT called automatically on store init.
+  // It should be called after successful login to avoid 401 errors on login page.
 
   return {
     history,
