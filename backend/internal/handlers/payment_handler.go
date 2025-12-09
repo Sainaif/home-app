@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
@@ -72,6 +73,7 @@ func (h *PaymentHandler) RecordPayment(c *fiber.Ctx) error {
 	}, userID)
 
 	if err != nil {
+		log.Printf("Payment error for bill %s, user %s: %v", req.BillID, userID, err)
 		h.auditService.LogAction(c.Context(), userID, userEmail, userEmail, "record_payment", "payment", nil,
 			map[string]interface{}{"bill_id": req.BillID, "amount": amountFloat},
 			c.IP(), c.Get("User-Agent"), "failure")

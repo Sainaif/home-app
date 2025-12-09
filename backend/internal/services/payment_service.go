@@ -2,7 +2,7 @@ package services
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,11 +40,14 @@ func (s *PaymentService) RecordPayment(ctx context.Context, req RecordPaymentReq
 	// Verify bill exists and is posted
 	bill, err := s.bills.GetByID(ctx, req.BillID)
 	if err != nil {
-		return nil, errors.New("bill not found")
+		return nil, fmt.Errorf("bill not found: %w", err)
+	}
+	if bill == nil {
+		return nil, fmt.Errorf("bill %s does not exist", req.BillID)
 	}
 
 	if bill.Status != "posted" {
-		return nil, errors.New("can only record payments for posted bills")
+		return nil, fmt.Errorf("can only record payments for posted bills (current status: %s)", bill.Status)
 	}
 
 	// Create payment record
@@ -58,7 +61,7 @@ func (s *PaymentService) RecordPayment(ctx context.Context, req RecordPaymentReq
 	}
 
 	if err := s.payments.Create(ctx, payment); err != nil {
-		return nil, errors.New("failed to record payment")
+		return nil, fmt.Errorf("failed to record payment: %w", err)
 	}
 
 	// Check if this payment completes a recurring bill and generate next bill if needed
