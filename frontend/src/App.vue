@@ -432,6 +432,9 @@ onMounted(async () => {
   if (authStore.isAuthenticated) {
     refreshPermissionsIfNeeded()
 
+    // Fetch auth config (needed for VAPID key on page refresh)
+    await authStore.fetchAuthConfig()
+
     // Fetch notification preferences (only when authenticated)
     await notificationStore.fetchPreferences()
 
