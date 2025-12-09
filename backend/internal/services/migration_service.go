@@ -1059,6 +1059,18 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 		RecordsMigrated: make(map[string]int),
 	}
 
+	// Disable foreign key checks BEFORE starting the transaction
+	// In SQLite, PRAGMA foreign_keys must be set outside of a transaction to take effect
+	if _, err := s.db.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("disabling foreign keys: %v", err))
+	}
+	// Ensure we re-enable FK checks when done, regardless of success/failure
+	defer func() {
+		if _, err := s.db.ExecContext(ctx, "PRAGMA foreign_keys=ON"); err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("re-enabling foreign keys: %v", err))
+		}
+	}()
+
 	// Start transaction
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -1066,12 +1078,6 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 		return result, err
 	}
 	defer tx.Rollback()
-
-	// Disable foreign key checks for the entire import to allow importing in any order
-	// and to handle references to records that may have been deleted or modified
-	if _, err := tx.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
-		result.Warnings = append(result.Warnings, fmt.Sprintf("disabling foreign keys: %v", err))
-	}
 
 	// Clear existing data if requested (for overwrite mode)
 	if clearExisting {
@@ -1421,11 +1427,6 @@ func (s *MigrationService) ImportFromJSON(ctx context.Context, jsonData []byte, 
 	`, mongoBackup.Version, now, mongoBackup.ExportedAt.Format(time.RFC3339), totalRecords)
 	if err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to record migration metadata: %v", err))
-	}
-
-	// Re-enable foreign key checks before commit
-	if _, err := tx.ExecContext(ctx, "PRAGMA foreign_keys=ON"); err != nil {
-		result.Warnings = append(result.Warnings, fmt.Sprintf("re-enabling foreign keys: %v", err))
 	}
 
 	// Commit transaction
