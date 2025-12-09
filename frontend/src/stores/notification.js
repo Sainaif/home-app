@@ -84,13 +84,33 @@ export const useNotificationStore = defineStore('notification', () => {
       return;
     }
 
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: vapidPublicKey,
-    });
+    try {
+      const registration = await navigator.serviceWorker.ready;
 
-    await apiClient.post('/web-push/subscribe', subscription);
+      // Check for existing subscription first
+      let subscription = await registration.pushManager.getSubscription();
+
+      // If no subscription exists, create one
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: vapidPublicKey,
+        });
+      }
+
+      // Transform PushSubscription to match backend model
+      // Browser returns { endpoint, expirationTime, keys: { p256dh, auth } }
+      // Backend expects { endpoint, expirationTime, p256dh, auth }
+      const subscriptionJson = subscription.toJSON();
+      await apiClient.post('/web-push/subscribe', {
+        endpoint: subscriptionJson.endpoint,
+        expirationTime: subscriptionJson.expirationTime,
+        p256dh: subscriptionJson.keys.p256dh,
+        auth: subscriptionJson.keys.auth,
+      });
+    } catch (error) {
+      console.error('Failed to subscribe to push notifications:', error);
+    }
   }
 
   async function fetchPreferences() {

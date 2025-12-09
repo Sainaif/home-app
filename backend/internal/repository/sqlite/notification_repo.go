@@ -274,13 +274,18 @@ func NewWebPushSubscriptionRepository(db *sqlx.DB) *WebPushSubscriptionRepositor
 	return &WebPushSubscriptionRepository{db: db}
 }
 
-// Create creates a new web push subscription
+// Create creates a new web push subscription (or updates if endpoint exists)
 func (r *WebPushSubscriptionRepository) Create(ctx context.Context, sub *models.WebPushSubscription) error {
 	id := uuid.New().String()
 
 	query := `
 		INSERT INTO web_push_subscriptions (id, user_id, endpoint, expiration_time, p256dh, auth)
 		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(endpoint) DO UPDATE SET
+			user_id = excluded.user_id,
+			expiration_time = excluded.expiration_time,
+			p256dh = excluded.p256dh,
+			auth = excluded.auth
 	`
 
 	_, err := r.db.ExecContext(ctx, query, id, sub.UserID, sub.Endpoint, sub.ExpirationTime, sub.P256dh, sub.Auth)
