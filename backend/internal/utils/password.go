@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -40,7 +41,22 @@ func HashPassword(password string) (string, error) {
 }
 
 // VerifyPassword checks if password matches the hash
+// Supports both Argon2id (new) and bcrypt (legacy/migrated) hashes
 func VerifyPassword(password, encodedHash string) (bool, error) {
+	// Check for bcrypt hash (legacy format from MongoDB migration)
+	// bcrypt hashes start with $2a$, $2b$, or $2y$
+	if strings.HasPrefix(encodedHash, "$2a$") || strings.HasPrefix(encodedHash, "$2b$") || strings.HasPrefix(encodedHash, "$2y$") {
+		err := bcrypt.CompareHashAndPassword([]byte(encodedHash), []byte(password))
+		if err == bcrypt.ErrMismatchedHashAndPassword {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+
+	// Argon2id hash format
 	parts := strings.Split(encodedHash, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" {
 		return false, fmt.Errorf("invalid hash format")
