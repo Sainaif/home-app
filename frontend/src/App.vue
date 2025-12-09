@@ -211,101 +211,101 @@ function translateEvent(eventType, data) {
   const translations = {
     'bill.created': {
       type: 'bill',
-      title: t('events.billCreated.title'),
+      title: t('events.billCreatedTitle'),
       message: t('events.billCreatedMessage', { createdBy: data.createdBy, type: billType, amount: data.amount }),
       resourceId: data.billId,
       resourceType: 'bill'
     },
     'bill.posted': {
       type: 'bill',
-      title: t('events.billPosted.title'),
+      title: t('events.billPostedTitle'),
       message: t('events.billPostedMessage', { type: billType, periodEnd: data.periodEnd, amount: formatAmount(data.amount) }),
       resourceId: data.billId,
       resourceType: 'bill'
     },
     'consumption.created': {
       type: 'bill',
-      title: t('events.consumptionCreated.title'),
+      title: t('events.consumptionCreatedTitle'),
       message: t('events.consumptionCreatedMessage', { createdBy: data.createdBy, billType: translateBillType(data.billType), meterValue: data.meterValue }),
       resourceId: data.billId,
       resourceType: 'bill'
     },
     'chore.updated': {
       type: 'chore',
-      title: data.action === 'created' ? t('events.choreCreated.title') : t('events.choreUpdated.title'),
+      title: data.action === 'created' ? t('events.choreCreatedTitle') : t('events.choreUpdatedTitle'),
       message: data.name,
       resourceId: data.choreId,
       resourceType: 'chore'
     },
     'chore.assigned': {
       type: 'chore',
-      title: t('events.choreAssigned.title'),
+      title: t('events.choreAssignedTitle'),
       message: t('events.choreAssignedMessage', { choreName: data.choreName, dueDate: formatDueDate(data.dueDate) }),
       resourceId: data.choreId,
       resourceType: 'chore'
     },
     'supply.item.added': {
       type: 'supply',
-      title: t('events.supplyItemAdded.title'),
+      title: t('events.supplyItemAddedTitle'),
       message: t('events.supplyItemAddedMessage', { addedBy: data.addedBy, name: data.name, category: data.category }),
       resourceId: data.itemId,
       resourceType: 'supply'
     },
     'loan.created': {
       type: 'loan',
-      title: t('events.loanCreated.title'),
+      title: t('events.loanCreatedTitle'),
       message: data.message || t('events.loanCreatedMessage'),
       resourceId: data.loanId,
       resourceType: 'loan'
     },
     'loan.payment.created': {
       type: 'loan',
-      title: t('events.loanPaymentCreated.title'),
+      title: t('events.loanPaymentCreatedTitle'),
       message: data.message || t('events.loanPaymentCreatedMessage'),
       resourceId: data.loanId,
       resourceType: 'loan'
     },
     'loan.deleted': {
       type: 'loan',
-      title: t('events.loanDeleted.title'),
+      title: t('events.loanDeletedTitle'),
       message: data.message || t('events.loanDeletedMessage'),
       resourceType: 'loan'
     },
     'supply.item.bought': {
       type: 'supply',
-      title: t('events.supplyItemBought.title'),
+      title: t('events.supplyItemBoughtTitle'),
       message: t('events.supplyItemBoughtMessage', { boughtBy: data.boughtBy, name: data.name }),
       resourceId: data.itemId,
       resourceType: 'supply'
     },
     'supply.budget.contributed': {
       type: 'supply',
-      title: t('events.supplyBudgetContributed.title'),
+      title: t('events.supplyBudgetContributedTitle'),
       message: t('events.supplyBudgetContributedMessage', { contributedBy: data.contributedBy, amount: data.amount }),
       resourceType: 'supply'
     },
     'supply.budget.low': {
       type: 'supply',
-      title: t('events.supplyBudgetLow.title'),
+      title: t('events.supplyBudgetLowTitle'),
       message: t('events.supplyBudgetLowMessage', { currentBudget: data.currentBudget }),
       resourceType: 'supply'
     },
     'payment.created': {
       type: 'bill',
-      title: t('events.paymentCreated.title'),
+      title: t('events.paymentCreatedTitle'),
       message: data.message || t('events.paymentCreatedMessage'),
       resourceId: data.billId,
       resourceType: 'bill'
     },
     'balance.updated': {
       type: 'loan',
-      title: t('events.balanceUpdated.title'),
+      title: t('events.balanceUpdatedTitle'),
       message: data.message || t('events.balanceUpdatedMessage'),
       resourceType: 'loan'
     },
     'permissions.updated': {
       type: 'system',
-      title: t('events.permissions.title'),
+      title: t('events.permissionsTitle'),
       message: data.message || t('events.permissionsUpdatedMessage'),
       skipNotification: true // Don't show this as a notification
     }
@@ -313,7 +313,7 @@ function translateEvent(eventType, data) {
 
   return translations[eventType] || {
     type: 'info',
-    title: t('events.unknown.title'),
+    title: t('events.unknownTitle'),
     message: eventType
   }
 }
