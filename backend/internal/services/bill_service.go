@@ -132,6 +132,8 @@ func (s *BillService) CreateBill(ctx context.Context, req CreateBillRequest, cre
 					ScheduledFor: now,
 					SentAt:       &now,
 					Status:       "sent",
+					Title:        "Nowy rachunek",
+					Body:         fmt.Sprintf("Dodano nowy rachunek: %s", bill.Type),
 				}
 				s.notificationService.CreateNotification(ctx, notification)
 			}

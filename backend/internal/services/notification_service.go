@@ -84,6 +84,7 @@ func (s *NotificationService) sendPushNotification(sub *models.WebPushSubscripti
 	notificationJSON, _ := json.Marshal(notification)
 
 	resp, err := webpush.SendNotification(notificationJSON, &subscription, &webpush.Options{
+		Subscriber:      "mailto:" + s.cfg.Admin.Email,
 		VAPIDPublicKey:  s.cfg.VAPID.PublicKey,
 		VAPIDPrivateKey: vapidPrivateKey,
 	})
