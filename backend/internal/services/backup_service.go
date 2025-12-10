@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/sainaif/holy-home/internal/models"
 	"github.com/sainaif/holy-home/internal/repository"
+	"github.com/sainaif/holy-home/internal/utils"
 )
 
 type BackupService struct {
@@ -65,11 +67,33 @@ func NewBackupService(
 	}
 }
 
+// BackupUser is a User struct with all fields exported for backup purposes
+// (models.User has json:"-" on PasswordHash and TOTPSecret)
+type BackupUser struct {
+	ID                 string    `json:"id"`
+	Email              string    `json:"email"`
+	Username           string    `json:"username,omitempty"`
+	Name               string    `json:"name"`
+	PasswordHash       string    `json:"passwordHash"`
+	Role               string    `json:"role"`
+	GroupID            *string   `json:"groupId,omitempty"`
+	IsActive           bool      `json:"isActive"`
+	MustChangePassword bool      `json:"mustChangePassword"`
+	TOTPSecret         string    `json:"totpSecret,omitempty"`
+	CreatedAt          time.Time `json:"createdAt"`
+}
+
+// ImportResult contains information about the import operation
+type ImportResult struct {
+	UsersWithResetPasswords []string `json:"usersWithResetPasswords"` // Email addresses of users who got default passwords
+	DefaultPassword         string   `json:"defaultPassword"`         // The default password assigned (only if there are users with reset passwords)
+}
+
 // BackupData represents a complete system backup
 type BackupData struct {
 	Version             string                      `json:"version"`
 	ExportedAt          time.Time                   `json:"exportedAt"`
-	Users               []models.User               `json:"users"`
+	Users               []BackupUser                `json:"users"`
 	Groups              []models.Group              `json:"groups"`
 	Bills               []models.Bill               `json:"bills"`
 	Consumptions        []models.Consumption        `json:"consumptions"`
@@ -92,12 +116,27 @@ func (s *BackupService) ExportAll(ctx context.Context) (*BackupData, error) {
 		ExportedAt: time.Now(),
 	}
 
-	// Export users
+	// Export users (convert to BackupUser to include password hashes)
 	users, err := s.users.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch users: %w", err)
 	}
-	backup.Users = users
+	backup.Users = make([]BackupUser, len(users))
+	for i, u := range users {
+		backup.Users[i] = BackupUser{
+			ID:                 u.ID,
+			Email:              u.Email,
+			Username:           u.Username,
+			Name:               u.Name,
+			PasswordHash:       u.PasswordHash,
+			Role:               u.Role,
+			GroupID:            u.GroupID,
+			IsActive:           u.IsActive,
+			MustChangePassword: u.MustChangePassword,
+			TOTPSecret:         u.TOTPSecret,
+			CreatedAt:          u.CreatedAt,
+		}
+	}
 
 	// Export groups
 	groups, err := s.groups.List(ctx)
@@ -208,15 +247,23 @@ func (s *BackupService) ExportJSON(ctx context.Context) ([]byte, error) {
 
 // ImportJSON imports backup data from JSON string
 // WARNING: This is a destructive operation that replaces all existing data
-func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) error {
+// Returns ImportResult with information about users who got default passwords
+func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) (*ImportResult, error) {
 	var backup BackupData
 	if err := json.Unmarshal(jsonData, &backup); err != nil {
-		return fmt.Errorf("failed to unmarshal JSON backup: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal JSON backup: %w", err)
 	}
+
+	result := &ImportResult{
+		UsersWithResetPasswords: []string{},
+	}
+
+	// Default password for users with missing password hashes
+	const defaultPassword = "ChangeMe123!"
 
 	// Disable foreign key checks BEFORE starting transaction (PRAGMA must be outside transaction)
 	if _, err := s.db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
-		return fmt.Errorf("failed to disable foreign keys: %w", err)
+		return nil, fmt.Errorf("failed to disable foreign keys: %w", err)
 	}
 
 	// Start a transaction
@@ -224,7 +271,7 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) error {
 	if err != nil {
 		// Re-enable foreign keys before returning
 		s.db.ExecContext(ctx, "PRAGMA foreign_keys = ON")
-		return fmt.Errorf("failed to start transaction: %w", err)
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
 	}
 	defer func() {
 		tx.Rollback()
@@ -261,7 +308,7 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) error {
 
 	for _, table := range tablesToClear {
 		if _, err := tx.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
-			return fmt.Errorf("failed to clear table %s: %w", table, err)
+			return nil, fmt.Errorf("failed to clear table %s: %w", table, err)
 		}
 	}
 
@@ -271,11 +318,11 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) error {
 			`INSERT INTO groups (id, name, weight, created_at) VALUES (?, ?, ?, ?)`,
 			group.ID, group.Name, group.Weight, group.CreatedAt.UTC().Format(time.RFC3339))
 		if err != nil {
-			return fmt.Errorf("failed to import group %s: %w", group.ID, err)
+			return nil, fmt.Errorf("failed to import group %s: %w", group.ID, err)
 		}
 	}
 
-	// Import users
+	// Import users - handle empty password hashes
 	for _, user := range backup.Users {
 		var username, totpSecret, groupID *string
 		if user.Username != "" {
@@ -297,12 +344,25 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) error {
 			mustChange = 1
 		}
 
+		// Check if password hash is empty or invalid
+		passwordHash := user.PasswordHash
+		if strings.TrimSpace(passwordHash) == "" {
+			// Generate a default password hash for users with missing passwords
+			hash, err := utils.HashPassword(defaultPassword)
+			if err != nil {
+				return nil, fmt.Errorf("failed to hash default password for user %s: %w", user.Email, err)
+			}
+			passwordHash = hash
+			mustChange = 1 // Force password change on first login
+			result.UsersWithResetPasswords = append(result.UsersWithResetPasswords, user.Email)
+		}
+
 		_, err := tx.ExecContext(ctx,
 			`INSERT INTO users (id, email, username, name, password_hash, role, group_id, is_active, must_change_password, totp_secret, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			user.ID, user.Email, username, user.Name, user.PasswordHash, user.Role, groupID, isActive, mustChange, totpSecret, user.CreatedAt.UTC().Format(time.RFC3339))
+			user.ID, user.Email, username, user.Name, passwordHash, user.Role, groupID, isActive, mustChange, totpSecret, user.CreatedAt.UTC().Format(time.RFC3339))
 		if err != nil {
-			return fmt.Errorf("failed to import user %s: %w", user.ID, err)
+			return nil, fmt.Errorf("failed to import user %s: %w", user.ID, err)
 		}
 	}
 
@@ -331,7 +391,7 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) error {
 			reopenedAt, bill.ReopenReason, bill.ReopenedBy, bill.RecurringTemplateID,
 			bill.CreatedAt.UTC().Format(time.RFC3339))
 		if err != nil {
-			return fmt.Errorf("failed to import bill %s: %w", bill.ID, err)
+			return nil, fmt.Errorf("failed to import bill %s: %w", bill.ID, err)
 		}
 	}
 
@@ -343,7 +403,7 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) error {
 			consumption.ID, consumption.BillID, consumption.SubjectType, consumption.SubjectID,
 			consumption.Units, consumption.MeterValue, consumption.RecordedAt.UTC().Format(time.RFC3339), consumption.Source)
 		if err != nil {
-			return fmt.Errorf("failed to import consumption %s: %w", consumption.ID, err)
+			return nil, fmt.Errorf("failed to import consumption %s: %w", consumption.ID, err)
 		}
 	}
 
@@ -355,7 +415,7 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) error {
 			payment.ID, payment.BillID, payment.PayerUserID, payment.AmountPLN,
 			payment.PaidAt.UTC().Format(time.RFC3339), payment.Method, payment.Reference)
 		if err != nil {
-			return fmt.Errorf("failed to import payment %s: %w", payment.ID, err)
+			return nil, fmt.Errorf("failed to import payment %s: %w", payment.ID, err)
 		}
 	}
 
@@ -373,7 +433,7 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) error {
 			loan.ID, loan.LenderID, loan.BorrowerID, loan.AmountPLN, loan.Note, dueDate, loan.Status,
 			loan.CreatedAt.UTC().Format(time.RFC3339))
 		if err != nil {
-			return fmt.Errorf("failed to import loan %s: %w", loan.ID, err)
+			return nil, fmt.Errorf("failed to import loan %s: %w", loan.ID, err)
 		}
 	}
 
@@ -384,7 +444,7 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) error {
 			VALUES (?, ?, ?, ?, ?)`,
 			lp.ID, lp.LoanID, lp.AmountPLN, lp.PaidAt.UTC().Format(time.RFC3339), lp.Note)
 		if err != nil {
-			return fmt.Errorf("failed to import loan payment %s: %w", lp.ID, err)
+			return nil, fmt.Errorf("failed to import loan payment %s: %w", lp.ID, err)
 		}
 	}
 
@@ -406,7 +466,7 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) error {
 			chore.Difficulty, chore.Priority, chore.AssignmentMode, notificationsEnabled,
 			chore.ReminderHours, isActive, chore.CreatedAt.UTC().Format(time.RFC3339))
 		if err != nil {
-			return fmt.Errorf("failed to import chore %s: %w", chore.ID, err)
+			return nil, fmt.Errorf("failed to import chore %s: %w", chore.ID, err)
 		}
 	}
 
@@ -428,7 +488,7 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) error {
 			ca.ID, ca.ChoreID, ca.AssigneeUserID, ca.DueDate.UTC().Format(time.RFC3339),
 			ca.Status, completedAt, ca.Points, isOnTime)
 		if err != nil {
-			return fmt.Errorf("failed to import chore assignment %s: %w", ca.ID, err)
+			return nil, fmt.Errorf("failed to import chore assignment %s: %w", ca.ID, err)
 		}
 	}
 
@@ -450,7 +510,7 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) error {
 			cs.DefaultAssignmentMode, globalNotifications, cs.DefaultReminderHours,
 			pointsEnabled, cs.PointsMultiplier, cs.UpdatedAt.UTC().Format(time.RFC3339))
 		if err != nil {
-			return fmt.Errorf("failed to import chore settings: %w", err)
+			return nil, fmt.Errorf("failed to import chore settings: %w", err)
 		}
 	}
 
@@ -472,7 +532,7 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) error {
 			n.ID, n.Channel, n.TemplateID, n.ScheduledFor.UTC().Format(time.RFC3339),
 			sentAt, n.Status, read, n.UserID, n.Title, n.Body)
 		if err != nil {
-			return fmt.Errorf("failed to import notification %s: %w", n.ID, err)
+			return nil, fmt.Errorf("failed to import notification %s: %w", n.ID, err)
 		}
 	}
 
@@ -491,7 +551,7 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) error {
 			ss.LastContributionAt.UTC().Format(time.RFC3339), isActive,
 			ss.CreatedAt.UTC().Format(time.RFC3339), ss.UpdatedAt.UTC().Format(time.RFC3339))
 		if err != nil {
-			return fmt.Errorf("failed to import supply settings: %w", err)
+			return nil, fmt.Errorf("failed to import supply settings: %w", err)
 		}
 	}
 
@@ -520,7 +580,7 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) error {
 			item.Unit, item.Priority, item.AddedByUserID, item.AddedAt.UTC().Format(time.RFC3339),
 			lastRestockedAt, lastRestockedByUserID, lastRestockAmountPLN, needsRefund, item.Notes)
 		if err != nil {
-			return fmt.Errorf("failed to import supply item %s: %w", item.ID, err)
+			return nil, fmt.Errorf("failed to import supply item %s: %w", item.ID, err)
 		}
 	}
 
@@ -533,17 +593,22 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) error {
 			sc.PeriodEnd.UTC().Format(time.RFC3339), sc.Type, sc.Notes,
 			sc.CreatedAt.UTC().Format(time.RFC3339))
 		if err != nil {
-			return fmt.Errorf("failed to import supply contribution %s: %w", sc.ID, err)
+			return nil, fmt.Errorf("failed to import supply contribution %s: %w", sc.ID, err)
 		}
 	}
 
 	// Commit the transaction
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	// Re-enable foreign keys after successful commit (defer will also call this, but that's fine)
 	s.db.ExecContext(ctx, "PRAGMA foreign_keys = ON")
 
-	return nil
+	// Set default password in result only if there are users with reset passwords
+	if len(result.UsersWithResetPasswords) > 0 {
+		result.DefaultPassword = defaultPassword
+	}
+
+	return result, nil
 }

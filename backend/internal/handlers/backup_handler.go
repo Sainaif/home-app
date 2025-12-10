@@ -43,13 +43,23 @@ func (h *BackupHandler) ImportBackup(c *fiber.Ctx) error {
 	}
 
 	// Import the backup
-	if err := h.backupService.ImportJSON(c.Context(), jsonData); err != nil {
+	result, err := h.backupService.ImportJSON(c.Context(), jsonData)
+	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
 
-	return c.JSON(fiber.Map{
+	response := fiber.Map{
 		"message": "Backup imported successfully",
-	})
+	}
+
+	// Include password reset info if any users had their passwords reset
+	if len(result.UsersWithResetPasswords) > 0 {
+		response["warning"] = "Some users had missing password hashes and were assigned a default password"
+		response["defaultPassword"] = result.DefaultPassword
+		response["usersWithResetPasswords"] = result.UsersWithResetPasswords
+	}
+
+	return c.JSON(response)
 }
