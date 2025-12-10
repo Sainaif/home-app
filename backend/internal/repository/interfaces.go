@@ -75,6 +75,7 @@ type RecurringBillAllocationRepository interface {
 	GetByTemplateID(ctx context.Context, templateID string) ([]models.RecurringBillAllocation, error)
 	DeleteByTemplateID(ctx context.Context, templateID string) error
 	ReplaceForTemplate(ctx context.Context, templateID string, allocs []models.RecurringBillAllocation) error
+	List(ctx context.Context) ([]models.RecurringBillAllocation, error)
 }
 
 // ConsumptionRepository handles consumption/meter reading operations
@@ -95,6 +96,7 @@ type AllocationRepository interface {
 	Create(ctx context.Context, billID, subjectType, subjectID, allocatedPLN string) error
 	GetByBillID(ctx context.Context, billID string) ([]Allocation, error)
 	DeleteByBillID(ctx context.Context, billID string) error
+	List(ctx context.Context) ([]Allocation, error)
 }
 
 // Allocation represents a calculated cost allocation (not in models, stored only)

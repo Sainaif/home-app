@@ -14,21 +14,24 @@ import (
 )
 
 type BackupService struct {
-	db                  *sqlx.DB
-	users               repository.UserRepository
-	groups              repository.GroupRepository
-	bills               repository.BillRepository
-	consumptions        repository.ConsumptionRepository
-	payments            repository.PaymentRepository
-	loans               repository.LoanRepository
-	loanPayments        repository.LoanPaymentRepository
-	chores              repository.ChoreRepository
-	choreAssignments    repository.ChoreAssignmentRepository
-	choreSettings       repository.ChoreSettingsRepository
-	notifications       repository.NotificationRepository
-	supplySettings      repository.SupplySettingsRepository
-	supplyItems         repository.SupplyItemRepository
-	supplyContributions repository.SupplyContributionRepository
+	db                       *sqlx.DB
+	users                    repository.UserRepository
+	groups                   repository.GroupRepository
+	bills                    repository.BillRepository
+	consumptions             repository.ConsumptionRepository
+	allocations              repository.AllocationRepository
+	payments                 repository.PaymentRepository
+	loans                    repository.LoanRepository
+	loanPayments             repository.LoanPaymentRepository
+	chores                   repository.ChoreRepository
+	choreAssignments         repository.ChoreAssignmentRepository
+	choreSettings            repository.ChoreSettingsRepository
+	notifications            repository.NotificationRepository
+	supplySettings           repository.SupplySettingsRepository
+	supplyItems              repository.SupplyItemRepository
+	supplyContributions      repository.SupplyContributionRepository
+	recurringBillTemplates   repository.RecurringBillTemplateRepository
+	recurringBillAllocations repository.RecurringBillAllocationRepository
 }
 
 func NewBackupService(
@@ -37,6 +40,7 @@ func NewBackupService(
 	groups repository.GroupRepository,
 	bills repository.BillRepository,
 	consumptions repository.ConsumptionRepository,
+	allocations repository.AllocationRepository,
 	payments repository.PaymentRepository,
 	loans repository.LoanRepository,
 	loanPayments repository.LoanPaymentRepository,
@@ -47,23 +51,28 @@ func NewBackupService(
 	supplySettings repository.SupplySettingsRepository,
 	supplyItems repository.SupplyItemRepository,
 	supplyContributions repository.SupplyContributionRepository,
+	recurringBillTemplates repository.RecurringBillTemplateRepository,
+	recurringBillAllocations repository.RecurringBillAllocationRepository,
 ) *BackupService {
 	return &BackupService{
-		db:                  db,
-		users:               users,
-		groups:              groups,
-		bills:               bills,
-		consumptions:        consumptions,
-		payments:            payments,
-		loans:               loans,
-		loanPayments:        loanPayments,
-		chores:              chores,
-		choreAssignments:    choreAssignments,
-		choreSettings:       choreSettings,
-		notifications:       notifications,
-		supplySettings:      supplySettings,
-		supplyItems:         supplyItems,
-		supplyContributions: supplyContributions,
+		db:                       db,
+		users:                    users,
+		groups:                   groups,
+		bills:                    bills,
+		consumptions:             consumptions,
+		allocations:              allocations,
+		payments:                 payments,
+		loans:                    loans,
+		loanPayments:             loanPayments,
+		chores:                   chores,
+		choreAssignments:         choreAssignments,
+		choreSettings:            choreSettings,
+		notifications:            notifications,
+		supplySettings:           supplySettings,
+		supplyItems:              supplyItems,
+		supplyContributions:      supplyContributions,
+		recurringBillTemplates:   recurringBillTemplates,
+		recurringBillAllocations: recurringBillAllocations,
 	}
 }
 
@@ -91,22 +100,25 @@ type ImportResult struct {
 
 // BackupData represents a complete system backup
 type BackupData struct {
-	Version             string                      `json:"version"`
-	ExportedAt          time.Time                   `json:"exportedAt"`
-	Users               []BackupUser                `json:"users"`
-	Groups              []models.Group              `json:"groups"`
-	Bills               []models.Bill               `json:"bills"`
-	Consumptions        []models.Consumption        `json:"consumptions"`
-	Payments            []models.Payment            `json:"payments"`
-	Loans               []models.Loan               `json:"loans"`
-	LoanPayments        []models.LoanPayment        `json:"loanPayments"`
-	Chores              []models.Chore              `json:"chores"`
-	ChoreAssignments    []models.ChoreAssignment    `json:"choreAssignments"`
-	ChoreSettings       *models.ChoreSettings       `json:"choreSettings,omitempty"`
-	Notifications       []models.Notification       `json:"notifications"`
-	SupplySettings      *models.SupplySettings      `json:"supplySettings,omitempty"`
-	SupplyItems         []models.SupplyItem         `json:"supplyItems"`
-	SupplyContributions []models.SupplyContribution `json:"supplyContributions"`
+	Version                  string                           `json:"version"`
+	ExportedAt               time.Time                        `json:"exportedAt"`
+	Users                    []BackupUser                     `json:"users"`
+	Groups                   []models.Group                   `json:"groups"`
+	Bills                    []models.Bill                    `json:"bills"`
+	Consumptions             []models.Consumption             `json:"consumptions"`
+	Allocations              []repository.Allocation          `json:"allocations"`
+	Payments                 []models.Payment                 `json:"payments"`
+	Loans                    []models.Loan                    `json:"loans"`
+	LoanPayments             []models.LoanPayment             `json:"loanPayments"`
+	Chores                   []models.Chore                   `json:"chores"`
+	ChoreAssignments         []models.ChoreAssignment         `json:"choreAssignments"`
+	ChoreSettings            *models.ChoreSettings            `json:"choreSettings,omitempty"`
+	Notifications            []models.Notification            `json:"notifications"`
+	SupplySettings           *models.SupplySettings           `json:"supplySettings,omitempty"`
+	SupplyItems              []models.SupplyItem              `json:"supplyItems"`
+	SupplyContributions      []models.SupplyContribution      `json:"supplyContributions"`
+	RecurringBillTemplates   []models.RecurringBillTemplate   `json:"recurringBillTemplates"`
+	RecurringBillAllocations []models.RecurringBillAllocation `json:"recurringBillAllocations"`
 }
 
 // ExportAll exports all data from all collections
@@ -226,6 +238,27 @@ func (s *BackupService) ExportAll(ctx context.Context) (*BackupData, error) {
 		return nil, fmt.Errorf("failed to fetch supply contributions: %w", err)
 	}
 	backup.SupplyContributions = supplyContributions
+
+	// Export allocations
+	allocations, err := s.allocations.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch allocations: %w", err)
+	}
+	backup.Allocations = allocations
+
+	// Export recurring bill templates
+	recurringBillTemplates, err := s.recurringBillTemplates.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch recurring bill templates: %w", err)
+	}
+	backup.RecurringBillTemplates = recurringBillTemplates
+
+	// Export recurring bill allocations
+	recurringBillAllocations, err := s.recurringBillAllocations.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch recurring bill allocations: %w", err)
+	}
+	backup.RecurringBillAllocations = recurringBillAllocations
 
 	return backup, nil
 }
@@ -594,6 +627,53 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) (*Impor
 			sc.CreatedAt.UTC().Format(time.RFC3339))
 		if err != nil {
 			return nil, fmt.Errorf("failed to import supply contribution %s: %w", sc.ID, err)
+		}
+	}
+
+	// Import allocations (bill cost splits)
+	for _, alloc := range backup.Allocations {
+		_, err := tx.ExecContext(ctx,
+			`INSERT INTO allocations (id, bill_id, subject_type, subject_id, allocated_pln)
+			VALUES (?, ?, ?, ?, ?)`,
+			alloc.ID, alloc.BillID, alloc.SubjectType, alloc.SubjectID, alloc.AllocatedPLN)
+		if err != nil {
+			return nil, fmt.Errorf("failed to import allocation %s: %w", alloc.ID, err)
+		}
+	}
+
+	// Import recurring bill templates
+	for _, template := range backup.RecurringBillTemplates {
+		isActive := 0
+		if template.IsActive {
+			isActive = 1
+		}
+		var lastGeneratedAt *string
+		if template.LastGeneratedAt != nil {
+			lga := template.LastGeneratedAt.UTC().Format(time.RFC3339)
+			lastGeneratedAt = &lga
+		}
+
+		_, err := tx.ExecContext(ctx,
+			`INSERT INTO recurring_bill_templates (id, custom_type, frequency, amount, day_of_month, start_date, notes, is_active, current_bill_id, next_due_date, last_generated_at, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			template.ID, template.CustomType, template.Frequency, template.Amount, template.DayOfMonth,
+			template.StartDate.UTC().Format(time.RFC3339), template.Notes, isActive, template.CurrentBillID,
+			template.NextDueDate.UTC().Format(time.RFC3339), lastGeneratedAt,
+			template.CreatedAt.UTC().Format(time.RFC3339), template.UpdatedAt.UTC().Format(time.RFC3339))
+		if err != nil {
+			return nil, fmt.Errorf("failed to import recurring bill template %s: %w", template.ID, err)
+		}
+	}
+
+	// Import recurring bill allocations
+	for _, alloc := range backup.RecurringBillAllocations {
+		_, err := tx.ExecContext(ctx,
+			`INSERT INTO recurring_bill_allocations (id, template_id, subject_type, subject_id, allocation_type, percentage, fraction_numerator, fraction_denominator, fixed_amount)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			alloc.ID, alloc.TemplateID, alloc.SubjectType, alloc.SubjectID, alloc.AllocationType,
+			alloc.Percentage, alloc.FractionNum, alloc.FractionDenom, alloc.FixedAmount)
+		if err != nil {
+			return nil, fmt.Errorf("failed to import recurring bill allocation %s: %w", alloc.ID, err)
 		}
 	}
 

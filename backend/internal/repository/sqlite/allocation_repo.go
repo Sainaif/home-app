@@ -62,3 +62,24 @@ func (r *AllocationRepository) DeleteByBillID(ctx context.Context, billID string
 	_, err := r.db.ExecContext(ctx, "DELETE FROM allocations WHERE bill_id = ?", billID)
 	return err
 }
+
+// List returns all allocations
+func (r *AllocationRepository) List(ctx context.Context) ([]repository.Allocation, error) {
+	var rows []AllocationRow
+	err := r.db.SelectContext(ctx, &rows, "SELECT * FROM allocations")
+	if err != nil {
+		return nil, err
+	}
+
+	allocations := make([]repository.Allocation, len(rows))
+	for i, row := range rows {
+		allocations[i] = repository.Allocation{
+			ID:           row.ID,
+			BillID:       row.BillID,
+			SubjectType:  row.SubjectType,
+			SubjectID:    row.SubjectID,
+			AllocatedPLN: row.AllocatedPLN,
+		}
+	}
+	return allocations, nil
+}

@@ -275,10 +275,22 @@ func (r *RecurringBillAllocationRepository) ReplaceForTemplate(ctx context.Conte
 	return nil
 }
 
+// List returns all recurring bill allocations
+func (r *RecurringBillAllocationRepository) List(ctx context.Context) ([]models.RecurringBillAllocation, error) {
+	var rows []RecurringBillAllocationRow
+	err := r.db.SelectContext(ctx, &rows, "SELECT * FROM recurring_bill_allocations")
+	if err != nil {
+		return nil, err
+	}
+	return rowsToRecurringBillAllocations(rows), nil
+}
+
 func rowsToRecurringBillAllocations(rows []RecurringBillAllocationRow) []models.RecurringBillAllocation {
 	allocs := make([]models.RecurringBillAllocation, len(rows))
 	for i, row := range rows {
 		alloc := models.RecurringBillAllocation{
+			ID:             row.ID,
+			TemplateID:     row.TemplateID,
 			SubjectType:    row.SubjectType,
 			SubjectID:      row.SubjectID,
 			AllocationType: row.AllocationType,
