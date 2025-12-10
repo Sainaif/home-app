@@ -24,6 +24,12 @@ type UserRepository interface {
 	UpdateTOTPSecret(ctx context.Context, id, secret string) error
 }
 
+// PasskeyCredentialWithUser represents a passkey credential with its associated user ID (for backups)
+type PasskeyCredentialWithUser struct {
+	UserID     string
+	Credential models.PasskeyCredential
+}
+
 // PasskeyCredentialRepository handles passkey credential operations
 type PasskeyCredentialRepository interface {
 	Create(ctx context.Context, userID string, cred *models.PasskeyCredential) error
@@ -33,6 +39,7 @@ type PasskeyCredentialRepository interface {
 	UpdateLastUsed(ctx context.Context, credID []byte, lastUsedAt time.Time) error
 	Delete(ctx context.Context, userID string, credID []byte) error
 	DeleteAllForUser(ctx context.Context, userID string) error
+	List(ctx context.Context) ([]PasskeyCredentialWithUser, error) // for backups
 }
 
 // GroupRepository handles group operations
@@ -299,6 +306,15 @@ type AppSettingsRepository interface {
 	Upsert(ctx context.Context, settings *models.AppSettings) error
 }
 
+// SentReminderRepository handles sent reminder tracking for rate limiting and deduplication
+type SentReminderRepository interface {
+	Create(ctx context.Context, reminder *models.SentReminder) error
+	Exists(ctx context.Context, userID, resourceType, resourceID, reminderType string) (bool, error)
+	CountRecentByUserID(ctx context.Context, userID string, since time.Time) (int, error)
+	DeleteOlderThan(ctx context.Context, before time.Time) error
+	List(ctx context.Context) ([]models.SentReminder, error)
+}
+
 // Repositories aggregates all repository interfaces
 type Repositories struct {
 	Users                    UserRepository
@@ -329,4 +345,5 @@ type Repositories struct {
 	AuditLogs                AuditLogRepository
 	ApprovalRequests         ApprovalRequestRepository
 	AppSettings              AppSettingsRepository
+	SentReminders            SentReminderRepository
 }

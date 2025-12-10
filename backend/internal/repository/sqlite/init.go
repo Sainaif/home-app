@@ -36,5 +36,6 @@ func NewRepositories(db *sqlx.DB) *repository.Repositories {
 		AuditLogs:                NewAuditLogRepository(db),
 		ApprovalRequests:         NewApprovalRequestRepository(db),
 		AppSettings:              NewAppSettingsRepository(db),
+		SentReminders:            NewSentReminderRepository(db),
 	}
 }

@@ -76,6 +76,35 @@ func (s *SQLiteDB) initSchema(ctx context.Context) error {
 		return fmt.Errorf("failed to execute schema: %w", err)
 	}
 
+	// Run migrations for existing databases
+	if err := s.runMigrations(ctx); err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+
+	return nil
+}
+
+// runMigrations applies incremental migrations for existing databases
+func (s *SQLiteDB) runMigrations(ctx context.Context) error {
+	// Migration: Add reminder_rate_limit_per_hour column to app_settings if not exists
+	var count int
+	err := s.DB.GetContext(ctx, &count, `
+		SELECT COUNT(*) FROM pragma_table_info('app_settings')
+		WHERE name = 'reminder_rate_limit_per_hour'
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to check app_settings column: %w", err)
+	}
+	if count == 0 {
+		_, err = s.DB.ExecContext(ctx, `
+			ALTER TABLE app_settings ADD COLUMN reminder_rate_limit_per_hour INTEGER NOT NULL DEFAULT 1
+		`)
+		if err != nil {
+			return fmt.Errorf("failed to add reminder_rate_limit_per_hour column: %w", err)
+		}
+		log.Println("Migration: Added reminder_rate_limit_per_hour column to app_settings")
+	}
+
 	return nil
 }
 

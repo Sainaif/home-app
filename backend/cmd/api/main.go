@@ -123,18 +123,40 @@ func main() {
 	billService := services.NewBillService(repos.Bills, repos.Consumptions, repos.Allocations, repos.Payments, repos.Users, repos.Groups, notificationService)
 	consumptionService := services.NewConsumptionService(repos.Consumptions, repos.Bills, repos.Users)
 	allocationService := services.NewAllocationService(repos.Users, repos.Groups, repos.Consumptions, repos.Allocations, repos.Bills)
-	loanService := services.NewLoanService(repos.Loans, repos.LoanPayments, repos.Users, repos.Groups)
-	choreService := services.NewChoreService(repos.Chores, repos.ChoreAssignments, repos.Users)
-	supplyService := services.NewSupplyService(repos.SupplySettings, repos.SupplyItems, repos.SupplyContributions, repos.Users)
+	loanService := services.NewLoanService(repos.Loans, repos.LoanPayments, repos.Users, repos.Groups, notificationService)
+	choreService := services.NewChoreService(repos.Chores, repos.ChoreAssignments, repos.Users, notificationService)
+	supplyService := services.NewSupplyService(repos.SupplySettings, repos.SupplyItems, repos.SupplyContributions, repos.Users, notificationService)
 	recurringBillService := services.NewRecurringBillService(repos.RecurringBillTemplates, repos.RecurringBillAllocations, repos.Bills, repos.Allocations, repos.Payments, repos.Users, cfg)
 	paymentService := services.NewPaymentService(repos.Payments, repos.Bills, recurringBillService)
 	exportService := services.NewExportService(repos.Bills, repos.Consumptions, repos.Loans, repos.LoanPayments, repos.Chores, repos.ChoreAssignments, repos.Users, repos.Groups)
-	backupService := services.NewBackupService(sqliteDB.DB, repos.Users, repos.Groups, repos.Bills, repos.Consumptions, repos.Allocations, repos.Payments, repos.Loans, repos.LoanPayments, repos.Chores, repos.ChoreAssignments, repos.ChoreSettings, repos.Notifications, repos.SupplySettings, repos.SupplyItems, repos.SupplyContributions, repos.RecurringBillTemplates, repos.RecurringBillAllocations)
+	backupService := services.NewBackupService(sqliteDB.DB, repos.Users, repos.Groups, repos.Bills, repos.Consumptions, repos.Allocations, repos.Payments, repos.Loans, repos.LoanPayments, repos.Chores, repos.ChoreAssignments, repos.ChoreSettings, repos.Notifications, repos.SupplySettings, repos.SupplyItems, repos.SupplyContributions, repos.RecurringBillTemplates, repos.RecurringBillAllocations, repos.PasskeyCredentials)
 	auditService := services.NewAuditService(repos.AuditLogs)
 	permissionService := services.NewPermissionService(repos.Permissions)
 	roleService := services.NewRoleService(repos.Roles, repos.Users)
 	approvalService := services.NewApprovalService(repos.ApprovalRequests)
 	appSettingsService := services.NewAppSettingsService(repos.AppSettings)
+	reminderService := services.NewReminderService(
+		repos.SentReminders,
+		repos.AppSettings,
+		repos.Users,
+		repos.Loans,
+		repos.LoanPayments,
+		repos.ChoreAssignments,
+		repos.Chores,
+		repos.SupplyItems,
+		notificationService,
+	)
+	schedulerService := services.NewSchedulerService(
+		repos.SentReminders,
+		repos.Users,
+		repos.Bills,
+		repos.Loans,
+		repos.LoanPayments,
+		repos.ChoreAssignments,
+		repos.Chores,
+		repos.SupplyItems,
+		notificationService,
+	)
 
 	// Initialize default permissions and roles
 	if err := permissionService.InitializeDefaultPermissions(context.Background()); err != nil {
@@ -167,6 +189,7 @@ func main() {
 	notificationPreferenceHandler := handlers.NewNotificationPreferenceHandler(notificationPreferenceService)
 	appSettingsHandler := handlers.NewAppSettingsHandler(appSettingsService)
 	paymentHandler := handlers.NewPaymentHandler(paymentService, auditService)
+	reminderHandler := handlers.NewReminderHandler(reminderService)
 
 	// Helper function to provide RoleService to middleware
 	getRoleService := func() interface{} { return roleService }
@@ -380,6 +403,12 @@ func main() {
 	appSettings.Get("/languages", appSettingsHandler.GetSupportedLanguages) // Public - get supported languages
 	appSettings.Patch("/", middleware.AuthMiddleware(cfg), middleware.RequirePermission("settings.app.update", getRoleService), appSettingsHandler.UpdateSettings)
 
+	// Reminder routes
+	reminders := api.Group("/reminders")
+	reminders.Post("/debt/:userId", middleware.AuthMiddleware(cfg), middleware.RequirePermission("reminders.send", getRoleService), reminderHandler.SendDebtReminder)
+	reminders.Post("/chore/:assignmentId", middleware.AuthMiddleware(cfg), middleware.RequirePermission("reminders.send", getRoleService), reminderHandler.SendChoreReminder)
+	reminders.Post("/supplies", middleware.AuthMiddleware(cfg), middleware.RequirePermission("reminders.send", getRoleService), reminderHandler.SendLowSuppliesReminder)
+
 	// Serve embedded static files (SPA fallback)
 	// This must come AFTER all API routes
 	if static.HasStaticFiles() {
@@ -457,6 +486,42 @@ func main() {
 			if err := supplyService.ProcessWeeklyContributions(context.Background()); err != nil {
 				log.Printf("Error during scheduled supply contribution processing: %v", err)
 			}
+		}
+	}()
+
+	// Start reminder cleanup job (removes reminders older than 30 days)
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+
+		// Run cleanup immediately on startup
+		log.Println("Running initial sent reminder cleanup...")
+		if err := reminderService.CleanupOldReminders(context.Background()); err != nil {
+			log.Printf("Error during initial reminder cleanup: %v", err)
+		}
+
+		// Run cleanup daily
+		for range ticker.C {
+			log.Println("Running scheduled sent reminder cleanup...")
+			if err := reminderService.CleanupOldReminders(context.Background()); err != nil {
+				log.Printf("Error during scheduled reminder cleanup: %v", err)
+			}
+		}
+	}()
+
+	// Start automated reminder scheduler (runs every hour)
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+
+		// Run initial check after 5 minutes to let the system stabilize
+		time.Sleep(5 * time.Minute)
+		log.Println("Running initial automated reminder checks...")
+		schedulerService.RunAllChecks(context.Background())
+
+		// Run checks every hour
+		for range ticker.C {
+			schedulerService.RunAllChecks(context.Background())
 		}
 	}()
 

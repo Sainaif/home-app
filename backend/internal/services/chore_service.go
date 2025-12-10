@@ -12,20 +12,23 @@ import (
 )
 
 type ChoreService struct {
-	chores           repository.ChoreRepository
-	choreAssignments repository.ChoreAssignmentRepository
-	users            repository.UserRepository
+	chores              repository.ChoreRepository
+	choreAssignments    repository.ChoreAssignmentRepository
+	users               repository.UserRepository
+	notificationService *NotificationService
 }
 
 func NewChoreService(
 	chores repository.ChoreRepository,
 	choreAssignments repository.ChoreAssignmentRepository,
 	users repository.UserRepository,
+	notificationService *NotificationService,
 ) *ChoreService {
 	return &ChoreService{
-		chores:           chores,
-		choreAssignments: choreAssignments,
-		users:            users,
+		chores:              chores,
+		choreAssignments:    choreAssignments,
+		users:               users,
+		notificationService: notificationService,
 	}
 }
 
@@ -95,6 +98,28 @@ func (s *ChoreService) CreateChore(ctx context.Context, req CreateChoreRequest) 
 		return nil, fmt.Errorf("failed to create chore: %w", err)
 	}
 
+	// Send notifications to all active users about the new chore
+	if s.notificationService != nil {
+		users, err := s.users.ListActive(ctx)
+		if err == nil {
+			now := time.Now()
+			for _, user := range users {
+				notification := &models.Notification{
+					ID:           uuid.New().String(),
+					UserID:       &user.ID,
+					Channel:      "app",
+					TemplateID:   "chore",
+					ScheduledFor: now,
+					SentAt:       &now,
+					Status:       "sent",
+					Title:        "Nowe zadanie domowe",
+					Body:         fmt.Sprintf("Dodano nowe zadanie: %s", chore.Name),
+				}
+				s.notificationService.CreateNotification(ctx, notification)
+			}
+		}
+	}
+
 	return &chore, nil
 }
 
@@ -154,6 +179,23 @@ func (s *ChoreService) AssignChore(ctx context.Context, req AssignChoreRequest) 
 
 	if err := s.choreAssignments.Create(ctx, &assignment); err != nil {
 		return nil, fmt.Errorf("failed to create chore assignment: %w", err)
+	}
+
+	// Send notification to the assigned user
+	if s.notificationService != nil {
+		now := time.Now()
+		notification := &models.Notification{
+			ID:           uuid.New().String(),
+			UserID:       &req.AssigneeUserID,
+			Channel:      "app",
+			TemplateID:   "chore",
+			ScheduledFor: now,
+			SentAt:       &now,
+			Status:       "sent",
+			Title:        "Przypisano zadanie",
+			Body:         fmt.Sprintf("Przypisano Ci zadanie: %s (termin: %s)", chore.Name, req.DueDate.Format("2006-01-02")),
+		}
+		s.notificationService.CreateNotification(ctx, notification)
 	}
 
 	return &assignment, nil

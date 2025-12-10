@@ -206,11 +206,12 @@ type SupplySettings struct {
 
 // AppSettings represents application branding/customization settings (singleton)
 type AppSettings struct {
-	ID                string    `db:"id" json:"id"`
-	AppName           string    `db:"app_name" json:"appName"`
-	DefaultLanguage   string    `db:"default_language" json:"defaultLanguage"`      // Default locale code (e.g., "en", "pl")
-	DisableAutoDetect bool      `db:"disable_auto_detect" json:"disableAutoDetect"` // If true, always use default language
-	UpdatedAt         time.Time `db:"updated_at" json:"updatedAt"`
+	ID                       string    `db:"id" json:"id"`
+	AppName                  string    `db:"app_name" json:"appName"`
+	DefaultLanguage          string    `db:"default_language" json:"defaultLanguage"`                    // Default locale code (e.g., "en", "pl")
+	DisableAutoDetect        bool      `db:"disable_auto_detect" json:"disableAutoDetect"`               // If true, always use default language
+	ReminderRateLimitPerHour int       `db:"reminder_rate_limit_per_hour" json:"reminderRateLimitPerHour"` // Max reminders per user per hour (0 = unlimited)
+	UpdatedAt                time.Time `db:"updated_at" json:"updatedAt"`
 }
 
 // SupplyItem represents a household supply with inventory tracking
@@ -345,4 +346,14 @@ type NotificationPreference struct {
 	PreferencesJSON string          `db:"preferences" json:"-"` // JSON string for DB storage
 	AllEnabled      bool            `db:"all_enabled" json:"allEnabled"`
 	UpdatedAt       time.Time       `db:"updated_at" json:"updatedAt"`
+}
+
+// SentReminder tracks sent reminders to avoid duplicates and for rate limiting
+type SentReminder struct {
+	ID           string    `db:"id" json:"id"`
+	UserID       string    `db:"user_id" json:"userId"`
+	ResourceType string    `db:"resource_type" json:"resourceType"` // chore_assignment, bill, loan, supply
+	ResourceID   string    `db:"resource_id" json:"resourceId"`
+	ReminderType string    `db:"reminder_type" json:"reminderType"` // auto_scheduled, manual
+	SentAt       time.Time `db:"sent_at" json:"sentAt"`
 }

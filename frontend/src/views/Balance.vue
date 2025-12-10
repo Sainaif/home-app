@@ -30,7 +30,24 @@
               {{ bal.fromUserName }}
               <span v-if="bal.fromUserGroupName" class="text-xs text-purple-400 ml-1">({{ bal.fromUserGroupName }})</span>
             </span>
-            <span class="font-bold text-green-400">{{ formatMoney(bal.netAmount) }} PLN</span>
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-green-400">{{ formatMoney(bal.netAmount) }} PLN</span>
+              <button
+                v-if="authStore.hasPermission('reminders.send')"
+                @click="sendDebtReminder(bal.fromUserId)"
+                :disabled="sendingReminder === bal.fromUserId"
+                class="btn btn-sm btn-secondary p-1"
+                :title="$t('balance.sendReminder')">
+                <svg v-if="sendingReminder !== bal.fromUserId" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
+                  <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+                </svg>
+                <svg v-else class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -287,6 +304,7 @@ const users = ref([])
 const loading = ref(false)
 const creatingLoan = ref(false)
 const creatingPayment = ref(false)
+const sendingReminder = ref(null)
 const statusFilter = ref('all')
 const userFilter = ref('')
 const sortBy = ref('createdAt')
@@ -568,6 +586,19 @@ async function confirmDeleteLoan(loanId) {
   } catch (err) {
     console.error('Failed to delete loan:', err)
     alert(t('errors.deleteLoanFailed') + ' ' + (err.response?.data?.error || err.message))
+  }
+}
+
+async function sendDebtReminder(userId) {
+  sendingReminder.value = userId
+  try {
+    await api.post(`/reminders/debt/${userId}`)
+    alert(t('balance.reminderSent'))
+  } catch (err) {
+    console.error('Failed to send reminder:', err)
+    alert(t('errors.sendReminderFailed') + ' ' + (err.response?.data?.error || err.message))
+  } finally {
+    sendingReminder.value = null
   }
 }
 </script>

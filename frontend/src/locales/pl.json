@@ -38,7 +38,11 @@
     "copyPassword": "Skopiuj hasło",
     "goToDashboard": "Przejdź do panelu",
     "resetButton": "Resetuj hasło",
-    "backToLogin": "Wróć do logowania"
+    "backToLogin": "Wróć do logowania",
+    "forceChangePasswordTitle": "Zmiana hasła wymagana",
+    "forceChangePasswordDescription": "Administrator wymaga zmiany hasła przed kontynuowaniem.",
+    "changePasswordButton": "Zmień hasło",
+    "changingPassword": "Zmieniam hasło..."
   },
   "dashboard": {
     "title": "Panel główny",
@@ -219,7 +223,9 @@
     "remainingOf": "pozostało: {remaining} PLN z {total} PLN",
     "statusOpen": "Niespłacona",
     "statusPartial": "Częściowo spłacona",
-    "statusSettled": "Spłacona"
+    "statusSettled": "Spłacona",
+    "sendReminder": "Wyślij przypomnienie",
+    "reminderSent": "Przypomnienie zostało wysłane"
   },
   "chores": {
     "title": "Obowiązki domowe",
@@ -288,7 +294,9 @@
     "deletionRequested": "Prośba o usunięcie została wysłana do zatwierdzenia.",
     "createError": "Błąd tworzenia obowiązku:",
     "updateStatusError": "Błąd aktualizacji statusu:",
-    "deleteError": "Błąd usuwania obowiązku:"
+    "deleteError": "Błąd usuwania obowiązku:",
+    "sendReminder": "Wyślij przypomnienie",
+    "reminderSent": "Przypomnienie zostało wysłane"
   },
   "settings": {
     "title": "Ustawienia",
@@ -459,7 +467,9 @@
       "friday": "Piątek",
       "saturday": "Sobota",
       "sunday": "Niedziela"
-    }
+    },
+    "remindLowStock": "Przypomnij o niskich stanach",
+    "reminderSent": "Wysłano przypomnienie do {count} użytkowników"
   },
   "notifications": {
     "title": "Powiadomienia",
@@ -547,13 +557,15 @@
     "noTokenInUrl": "Brak tokenu w linku resetowania",
     "invalidOrExpiredToken": "Token jest nieprawidłowy lub wygasł",
     "resetPasswordFailed": "Nie udało się zresetować hasła",
+    "changePasswordFailed": "Nie udało się zmienić hasła",
     "createLoanFailed": "Błąd tworzenia pożyczki:",
     "createPaymentFailed": "Błąd tworzenia spłaty:",
     "deleteLoanFailed": "Błąd usuwania pożyczki:",
     "billNotFound": "Nie znaleziono rachunku",
     "paymentSuccess": "Płatność zarejestrowana pomyślnie!",
     "paymentFailed": "Nie udało się zapisać płatności",
-    "reopenFailed": "Nie udało się ponownie otworzyć rachunku"
+    "reopenFailed": "Nie udało się ponownie otworzyć rachunku",
+    "sendReminderFailed": "Nie udało się wysłać przypomnienia:"
   },
   "app": {
     "updateTitle": "Aktualizacja",

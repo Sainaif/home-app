@@ -86,6 +86,9 @@ func (s *PermissionService) InitializeDefaultPermissions(ctx context.Context) er
 
 		// App settings
 		{ID: uuid.New().String(), Name: "settings.app.update", Description: "Zmień ustawienia aplikacji", Category: "settings"},
+
+		// Reminders
+		{ID: uuid.New().String(), Name: "reminders.send", Description: "Wysyłaj przypomnienia użytkownikom", Category: "reminders"},
 	}
 
 	// Insert permissions (skip if already exists)
@@ -149,6 +152,7 @@ func (s *RoleService) InitializeDefaultRoles(ctx context.Context) error {
 		"readings.delete",
 		"backup.export", "backup.import",
 		"settings.app.update",
+		"reminders.send",
 	}
 
 	// MIESZKANIEC role with limited permissions

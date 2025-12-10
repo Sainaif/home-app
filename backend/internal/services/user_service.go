@@ -238,34 +238,56 @@ func (s *UserService) UpdateUser(ctx context.Context, userID string, req UpdateU
 }
 
 // ChangePassword allows users to change their own password
-func (s *UserService) ChangePassword(ctx context.Context, userID string, oldPassword, newPassword string) error {
+// Returns new JWT tokens for automatic re-login after password change
+func (s *UserService) ChangePassword(ctx context.Context, userID string, oldPassword, newPassword string) (map[string]string, error) {
 	user, err := s.users.GetByID(ctx, userID)
 	if err != nil {
-		return errors.New("user not found")
+		return nil, errors.New("user not found")
 	}
 
 	// Verify old password
 	valid, err := utils.VerifyPassword(oldPassword, user.PasswordHash)
 	if err != nil || !valid {
-		return errors.New("invalid current password")
+		return nil, errors.New("invalid current password")
 	}
 
 	// Hash new password
 	newHash, err := utils.HashPassword(newPassword)
 	if err != nil {
-		return fmt.Errorf("failed to hash new password: %w", err)
+		return nil, fmt.Errorf("failed to hash new password: %w", err)
 	}
 
 	// Update password and clear must_change_password flag
 	if err := s.users.UpdatePassword(ctx, userID, newHash); err != nil {
-		return fmt.Errorf("failed to update password: %w", err)
+		return nil, fmt.Errorf("failed to update password: %w", err)
 	}
 
 	if err := s.users.SetMustChangePassword(ctx, userID, false); err != nil {
-		return fmt.Errorf("failed to clear must_change_password: %w", err)
+		return nil, fmt.Errorf("failed to clear must_change_password: %w", err)
 	}
 
-	return nil
+	// Get updated user for JWT generation
+	user, err = s.users.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve user: %w", err)
+	}
+
+	// Generate JWT tokens for automatic re-login
+	accessToken, err := utils.GenerateAccessToken(user.ID, user.Email, user.Role, s.config.JWT.Secret, s.config.JWT.AccessTTL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
+	}
+
+	refreshToken, err := utils.GenerateRefreshToken(user.ID, s.config.JWT.RefreshSecret, s.config.JWT.RefreshTTL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
+	}
+
+	return map[string]string{
+		"accessToken":        accessToken,
+		"refreshToken":       refreshToken,
+		"mustChangePassword": "false",
+	}, nil
 }
 
 // ForcePasswordChange marks a user as needing to change their password

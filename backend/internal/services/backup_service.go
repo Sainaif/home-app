@@ -32,6 +32,7 @@ type BackupService struct {
 	supplyContributions      repository.SupplyContributionRepository
 	recurringBillTemplates   repository.RecurringBillTemplateRepository
 	recurringBillAllocations repository.RecurringBillAllocationRepository
+	passkeyCredentials       repository.PasskeyCredentialRepository
 }
 
 func NewBackupService(
@@ -53,6 +54,7 @@ func NewBackupService(
 	supplyContributions repository.SupplyContributionRepository,
 	recurringBillTemplates repository.RecurringBillTemplateRepository,
 	recurringBillAllocations repository.RecurringBillAllocationRepository,
+	passkeyCredentials repository.PasskeyCredentialRepository,
 ) *BackupService {
 	return &BackupService{
 		db:                       db,
@@ -73,6 +75,7 @@ func NewBackupService(
 		supplyContributions:      supplyContributions,
 		recurringBillTemplates:   recurringBillTemplates,
 		recurringBillAllocations: recurringBillAllocations,
+		passkeyCredentials:       passkeyCredentials,
 	}
 }
 
@@ -92,6 +95,22 @@ type BackupUser struct {
 	CreatedAt          time.Time `json:"createdAt"`
 }
 
+// BackupPasskeyCredential is a PasskeyCredential with UserID exported for backup purposes
+// (models.PasskeyCredential has json:"-" on UserID)
+type BackupPasskeyCredential struct {
+	ID              []byte    `json:"id"`
+	UserID          string    `json:"userId"`
+	PublicKey       []byte    `json:"publicKey"`
+	AttestationType string    `json:"attestationType"`
+	AAGUID          []byte    `json:"aaguid"`
+	SignCount       uint32    `json:"signCount"`
+	Name            string    `json:"name"`
+	CreatedAt       time.Time `json:"createdAt"`
+	LastUsedAt      time.Time `json:"lastUsedAt"`
+	BackupEligible  bool      `json:"backupEligible"`
+	BackupState     bool      `json:"backupState"`
+}
+
 // ImportResult contains information about the import operation
 type ImportResult struct {
 	UsersWithResetPasswords []string `json:"usersWithResetPasswords"` // Email addresses of users who got default passwords
@@ -103,6 +122,7 @@ type BackupData struct {
 	Version                  string                           `json:"version"`
 	ExportedAt               time.Time                        `json:"exportedAt"`
 	Users                    []BackupUser                     `json:"users"`
+	PasskeyCredentials       []BackupPasskeyCredential        `json:"passkeyCredentials"`
 	Groups                   []models.Group                   `json:"groups"`
 	Bills                    []models.Bill                    `json:"bills"`
 	Consumptions             []models.Consumption             `json:"consumptions"`
@@ -147,6 +167,28 @@ func (s *BackupService) ExportAll(ctx context.Context) (*BackupData, error) {
 			MustChangePassword: u.MustChangePassword,
 			TOTPSecret:         u.TOTPSecret,
 			CreatedAt:          u.CreatedAt,
+		}
+	}
+
+	// Export passkey credentials (convert to BackupPasskeyCredential to include user IDs)
+	passkeyCredentials, err := s.passkeyCredentials.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch passkey credentials: %w", err)
+	}
+	backup.PasskeyCredentials = make([]BackupPasskeyCredential, len(passkeyCredentials))
+	for i, pc := range passkeyCredentials {
+		backup.PasskeyCredentials[i] = BackupPasskeyCredential{
+			ID:              pc.Credential.ID,
+			UserID:          pc.UserID,
+			PublicKey:       pc.Credential.PublicKey,
+			AttestationType: pc.Credential.AttestationType,
+			AAGUID:          pc.Credential.AAGUID,
+			SignCount:       pc.Credential.SignCount,
+			Name:            pc.Credential.Name,
+			CreatedAt:       pc.Credential.CreatedAt,
+			LastUsedAt:      pc.Credential.LastUsedAt,
+			BackupEligible:  pc.Credential.BackupEligible,
+			BackupState:     pc.Credential.BackupState,
 		}
 	}
 
@@ -396,6 +438,33 @@ func (s *BackupService) ImportJSON(ctx context.Context, jsonData []byte) (*Impor
 			user.ID, user.Email, username, user.Name, passwordHash, user.Role, groupID, isActive, mustChange, totpSecret, user.CreatedAt.UTC().Format(time.RFC3339))
 		if err != nil {
 			return nil, fmt.Errorf("failed to import user %s: %w", user.ID, err)
+		}
+	}
+
+	// Import passkey credentials
+	for _, pc := range backup.PasskeyCredentials {
+		var lastUsedAt *string
+		if !pc.LastUsedAt.IsZero() {
+			lua := pc.LastUsedAt.UTC().Format(time.RFC3339)
+			lastUsedAt = &lua
+		}
+		backupEligible := 0
+		if pc.BackupEligible {
+			backupEligible = 1
+		}
+		backupState := 0
+		if pc.BackupState {
+			backupState = 1
+		}
+
+		_, err := tx.ExecContext(ctx,
+			`INSERT INTO passkey_credentials (id, user_id, public_key, attestation_type, aaguid, sign_count, name, backup_eligible, backup_state, created_at, last_used_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			fmt.Sprintf("%x", pc.ID), pc.UserID, pc.PublicKey, pc.AttestationType, pc.AAGUID,
+			pc.SignCount, pc.Name, backupEligible, backupState,
+			pc.CreatedAt.UTC().Format(time.RFC3339), lastUsedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to import passkey credential for user %s: %w", pc.UserID, err)
 		}
 	}
 

@@ -14,10 +14,11 @@ import (
 )
 
 type LoanService struct {
-	loans        repository.LoanRepository
-	loanPayments repository.LoanPaymentRepository
-	users        repository.UserRepository
-	groups       repository.GroupRepository
+	loans               repository.LoanRepository
+	loanPayments        repository.LoanPaymentRepository
+	users               repository.UserRepository
+	groups              repository.GroupRepository
+	notificationService *NotificationService
 }
 
 func NewLoanService(
@@ -25,12 +26,14 @@ func NewLoanService(
 	loanPayments repository.LoanPaymentRepository,
 	users repository.UserRepository,
 	groups repository.GroupRepository,
+	notificationService *NotificationService,
 ) *LoanService {
 	return &LoanService{
-		loans:        loans,
-		loanPayments: loanPayments,
-		users:        users,
-		groups:       groups,
+		loans:               loans,
+		loanPayments:        loanPayments,
+		users:               users,
+		groups:              groups,
+		notificationService: notificationService,
 	}
 }
 
@@ -173,6 +176,22 @@ func (s *LoanService) CreateLoan(ctx context.Context, req CreateLoanRequest) (*m
 
 		if err := s.loans.Create(ctx, &loan); err != nil {
 			return nil, fmt.Errorf("failed to create loan: %w", err)
+		}
+
+		// Notify borrower about new loan
+		if s.notificationService != nil {
+			lender, _ := s.users.GetByID(ctx, req.LenderID)
+			lenderName := "Ktoś"
+			if lender != nil {
+				lenderName = lender.Name
+			}
+			borrowerID := req.BorrowerID
+			_ = s.notificationService.CreateNotification(ctx, &models.Notification{
+				UserID:     &borrowerID,
+				TemplateID: "loan_created",
+				Title:      "Nowa pożyczka",
+				Body:       fmt.Sprintf("%s pożyczył/a Ci %.2f zł", lenderName, remainingAmount),
+			})
 		}
 
 		return &loan, nil
@@ -451,6 +470,22 @@ func (s *LoanService) CreateLoanPayment(ctx context.Context, req CreateLoanPayme
 	loan.Status = newStatus
 	if err := s.loans.Update(ctx, loan); err != nil {
 		return nil, fmt.Errorf("failed to update loan status: %w", err)
+	}
+
+	// Notify lender about payment received
+	if s.notificationService != nil {
+		borrower, _ := s.users.GetByID(ctx, loan.BorrowerID)
+		borrowerName := "Ktoś"
+		if borrower != nil {
+			borrowerName = borrower.Name
+		}
+		lenderID := loan.LenderID
+		_ = s.notificationService.CreateNotification(ctx, &models.Notification{
+			UserID:     &lenderID,
+			TemplateID: "loan_payment_received",
+			Title:      "Otrzymano spłatę pożyczki",
+			Body:       fmt.Sprintf("%s spłacił/a %.2f zł", borrowerName, req.AmountPLN),
+		})
 	}
 
 	return &payment, nil

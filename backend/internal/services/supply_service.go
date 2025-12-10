@@ -17,6 +17,7 @@ type SupplyService struct {
 	supplyItems         repository.SupplyItemRepository
 	supplyContributions repository.SupplyContributionRepository
 	users               repository.UserRepository
+	notificationService *NotificationService
 }
 
 func NewSupplyService(
@@ -24,12 +25,14 @@ func NewSupplyService(
 	supplyItems repository.SupplyItemRepository,
 	supplyContributions repository.SupplyContributionRepository,
 	users repository.UserRepository,
+	notificationService *NotificationService,
 ) *SupplyService {
 	return &SupplyService{
 		supplySettings:      supplySettings,
 		supplyItems:         supplyItems,
 		supplyContributions: supplyContributions,
 		users:               users,
+		notificationService: notificationService,
 	}
 }
 
@@ -200,6 +203,30 @@ func (s *SupplyService) CreateItem(ctx context.Context, userID string, name, cat
 		return nil, fmt.Errorf("failed to create item: %w", err)
 	}
 
+	// Send notifications to all active users about the new supply item
+	if s.notificationService != nil {
+		users, err := s.users.ListActive(ctx)
+		if err == nil {
+			now := time.Now()
+			for _, user := range users {
+				if user.ID != userID { // Don't notify the creator
+					notification := &models.Notification{
+						ID:           uuid.New().String(),
+						UserID:       &user.ID,
+						Channel:      "app",
+						TemplateID:   "supply",
+						ScheduledFor: now,
+						SentAt:       &now,
+						Status:       "sent",
+						Title:        "Nowy artykul zaopatrzeniowy",
+						Body:         fmt.Sprintf("Dodano: %s do listy zaopatrzenia", name),
+					}
+					s.notificationService.CreateNotification(ctx, notification)
+				}
+			}
+		}
+	}
+
 	return &item, nil
 }
 
@@ -307,10 +334,35 @@ func (s *SupplyService) ConsumeItem(ctx context.Context, itemID string, quantity
 		return errors.New("insufficient quantity")
 	}
 
+	// Track if we're crossing the low stock threshold
+	wasAboveMin := item.CurrentQuantity >= item.MinQuantity
 	item.CurrentQuantity -= quantityToSubtract
+	isNowBelowMin := item.CurrentQuantity < item.MinQuantity
 
 	if err := s.supplyItems.Update(ctx, item); err != nil {
 		return fmt.Errorf("failed to consume item: %w", err)
+	}
+
+	// Send low stock notifications if threshold was just crossed
+	if s.notificationService != nil && wasAboveMin && isNowBelowMin {
+		users, err := s.users.ListActive(ctx)
+		if err == nil {
+			now := time.Now()
+			for _, user := range users {
+				notification := &models.Notification{
+					ID:           uuid.New().String(),
+					UserID:       &user.ID,
+					Channel:      "app",
+					TemplateID:   "supply",
+					ScheduledFor: now,
+					SentAt:       &now,
+					Status:       "sent",
+					Title:        "Niski stan zapasow",
+					Body:         fmt.Sprintf("%s: %d/%d %s (ponizej minimum)", item.Name, item.CurrentQuantity, item.MinQuantity, item.Unit),
+				}
+				s.notificationService.CreateNotification(ctx, notification)
+			}
+		}
 	}
 
 	return nil

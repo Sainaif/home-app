@@ -247,6 +247,21 @@
                 {{ $t('chores.markDone') }}
               </button>
               <button
+                v-if="authStore.hasPermission('reminders.send') && (assignment.status === 'pending' || assignment.status === 'in_progress') && assignment.assigneeUserId !== authStore.user?.id"
+                @click="sendChoreReminder(assignment.id)"
+                :disabled="sendingChoreReminder === assignment.id"
+                class="btn btn-sm btn-secondary p-1"
+                :title="$t('chores.sendReminder')">
+                <svg v-if="sendingChoreReminder !== assignment.id" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
+                  <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+                </svg>
+                <svg v-else class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </button>
+              <button
                 v-if="authStore.hasPermission('chores.delete')"
                 @click="deleteChore(assignment.chore?.id)"
                 :disabled="deletingChoreId === assignment.chore?.id"
@@ -280,6 +295,7 @@ const loading = ref(false)
 const loadingLeaderboard = ref(false)
 const creatingChore = ref(false)
 const deletingChoreId = ref(null)
+const sendingChoreReminder = ref(null)
 const showLeaderboard = ref(false)
 const showCreateForm = ref(false)
 
@@ -571,5 +587,18 @@ function statusColor(status) {
     overdue: 'text-red-400'
   }
   return colors[status] || 'text-gray-400'
+}
+
+async function sendChoreReminder(assignmentId) {
+  sendingChoreReminder.value = assignmentId
+  try {
+    await api.post(`/reminders/chore/${assignmentId}`)
+    alert(t('chores.reminderSent'))
+  } catch (err) {
+    console.error('Failed to send chore reminder:', err)
+    alert(t('errors.sendReminderFailed') + ' ' + (err.response?.data?.error || err.message))
+  } finally {
+    sendingChoreReminder.value = null
+  }
 }
 </script>

@@ -15,6 +15,12 @@ const routes = [
     meta: { requiresAuth: false }
   },
   {
+    path: '/change-password',
+    name: 'ChangePassword',
+    component: () => import('../views/ChangePassword.vue'),
+    meta: { requiresAuth: true, allowMustChangePassword: true }
+  },
+  {
     path: '/',
     name: 'Dashboard',
     component: () => import('../views/Dashboard.vue'),
@@ -89,10 +95,21 @@ router.beforeEach(async (to, from, next) => {
     }
   }
 
+  // Force password change - block all routes except change-password
+  if (authStore.mustChangePassword && to.meta.requiresAuth && !to.meta.allowMustChangePassword) {
+    next('/change-password')
+    return
+  }
+
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next('/login')
   } else if (to.path === '/login' && authStore.isAuthenticated) {
-    next('/')
+    // If logged in but must change password, go to change-password page instead of dashboard
+    if (authStore.mustChangePassword) {
+      next('/change-password')
+    } else {
+      next('/')
+    }
   } else if (to.meta.requiresAdmin && !authStore.isAdmin) {
     next('/')
   } else {

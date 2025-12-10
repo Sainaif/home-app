@@ -140,6 +140,7 @@ func (h *UserHandler) UpdateUser(c *fiber.Ctx) error {
 }
 
 // ChangePassword allows users to change their own password
+// Returns new JWT tokens for automatic re-login after password change
 func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
 	userID, err := middleware.GetUserID(c)
 	if err != nil {
@@ -159,14 +160,18 @@ func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := h.userService.ChangePassword(c.Context(), userID, req.OldPassword, req.NewPassword); err != nil {
+	tokens, err := h.userService.ChangePassword(c.Context(), userID, req.OldPassword, req.NewPassword)
+	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
 
 	return c.JSON(fiber.Map{
-		"message": "Password changed successfully",
+		"message":            "Password changed successfully",
+		"accessToken":        tokens["accessToken"],
+		"refreshToken":       tokens["refreshToken"],
+		"mustChangePassword": false,
 	})
 }
 

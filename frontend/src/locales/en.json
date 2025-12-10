@@ -38,7 +38,11 @@
     "copyPassword": "Copy password",
     "goToDashboard": "Go to dashboard",
     "resetButton": "Reset password",
-    "backToLogin": "Back to login"
+    "backToLogin": "Back to login",
+    "forceChangePasswordTitle": "Password change required",
+    "forceChangePasswordDescription": "An administrator requires you to change your password before continuing.",
+    "changePasswordButton": "Change password",
+    "changingPassword": "Changing password..."
   },
   "dashboard": {
     "title": "Dashboard",
@@ -219,7 +223,9 @@
     "remainingOf": "remaining: {remaining} PLN of {total} PLN",
     "statusOpen": "Unpaid",
     "statusPartial": "Partially paid",
-    "statusSettled": "Paid"
+    "statusSettled": "Paid",
+    "sendReminder": "Send reminder",
+    "reminderSent": "Reminder sent"
   },
   "chores": {
     "title": "Household Chores",
@@ -288,7 +294,9 @@
     "deletionRequested": "Deletion request has been sent for approval.",
     "createError": "Error creating chore:",
     "updateStatusError": "Error updating status:",
-    "deleteError": "Error deleting chore:"
+    "deleteError": "Error deleting chore:",
+    "sendReminder": "Send reminder",
+    "reminderSent": "Reminder sent"
   },
   "settings": {
     "title": "Settings",
@@ -459,7 +467,9 @@
       "friday": "Friday",
       "saturday": "Saturday",
       "sunday": "Sunday"
-    }
+    },
+    "remindLowStock": "Remind about low stock",
+    "reminderSent": "Reminder sent to {count} users"
   },
   "notifications": {
     "title": "Notifications",
@@ -547,13 +557,15 @@
     "noTokenInUrl": "No token in reset link",
     "invalidOrExpiredToken": "Token is invalid or expired",
     "resetPasswordFailed": "Failed to reset password",
+    "changePasswordFailed": "Failed to change password",
     "createLoanFailed": "Error creating loan:",
     "createPaymentFailed": "Error creating payment:",
     "deleteLoanFailed": "Error deleting loan:",
     "billNotFound": "Bill not found",
     "paymentSuccess": "Payment recorded successfully!",
     "paymentFailed": "Failed to save payment",
-    "reopenFailed": "Failed to reopen bill"
+    "reopenFailed": "Failed to reopen bill",
+    "sendReminderFailed": "Failed to send reminder:"
   },
   "app": {
     "updateTitle": "Update",

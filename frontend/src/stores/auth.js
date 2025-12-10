@@ -19,6 +19,7 @@ export const useAuthStore = defineStore('auth', () => {
   const refreshToken = ref(localStorage.getItem('refreshToken'))
   const user = ref(safeJsonParse(localStorage.getItem('user'), null))
   const permissions = ref(safeJsonParse(localStorage.getItem('permissions'), []))
+  const mustChangePassword = ref(localStorage.getItem('mustChangePassword') === 'true')
 
   // Auth configuration from server
   const authConfig = ref({
@@ -71,6 +72,7 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('user', JSON.stringify(user.value))
     localStorage.setItem('permissions', JSON.stringify(permissions.value))
     localStorage.setItem('mustChangePassword', response.data.mustChangePassword)
+    mustChangePassword.value = response.data.mustChangePassword === true || response.data.mustChangePassword === 'true'
 
     return response.data
   }
@@ -116,6 +118,19 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('refreshToken')
     localStorage.removeItem('user')
     localStorage.removeItem('permissions')
+    localStorage.removeItem('mustChangePassword')
+    mustChangePassword.value = false
+  }
+
+  // clearMustChangePassword updates tokens after password change
+  function clearMustChangePassword(newAccessToken, newRefreshToken) {
+    accessToken.value = newAccessToken
+    refreshToken.value = newRefreshToken
+    mustChangePassword.value = false
+
+    localStorage.setItem('accessToken', newAccessToken)
+    localStorage.setItem('refreshToken', newRefreshToken)
+    localStorage.setItem('mustChangePassword', 'false')
   }
 
   function setTokens(access, refresh) {
@@ -154,6 +169,7 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     permissions,
     authConfig,
+    mustChangePassword,
     isAuthenticated,
     isAdmin,
     hasPermission,
@@ -163,6 +179,7 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     setTokens,
     loadUser,
-    validateSession
+    validateSession,
+    clearMustChangePassword
   }
 })

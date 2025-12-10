@@ -29,11 +29,12 @@ func (s *AppSettingsService) GetSettings(ctx context.Context) (*models.AppSettin
 	if settings == nil {
 		// Create default settings
 		settings = &models.AppSettings{
-			ID:                uuid.New().String(),
-			AppName:           "Holy Home",
-			DefaultLanguage:   "en",
-			DisableAutoDetect: false,
-			UpdatedAt:         time.Now(),
+			ID:                       uuid.New().String(),
+			AppName:                  "Holy Home",
+			DefaultLanguage:          "en",
+			DisableAutoDetect:        false,
+			ReminderRateLimitPerHour: 1,
+			UpdatedAt:                time.Now(),
 		}
 
 		if err := s.appSettings.Upsert(ctx, settings); err != nil {
@@ -61,9 +62,10 @@ func IsLanguageSupported(lang string) bool {
 
 // UpdateSettingsInput holds the input for updating app settings
 type UpdateSettingsInput struct {
-	AppName           *string `json:"appName"`
-	DefaultLanguage   *string `json:"defaultLanguage"`
-	DisableAutoDetect *bool   `json:"disableAutoDetect"`
+	AppName                  *string `json:"appName"`
+	DefaultLanguage          *string `json:"defaultLanguage"`
+	DisableAutoDetect        *bool   `json:"disableAutoDetect"`
+	ReminderRateLimitPerHour *int    `json:"reminderRateLimitPerHour"`
 }
 
 // UpdateSettings updates app settings (ADMIN only - enforced at handler)
@@ -90,6 +92,13 @@ func (s *AppSettingsService) UpdateSettings(ctx context.Context, input UpdateSet
 
 	if input.DisableAutoDetect != nil {
 		settings.DisableAutoDetect = *input.DisableAutoDetect
+	}
+
+	if input.ReminderRateLimitPerHour != nil {
+		if *input.ReminderRateLimitPerHour < 0 {
+			return errors.New("reminder rate limit must be non-negative")
+		}
+		settings.ReminderRateLimitPerHour = *input.ReminderRateLimitPerHour
 	}
 
 	settings.UpdatedAt = time.Now()

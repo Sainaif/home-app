@@ -7,6 +7,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/sainaif/holy-home/internal/models"
+	"github.com/sainaif/holy-home/internal/repository"
 )
 
 // PasskeyCredentialRow represents a passkey credential row in SQLite
@@ -108,6 +109,24 @@ func (r *PasskeyCredentialRepository) Delete(ctx context.Context, userID string,
 func (r *PasskeyCredentialRepository) DeleteAllForUser(ctx context.Context, userID string) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM passkey_credentials WHERE user_id = ?", userID)
 	return err
+}
+
+// List returns all passkey credentials with their user IDs (for backups)
+func (r *PasskeyCredentialRepository) List(ctx context.Context) ([]repository.PasskeyCredentialWithUser, error) {
+	var rows []PasskeyCredentialRow
+	err := r.db.SelectContext(ctx, &rows, "SELECT * FROM passkey_credentials")
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]repository.PasskeyCredentialWithUser, len(rows))
+	for i, row := range rows {
+		result[i] = repository.PasskeyCredentialWithUser{
+			UserID:     row.UserID,
+			Credential: *rowToPasskeyCredential(&row),
+		}
+	}
+	return result, nil
 }
 
 func rowToPasskeyCredential(row *PasskeyCredentialRow) *models.PasskeyCredential {

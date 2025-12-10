@@ -438,6 +438,24 @@ CREATE TABLE IF NOT EXISTS app_settings (
     app_name TEXT NOT NULL DEFAULT 'Holy Home',
     default_language TEXT NOT NULL DEFAULT 'en',
     disable_auto_detect INTEGER NOT NULL DEFAULT 0,
+    reminder_rate_limit_per_hour INTEGER NOT NULL DEFAULT 1,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- ============================================
+-- SENT REMINDERS (for rate limiting & deduplication)
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS sent_reminders (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    resource_type TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    reminder_type TEXT NOT NULL,
+    sent_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, resource_type, resource_id, reminder_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sent_reminders_user_id ON sent_reminders(user_id);
+CREATE INDEX IF NOT EXISTS idx_sent_reminders_sent_at ON sent_reminders(sent_at);
 
