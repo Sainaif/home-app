@@ -129,7 +129,7 @@ func main() {
 	recurringBillService := services.NewRecurringBillService(repos.RecurringBillTemplates, repos.RecurringBillAllocations, repos.Bills, repos.Allocations, repos.Payments, repos.Users, cfg)
 	paymentService := services.NewPaymentService(repos.Payments, repos.Bills, recurringBillService)
 	exportService := services.NewExportService(repos.Bills, repos.Consumptions, repos.Loans, repos.LoanPayments, repos.Chores, repos.ChoreAssignments, repos.Users, repos.Groups)
-	backupService := services.NewBackupService(repos.Users, repos.Groups, repos.Bills, repos.Consumptions, repos.Payments, repos.Loans, repos.LoanPayments, repos.Chores, repos.ChoreAssignments, repos.ChoreSettings, repos.Notifications, repos.SupplySettings, repos.SupplyItems, repos.SupplyContributions)
+	backupService := services.NewBackupService(sqliteDB.DB, repos.Users, repos.Groups, repos.Bills, repos.Consumptions, repos.Payments, repos.Loans, repos.LoanPayments, repos.Chores, repos.ChoreAssignments, repos.ChoreSettings, repos.Notifications, repos.SupplySettings, repos.SupplyItems, repos.SupplyContributions)
 	auditService := services.NewAuditService(repos.AuditLogs)
 	permissionService := services.NewPermissionService(repos.Permissions)
 	roleService := services.NewRoleService(repos.Roles, repos.Users)

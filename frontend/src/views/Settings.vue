@@ -1794,7 +1794,15 @@ async function importBackup(file) {
   backupSuccess.value = ''
 
   try {
-    const response = await api.post('/backup/import', file, {
+    // Read the file contents first
+    const fileContent = await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result)
+      reader.onerror = () => reject(new Error('Failed to read file'))
+      reader.readAsText(file)
+    })
+
+    const response = await api.post('/backup/import', fileContent, {
       headers: {
         'Content-Type': 'application/json'
       }
