@@ -94,9 +94,9 @@ export function useEventStream() {
               error.value = typeof message.data === 'string'
                 ? message.data
                 : 'Błąd serwera'
-              // If auth error, don't reconnect
-              if (message.data && message.data.includes('token')) {
-                disconnect()
+              // If auth/token error, try to refresh token and reconnect
+              if (message.data && (message.data.includes('token') || message.data.includes('expired'))) {
+                handleTokenError()
               }
               break
 
@@ -147,6 +147,30 @@ export function useEventStream() {
       isConnecting.value = false
       error.value = err.message
       scheduleReconnect()
+    }
+  }
+
+  /**
+   * Handle token error by refreshing token and reconnecting
+   */
+  async function handleTokenError() {
+    console.log('[WS] Token error, attempting to refresh...')
+    disconnect()
+
+    try {
+      const refreshed = await authStore.refresh()
+      if (refreshed) {
+        console.log('[WS] Token refreshed, reconnecting...')
+        // Reset reconnect attempts since we have a fresh token
+        reconnectAttempts = 0
+        connect()
+      } else {
+        console.log('[WS] Token refresh failed, user needs to login again')
+        error.value = 'Sesja wygasła, zaloguj się ponownie'
+      }
+    } catch (err) {
+      console.error('[WS] Token refresh error:', err)
+      error.value = 'Sesja wygasła, zaloguj się ponownie'
     }
   }
 

@@ -135,10 +135,14 @@ func NewRoleService(roles repository.RoleRepository, users repository.UserReposi
 }
 
 // InitializeDefaultRoles creates the default ADMIN and RESIDENT roles
+// NOTE: This only creates roles if they don't exist - it does NOT overwrite existing permissions.
+// To modify role permissions, use the API or manually update the database.
+// ADMIN role always has all permissions dynamically via GetRolePermissions().
 func (s *RoleService) InitializeDefaultRoles(ctx context.Context) error {
 	now := time.Now()
 
-	// ADMIN role with all permissions
+	// ADMIN role - permissions are fetched dynamically, so we just need a placeholder
+	// The GetRolePermissions() method returns all permissions for ADMIN regardless of what's stored
 	adminPermissions := []string{
 		"users.create", "users.read", "users.update", "users.delete",
 		"groups.create", "groups.read", "groups.update", "groups.delete",
@@ -156,7 +160,7 @@ func (s *RoleService) InitializeDefaultRoles(ctx context.Context) error {
 		"reminders.send",
 	}
 
-	// MIESZKANIEC role with limited permissions
+	// MIESZKANIEC role with default permissions (only used on first creation)
 	residentPermissions := []string{
 		"users.read",
 		"groups.read",
@@ -167,7 +171,7 @@ func (s *RoleService) InitializeDefaultRoles(ctx context.Context) error {
 		"loan-payments.read",
 	}
 
-	// Upsert ADMIN role
+	// Create ADMIN role only if it doesn't exist
 	adminRole, _ := s.roles.GetByName(ctx, "ADMIN")
 	if adminRole == nil {
 		adminRole = &models.Role{
@@ -182,16 +186,11 @@ func (s *RoleService) InitializeDefaultRoles(ctx context.Context) error {
 		if err := s.roles.Create(ctx, adminRole); err != nil {
 			return err
 		}
-	} else {
-		// Update permissions
-		adminRole.Permissions = adminPermissions
-		adminRole.UpdatedAt = now
-		if err := s.roles.Update(ctx, adminRole); err != nil {
-			return err
-		}
 	}
+	// NOTE: We no longer update existing ADMIN role permissions on restart.
+	// ADMIN role always gets all permissions dynamically via GetRolePermissions().
 
-	// Upsert MIESZKANIEC role
+	// Create MIESZKANIEC role only if it doesn't exist
 	residentRole, _ := s.roles.GetByName(ctx, "MIESZKANIEC")
 	if residentRole == nil {
 		residentRole = &models.Role{
@@ -206,14 +205,9 @@ func (s *RoleService) InitializeDefaultRoles(ctx context.Context) error {
 		if err := s.roles.Create(ctx, residentRole); err != nil {
 			return err
 		}
-	} else {
-		// Update permissions
-		residentRole.Permissions = residentPermissions
-		residentRole.UpdatedAt = now
-		if err := s.roles.Update(ctx, residentRole); err != nil {
-			return err
-		}
 	}
+	// NOTE: We no longer update existing MIESZKANIEC role permissions on restart.
+	// Any custom permission changes are preserved.
 
 	return nil
 }

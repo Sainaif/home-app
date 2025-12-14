@@ -63,6 +63,11 @@ func (s *SessionService) ValidateSession(ctx context.Context, refreshToken strin
 		return nil, errors.New("invalid or expired session")
 	}
 
+	// Check if session was found (repository returns nil, nil for not found)
+	if session == nil {
+		return nil, errors.New("invalid or expired session")
+	}
+
 	// Check if session is expired
 	if time.Now().After(session.ExpiresAt) {
 		return nil, errors.New("session expired")
@@ -82,6 +87,11 @@ func (s *SessionService) RenameSession(ctx context.Context, sessionID, userID st
 		return errors.New("session not found")
 	}
 
+	// Check if session was found (repository returns nil, nil for not found)
+	if session == nil {
+		return errors.New("session not found")
+	}
+
 	// Verify the session belongs to the user
 	if session.UserID != userID {
 		return errors.New("session not found")
@@ -95,6 +105,11 @@ func (s *SessionService) RenameSession(ctx context.Context, sessionID, userID st
 func (s *SessionService) DeleteSession(ctx context.Context, sessionID, userID string) error {
 	session, err := s.sessions.GetByID(ctx, sessionID)
 	if err != nil {
+		return errors.New("session not found")
+	}
+
+	// Check if session was found (repository returns nil, nil for not found)
+	if session == nil {
 		return errors.New("session not found")
 	}
 
@@ -117,6 +132,12 @@ func (s *SessionService) RevokeSession(ctx context.Context, refreshToken string)
 
 	session, err := s.sessions.GetByRefreshToken(ctx, hashedToken)
 	if err != nil {
+		// Session doesn't exist or already revoked - that's fine
+		return nil
+	}
+
+	// Check if session was found (repository returns nil, nil for not found)
+	if session == nil {
 		// Session doesn't exist or already revoked - that's fine
 		return nil
 	}
