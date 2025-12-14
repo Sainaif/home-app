@@ -146,16 +146,16 @@ func (r *LoanRepository) ListByStatus(ctx context.Context, status string) ([]mod
 	return rowsToLoans(rows), nil
 }
 
-// ListOpenBetweenUsers returns open loans between two users
-func (r *LoanRepository) ListOpenBetweenUsers(ctx context.Context, userA, userB string) ([]models.Loan, error) {
+// ListOpenBetweenUsers returns open/partial loans where userA is the lender and userB is the borrower
+func (r *LoanRepository) ListOpenBetweenUsers(ctx context.Context, lenderID, borrowerID string) ([]models.Loan, error) {
 	var rows []LoanRow
 	query := `
 		SELECT * FROM loans
-		WHERE status = 'open'
-		AND ((lender_id = ? AND borrower_id = ?) OR (lender_id = ? AND borrower_id = ?))
+		WHERE (status = 'open' OR status = 'partial')
+		AND lender_id = ? AND borrower_id = ?
 		ORDER BY created_at DESC
 	`
-	err := r.db.SelectContext(ctx, &rows, query, userA, userB, userB, userA)
+	err := r.db.SelectContext(ctx, &rows, query, lenderID, borrowerID)
 	if err != nil {
 		return nil, err
 	}
