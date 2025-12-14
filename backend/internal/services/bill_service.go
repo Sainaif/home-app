@@ -117,6 +117,9 @@ func (s *BillService) CreateBill(ctx context.Context, req CreateBillRequest, cre
 		return nil, fmt.Errorf("failed to create bill: %w", err)
 	}
 
+	log.Printf("[BILL] Created: type=%s, amount=%s PLN, period=%s to %s (ID: %s, created by: %s)",
+		bill.Type, amountStr, req.PeriodStart.Format("2006-01-02"), req.PeriodEnd.Format("2006-01-02"), bill.ID, creatorID)
+
 	// Create a notification for all users except the creator
 	users, err := s.users.ListActive(ctx)
 	if err != nil {
@@ -187,12 +190,20 @@ func (s *BillService) GetBill(ctx context.Context, billID string) (*models.Bill,
 
 // PostBill marks bill as posted (freezes allocations)
 func (s *BillService) PostBill(ctx context.Context, billID string) error {
-	return s.updateBillStatus(ctx, billID, "draft", "posted")
+	err := s.updateBillStatus(ctx, billID, "draft", "posted")
+	if err == nil {
+		log.Printf("[BILL] Posted: ID=%s (status changed from draft to posted)", billID)
+	}
+	return err
 }
 
 // CloseBill marks bill as closed (no more changes)
 func (s *BillService) CloseBill(ctx context.Context, billID string) error {
-	return s.updateBillStatus(ctx, billID, "posted", "closed")
+	err := s.updateBillStatus(ctx, billID, "posted", "closed")
+	if err == nil {
+		log.Printf("[BILL] Closed: ID=%s (status changed from posted to closed)", billID)
+	}
+	return err
 }
 
 // ReopenBill reverts a bill back to draft or posted status
@@ -232,6 +243,8 @@ func (s *BillService) ReopenBill(ctx context.Context, billID string, userID stri
 	if err := s.bills.Update(ctx, bill); err != nil {
 		return fmt.Errorf("failed to reopen bill: %w", err)
 	}
+
+	log.Printf("[BILL] Reopened: ID=%s (from %s to %s, by user %s, reason: %q)", billID, bill.Status, targetStatus, userID, reason)
 
 	return nil
 }
@@ -279,6 +292,8 @@ func (s *BillService) DeleteBill(ctx context.Context, billID string) error {
 	if err := s.bills.Delete(ctx, billID); err != nil {
 		return fmt.Errorf("failed to delete bill: %w", err)
 	}
+
+	log.Printf("[BILL] Deleted: ID=%s", billID)
 
 	return nil
 }

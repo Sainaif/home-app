@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -98,6 +99,8 @@ func (s *ChoreService) CreateChore(ctx context.Context, req CreateChoreRequest) 
 		return nil, fmt.Errorf("failed to create chore: %w", err)
 	}
 
+	log.Printf("[CHORE] Created: %q (ID: %s, frequency: %s, difficulty: %d)", chore.Name, chore.ID, chore.Frequency, chore.Difficulty)
+
 	// Send notifications to all active users about the new chore
 	if s.notificationService != nil {
 		users, err := s.users.ListActive(ctx)
@@ -180,6 +183,8 @@ func (s *ChoreService) AssignChore(ctx context.Context, req AssignChoreRequest) 
 	if err := s.choreAssignments.Create(ctx, &assignment); err != nil {
 		return nil, fmt.Errorf("failed to create chore assignment: %w", err)
 	}
+
+	log.Printf("[CHORE] Assigned: chore %q (ID: %s) to user %s, due: %s", chore.Name, req.ChoreID, req.AssigneeUserID, req.DueDate.Format("2006-01-02"))
 
 	// Send notification to the assigned user
 	if s.notificationService != nil {
@@ -292,6 +297,8 @@ func (s *ChoreService) UpdateChoreAssignment(ctx context.Context, assignmentID s
 	if err := s.choreAssignments.Update(ctx, assignment); err != nil {
 		return fmt.Errorf("failed to update chore assignment: %w", err)
 	}
+
+	log.Printf("[CHORE] Assignment updated: ID=%s, status=%s, points=%d, on_time=%v", assignmentID, req.Status, assignment.Points, assignment.IsOnTime)
 
 	return nil
 }
@@ -567,6 +574,8 @@ func (s *ChoreService) DeleteChore(ctx context.Context, choreID string) error {
 	if err := s.chores.Delete(ctx, choreID); err != nil {
 		return fmt.Errorf("failed to delete chore: %w", err)
 	}
+
+	log.Printf("[CHORE] Deleted: ID=%s (including %d assignments)", choreID, len(assignments))
 
 	return nil
 }

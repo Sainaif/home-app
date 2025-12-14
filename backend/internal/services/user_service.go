@@ -124,6 +124,8 @@ func (s *UserService) CreateUser(ctx context.Context, req CreateUserRequest) (*m
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 
+	log.Printf("[USER] Created: %q (ID: %s, email: %s, role: %s)", user.Name, user.ID, user.Email, user.Role)
+
 	return &user, nil
 }
 
@@ -234,6 +236,8 @@ func (s *UserService) UpdateUser(ctx context.Context, userID string, req UpdateU
 		return fmt.Errorf("failed to update user: %w", err)
 	}
 
+	log.Printf("[USER] Updated: %q (ID: %s)", user.Name, userID)
+
 	return nil
 }
 
@@ -282,6 +286,8 @@ func (s *UserService) ChangePassword(ctx context.Context, userID string, oldPass
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
+
+	log.Printf("[USER] Password changed: user %q (ID: %s)", user.Email, userID)
 
 	return map[string]string{
 		"accessToken":        accessToken,
@@ -332,6 +338,8 @@ func (s *UserService) DeleteUser(ctx context.Context, userID string) error {
 		return fmt.Errorf("failed to delete user: %w", err)
 	}
 
+	log.Printf("[USER] Deleted: %q (ID: %s)", user.Name, userID)
+
 	return nil
 }
 
@@ -374,6 +382,8 @@ func (s *UserService) GeneratePasswordResetToken(ctx context.Context, userID str
 
 	// Construct the full reset URL
 	resetURL := fmt.Sprintf("%s/reset-password?token=%s", baseURL, token)
+
+	log.Printf("[USER] Password reset token generated: for user ID %s, by admin ID %s, expires in %d minutes", userID, adminID, expirationMinutes)
 
 	return resetURL, nil
 }
@@ -462,6 +472,8 @@ func (s *UserService) ResetPasswordWithToken(ctx context.Context, token string, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
+
+	log.Printf("[USER] Password reset completed via token: user %q (ID: %s)", user.Email, user.ID)
 
 	return map[string]string{
 		"accessToken":  accessToken,

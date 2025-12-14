@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -92,6 +93,9 @@ func (s *RecurringBillService) CreateTemplate(ctx context.Context, template *mod
 		return fmt.Errorf("failed to generate first bill: %w", err)
 	}
 
+	log.Printf("[RECURRING BILL] Template created: %q (ID: %s, frequency: %s, amount: %s PLN, next due: %s)",
+		template.CustomType, template.ID, template.Frequency, template.Amount, template.NextDueDate.Format("2006-01-02"))
+
 	return nil
 }
 
@@ -179,7 +183,12 @@ func (s *RecurringBillService) DeleteTemplate(ctx context.Context, id string) er
 	template.IsActive = false
 	template.UpdatedAt = time.Now()
 
-	return s.templates.Update(ctx, template)
+	if err := s.templates.Update(ctx, template); err != nil {
+		return err
+	}
+
+	log.Printf("[RECURRING BILL] Template deleted (soft): %q (ID: %s)", template.CustomType, id)
+	return nil
 }
 
 // GenerateBillsFromTemplates generates bills from all active templates that are due
@@ -192,18 +201,22 @@ func (s *RecurringBillService) GenerateBillsFromTemplates(ctx context.Context) e
 		return err
 	}
 
+	if len(templates) > 0 {
+		log.Printf("[RECURRING BILL] Found %d templates due for bill generation", len(templates))
+	}
+
 	// Generate bills for each template
 	for i := range templates {
 		// Load allocations for this template
 		allocations, err := s.templateAllocations.GetByTemplateID(ctx, templates[i].ID)
 		if err != nil {
-			fmt.Printf("Error loading allocations for template %s: %v\n", templates[i].ID, err)
+			log.Printf("[RECURRING BILL] Error loading allocations for template %s: %v", templates[i].ID, err)
 			continue
 		}
 		templates[i].Allocations = allocations
 
 		if err := s.generateBillFromTemplate(ctx, &templates[i]); err != nil {
-			fmt.Printf("Error generating bill from template %s: %v\n", templates[i].ID, err)
+			log.Printf("[RECURRING BILL] Error generating bill from template %s: %v", templates[i].ID, err)
 			continue
 		}
 	}
@@ -246,27 +259,27 @@ func (s *RecurringBillService) generateBillFromTemplate(ctx context.Context, tem
 		var allocatedAmount string
 
 		// Debug logging to track allocation creation
-		fmt.Printf("[RecurringBill] Creating allocation - Type: %s, SubjectType: %s\n", allocTemplate.AllocationType, allocTemplate.SubjectType)
+		log.Printf("[RECURRING BILL] Creating allocation - Type: %s, SubjectType: %s", allocTemplate.AllocationType, allocTemplate.SubjectType)
 
 		switch allocTemplate.AllocationType {
 		case "fixed":
 			allocatedAmount = *allocTemplate.FixedAmount
 			amountFloat := utils.DecimalStringToFloat(allocatedAmount)
-			fmt.Printf("[RecurringBill] Fixed allocation: %.2f PLN\n", amountFloat)
+			log.Printf("[RECURRING BILL] Fixed allocation: %.2f PLN", amountFloat)
 		case "percentage":
 			amountFloat := utils.DecimalStringToFloat(template.Amount)
 			percentage := *allocTemplate.Percentage / 100.0
 			allocatedFloat := amountFloat * percentage
 			roundedAmount := utils.RoundPLN(allocatedFloat)
 			allocatedAmount = utils.FloatToDecimalString(roundedAmount)
-			fmt.Printf("[RecurringBill] Percentage allocation: %.2f%% of %.2f = %.2f PLN\n", *allocTemplate.Percentage, amountFloat, roundedAmount)
+			log.Printf("[RECURRING BILL] Percentage allocation: %.2f%% of %.2f = %.2f PLN", *allocTemplate.Percentage, amountFloat, roundedAmount)
 		case "fraction":
 			amountFloat := utils.DecimalStringToFloat(template.Amount)
 			fraction := float64(*allocTemplate.FractionNum) / float64(*allocTemplate.FractionDenom)
 			allocatedFloat := amountFloat * fraction
 			roundedAmount := utils.RoundPLN(allocatedFloat)
 			allocatedAmount = utils.FloatToDecimalString(roundedAmount)
-			fmt.Printf("[RecurringBill] Fraction allocation: %d/%d of %.2f = %.2f PLN\n", *allocTemplate.FractionNum, *allocTemplate.FractionDenom, amountFloat, roundedAmount)
+			log.Printf("[RECURRING BILL] Fraction allocation: %d/%d of %.2f = %.2f PLN", *allocTemplate.FractionNum, *allocTemplate.FractionDenom, amountFloat, roundedAmount)
 		}
 
 		if err := s.allocations.Create(ctx, billID, allocTemplate.SubjectType, allocTemplate.SubjectID, allocatedAmount); err != nil {
@@ -281,7 +294,14 @@ func (s *RecurringBillService) generateBillFromTemplate(ctx context.Context, tem
 	template.LastGeneratedAt = &now
 	template.UpdatedAt = now
 
-	return s.templates.Update(ctx, template)
+	if err := s.templates.Update(ctx, template); err != nil {
+		return err
+	}
+
+	log.Printf("[RECURRING BILL] Bill generated from template %q (bill ID: %s, amount: %s PLN, period: %s to %s, next due: %s)",
+		template.CustomType, billID, template.Amount, periodStart.Format("2006-01-02"), periodEnd.Format("2006-01-02"), nextDueDate.Format("2006-01-02"))
+
+	return nil
 }
 
 // calculateNextDueDate calculates the next due date based on frequency

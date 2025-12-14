@@ -52,6 +52,8 @@ func (s *NotificationService) CreateNotification(ctx context.Context, notificati
 		return err
 	}
 
+	log.Printf("[NOTIFICATION] Created: %q for user %s (template: %s, channel: %s)", notification.Title, *notification.UserID, notification.TemplateID, notification.Channel)
+
 	s.eventService.BroadcastToUser(*notification.UserID, EventNotificationCreated, map[string]interface{}{
 		"notification": notification,
 	})

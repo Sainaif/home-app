@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -68,6 +69,8 @@ func (s *PaymentService) RecordPayment(ctx context.Context, req RecordPaymentReq
 	if err := s.payments.Create(ctx, payment); err != nil {
 		return nil, fmt.Errorf("failed to record payment: %w", err)
 	}
+
+	log.Printf("[PAYMENT] Recorded: %.2f PLN for bill %s by user %s (payment ID: %s)", req.Amount, req.BillID, userID, payment.ID)
 
 	// Check if this payment completes a recurring bill and generate next bill if needed
 	if s.recurringBillService != nil {

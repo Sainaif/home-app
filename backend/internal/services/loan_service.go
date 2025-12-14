@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"time"
 
@@ -85,6 +86,24 @@ func (s *LoanService) CreateLoan(ctx context.Context, req CreateLoanRequest) (*m
 		return nil, errors.New("loan amount must be positive")
 	}
 
+	// Get user names for logging
+	lender, _ := s.users.GetByID(ctx, req.LenderID)
+	borrower, _ := s.users.GetByID(ctx, req.BorrowerID)
+	lenderName := req.LenderID
+	borrowerName := req.BorrowerID
+	if lender != nil {
+		lenderName = lender.Name
+	}
+	if borrower != nil {
+		borrowerName = borrower.Name
+	}
+
+	noteStr := ""
+	if req.Note != nil {
+		noteStr = *req.Note
+	}
+	log.Printf("[LOAN] Creating loan: %s → %s, amount: %.2f PLN, note: %q", lenderName, borrowerName, req.AmountPLN, noteStr)
+
 	// Verify users exist
 	for _, userID := range []string{req.LenderID, req.BorrowerID} {
 		_, err := s.users.GetByID(ctx, userID)
@@ -94,9 +113,12 @@ func (s *LoanService) CreateLoan(ctx context.Context, req CreateLoanRequest) (*m
 	}
 
 	// Perform group compensation on existing loans first
-	_, err := s.PerformGroupCompensation(ctx)
+	compResult, err := s.PerformGroupCompensation(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("group compensation failed: %w", err)
+	}
+	if compResult.CompensationsPerformed > 0 {
+		log.Printf("[LOAN] Group compensation performed: %d compensations, total %.2f PLN", compResult.CompensationsPerformed, compResult.TotalAmountCompensated)
 	}
 
 	// Check for reverse debt (borrower owes lender)
@@ -104,6 +126,10 @@ func (s *LoanService) CreateLoan(ctx context.Context, req CreateLoanRequest) (*m
 	reverseLoans, err := s.loans.ListOpenBetweenUsers(ctx, req.BorrowerID, req.LenderID)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
+	}
+
+	if len(reverseLoans) > 0 {
+		log.Printf("[LOAN] Found %d reverse loans to offset (where %s lent to %s)", len(reverseLoans), borrowerName, lenderName)
 	}
 
 	// If there are reverse debts, offset them
@@ -131,6 +157,13 @@ func (s *LoanService) CreateLoan(ctx context.Context, req CreateLoanRequest) (*m
 			offsetAmount = reverseRemaining
 		}
 
+		reverseLoanNote := ""
+		if reverseLoan.Note != nil {
+			reverseLoanNote = *reverseLoan.Note
+		}
+		log.Printf("[LOAN] Offsetting %.2f PLN against reverse loan %q (original: %.2f PLN, remaining before: %.2f PLN)",
+			offsetAmount, reverseLoanNote, reverseLoanAmount, reverseRemaining)
+
 		// Create a payment to offset the reverse loan
 		payment := models.LoanPayment{
 			ID:        uuid.New().String(),
@@ -149,8 +182,10 @@ func (s *LoanService) CreateLoan(ctx context.Context, req CreateLoanRequest) (*m
 		var newStatus string
 		if newTotalPaid >= reverseLoanAmount {
 			newStatus = "settled"
+			log.Printf("[LOAN] Reverse loan %q is now fully settled", reverseLoanNote)
 		} else {
 			newStatus = "partial"
+			log.Printf("[LOAN] Reverse loan %q is now partial (remaining: %.2f PLN)", reverseLoanNote, reverseLoanAmount-newTotalPaid)
 		}
 
 		reverseLoan.Status = newStatus
@@ -163,6 +198,11 @@ func (s *LoanService) CreateLoan(ctx context.Context, req CreateLoanRequest) (*m
 
 	// If there's still remaining amount, create the new loan
 	if remainingAmount > 0 {
+		if remainingAmount < req.AmountPLN {
+			log.Printf("[LOAN] After offsetting, creating loan for reduced amount: %.2f PLN (original: %.2f PLN, offset: %.2f PLN)",
+				remainingAmount, req.AmountPLN, req.AmountPLN-remainingAmount)
+		}
+
 		loan := models.Loan{
 			ID:         uuid.New().String(),
 			LenderID:   req.LenderID,
@@ -178,13 +218,10 @@ func (s *LoanService) CreateLoan(ctx context.Context, req CreateLoanRequest) (*m
 			return nil, fmt.Errorf("failed to create loan: %w", err)
 		}
 
+		log.Printf("[LOAN] Created loan: %s → %s, %.2f PLN, note: %q", lenderName, borrowerName, remainingAmount, noteStr)
+
 		// Notify borrower about new loan
 		if s.notificationService != nil {
-			lender, _ := s.users.GetByID(ctx, req.LenderID)
-			lenderName := "Ktoś"
-			if lender != nil {
-				lenderName = lender.Name
-			}
 			borrowerID := req.BorrowerID
 			_ = s.notificationService.CreateNotification(ctx, &models.Notification{
 				UserID:     &borrowerID,
@@ -198,6 +235,8 @@ func (s *LoanService) CreateLoan(ctx context.Context, req CreateLoanRequest) (*m
 	}
 
 	// All debt was offset, save settled loan to database
+	log.Printf("[LOAN] Entire loan amount (%.2f PLN) was offset against reverse debts - creating as settled", req.AmountPLN)
+
 	// Append offset message to user's note if they provided one
 	var settledNote *string
 	if req.Note != nil && *req.Note != "" {
@@ -221,6 +260,8 @@ func (s *LoanService) CreateLoan(ctx context.Context, req CreateLoanRequest) (*m
 	if err := s.loans.Create(ctx, &settledLoan); err != nil {
 		return nil, fmt.Errorf("failed to create settled loan: %w", err)
 	}
+
+	log.Printf("[LOAN] Created settled loan (fully offset): %s → %s, %.2f PLN, note: %q", lenderName, borrowerName, req.AmountPLN, noteStr)
 
 	return &settledLoan, nil
 }
@@ -338,6 +379,36 @@ func (s *LoanService) PerformGroupCompensation(ctx context.Context) (*Compensati
 				compensationAmount = loansWithRemaining[j].remaining
 			}
 
+			// Get names for logging
+			externalUser, _ := s.users.GetByID(ctx, external)
+			groupMemberAUser, _ := s.users.GetByID(ctx, groupMemberA)
+			groupMemberBUser, _ := s.users.GetByID(ctx, groupMemberB)
+			externalName := external
+			groupMemberAName := groupMemberA
+			groupMemberBName := groupMemberB
+			if externalUser != nil {
+				externalName = externalUser.Name
+			}
+			if groupMemberAUser != nil {
+				groupMemberAName = groupMemberAUser.Name
+			}
+			if groupMemberBUser != nil {
+				groupMemberBName = groupMemberBUser.Name
+			}
+
+			loan1Note := ""
+			if loan1.Note != nil {
+				loan1Note = *loan1.Note
+			}
+			loan2Note := ""
+			if loan2.Note != nil {
+				loan2Note = *loan2.Note
+			}
+
+			log.Printf("[GROUP COMPENSATION] Found opportunity: %.2f PLN", compensationAmount)
+			log.Printf("[GROUP COMPENSATION]   Loan1: %s owes %s %.2f PLN (%q)", groupMemberAName, externalName, loansWithRemaining[i].remaining, loan1Note)
+			log.Printf("[GROUP COMPENSATION]   Loan2: %s owes %s %.2f PLN (%q)", externalName, groupMemberBName, loansWithRemaining[j].remaining, loan2Note)
+
 			// Create payments with compensation note
 			compensationNote := getStringPtr("Kompensacja grupowa")
 
@@ -360,8 +431,10 @@ func (s *LoanService) PerformGroupCompensation(ctx context.Context) (*Compensati
 			var newStatus1 string
 			if newTotalPaid1 >= loanAmount1 {
 				newStatus1 = "settled"
+				log.Printf("[GROUP COMPENSATION]   Loan1 %q is now settled", loan1Note)
 			} else {
 				newStatus1 = "partial"
+				log.Printf("[GROUP COMPENSATION]   Loan1 %q is now partial (remaining: %.2f PLN)", loan1Note, loanAmount1-newTotalPaid1)
 			}
 
 			loan1.Status = newStatus1
@@ -388,8 +461,10 @@ func (s *LoanService) PerformGroupCompensation(ctx context.Context) (*Compensati
 			var newStatus2 string
 			if newTotalPaid2 >= loanAmount2 {
 				newStatus2 = "settled"
+				log.Printf("[GROUP COMPENSATION]   Loan2 %q is now settled", loan2Note)
 			} else {
 				newStatus2 = "partial"
+				log.Printf("[GROUP COMPENSATION]   Loan2 %q is now partial (remaining: %.2f PLN)", loan2Note, loanAmount2-newTotalPaid2)
 			}
 
 			loan2.Status = newStatus2

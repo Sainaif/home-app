@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -37,7 +38,12 @@ func (s *SessionService) CreateSession(ctx context.Context, userID string, refre
 		ExpiresAt:    expiresAt,
 	}
 
-	return s.sessions.Create(ctx, &session)
+	if err := s.sessions.Create(ctx, &session); err != nil {
+		return err
+	}
+
+	log.Printf("[SESSION] Created: user ID %s from IP %s (session ID: %s, name: %q)", userID, ipAddress, session.ID, name)
+	return nil
 }
 
 // GetUserSessions retrieves all sessions for a user
@@ -97,7 +103,12 @@ func (s *SessionService) DeleteSession(ctx context.Context, sessionID, userID st
 		return errors.New("session not found")
 	}
 
-	return s.sessions.Delete(ctx, sessionID)
+	if err := s.sessions.Delete(ctx, sessionID); err != nil {
+		return err
+	}
+
+	log.Printf("[SESSION] Deleted: session ID %s for user ID %s", sessionID, userID)
+	return nil
 }
 
 // RevokeSession revokes a session by refresh token (used during logout)
@@ -110,7 +121,12 @@ func (s *SessionService) RevokeSession(ctx context.Context, refreshToken string)
 		return nil
 	}
 
-	return s.sessions.Delete(ctx, session.ID)
+	if err := s.sessions.Delete(ctx, session.ID); err != nil {
+		return err
+	}
+
+	log.Printf("[SESSION] Revoked: session ID %s for user ID %s", session.ID, session.UserID)
+	return nil
 }
 
 // RevokeAllUserSessions revokes all sessions for a user (except optionally the current one)
@@ -120,11 +136,17 @@ func (s *SessionService) RevokeAllUserSessions(ctx context.Context, userID strin
 		return err
 	}
 
+	revokedCount := 0
 	for _, session := range sessions {
 		if exceptSessionID != nil && session.ID == *exceptSessionID {
 			continue
 		}
 		_ = s.sessions.Delete(ctx, session.ID)
+		revokedCount++
+	}
+
+	if revokedCount > 0 {
+		log.Printf("[SESSION] Revoked all sessions: %d sessions revoked for user ID %s", revokedCount, userID)
 	}
 
 	return nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 	"sync"
@@ -160,19 +161,23 @@ func (s *AuthService) Login(ctx context.Context, req LoginRequest, ipAddress, us
 	}
 
 	if err != nil || user == nil {
+		log.Printf("[AUTH] Login failed: user not found for identifier %q (IP: %s)", identifier, ipAddress)
 		return nil, errors.New("invalid credentials")
 	}
 
 	if !user.IsActive {
+		log.Printf("[AUTH] Login failed: account disabled for user %q (ID: %s, IP: %s)", user.Email, user.ID, ipAddress)
 		return nil, errors.New("user account is disabled")
 	}
 
 	// Verify password
 	valid, err := utils.VerifyPassword(req.Password, user.PasswordHash)
 	if err != nil {
+		log.Printf("[AUTH] Login failed: password verification error for user %q (ID: %s, IP: %s)", user.Email, user.ID, ipAddress)
 		return nil, fmt.Errorf("password verification error: %w", err)
 	}
 	if !valid {
+		log.Printf("[AUTH] Login failed: invalid password for user %q (ID: %s, IP: %s)", user.Email, user.ID, ipAddress)
 		return nil, errors.New("invalid credentials")
 	}
 
@@ -199,8 +204,10 @@ func (s *AuthService) Login(ctx context.Context, req LoginRequest, ipAddress, us
 
 		// Validate TOTP code
 		if !utils.ValidateTOTP(req.TOTPCode, decryptedSecret) {
+			log.Printf("[AUTH] Login failed: invalid 2FA code for user %q (ID: %s, IP: %s)", user.Email, user.ID, ipAddress)
 			return nil, errors.New("invalid 2FA code")
 		}
+		log.Printf("[AUTH] 2FA verification successful for user %q (ID: %s)", user.Email, user.ID)
 	}
 
 	// Generate tokens
@@ -230,6 +237,8 @@ func (s *AuthService) Login(ctx context.Context, req LoginRequest, ipAddress, us
 		_ = s.sessionService.CreateSession(ctx, user.ID, refreshToken, "Web Browser", ipAddress, userAgent, expiresAt)
 	}
 
+	log.Printf("[AUTH] Login successful: user %q (ID: %s, role: %s, IP: %s)", user.Email, user.ID, user.Role, ipAddress)
+
 	return &TokenResponse{
 		Access:             accessToken,
 		Refresh:            refreshToken,
@@ -242,6 +251,7 @@ func (s *AuthService) RefreshTokens(ctx context.Context, refreshToken string, ip
 	// Validate refresh token
 	userID, err := utils.ValidateRefreshToken(refreshToken, s.cfg.JWT.RefreshSecret)
 	if err != nil {
+		log.Printf("[AUTH] Token refresh failed: invalid refresh token (IP: %s)", ipAddress)
 		return nil, errors.New("invalid refresh token")
 	}
 
@@ -250,6 +260,7 @@ func (s *AuthService) RefreshTokens(ctx context.Context, refreshToken string, ip
 	if s.sessionService != nil {
 		_, err := s.sessionService.ValidateSession(ctx, refreshToken)
 		if err != nil {
+			log.Printf("[AUTH] Token refresh failed: session expired or revoked for user ID %s (IP: %s)", userID, ipAddress)
 			return nil, errors.New("session expired or revoked")
 		}
 	}
@@ -257,10 +268,12 @@ func (s *AuthService) RefreshTokens(ctx context.Context, refreshToken string, ip
 	// Find user
 	user, err := s.users.GetByID(ctx, userID)
 	if err != nil {
+		log.Printf("[AUTH] Token refresh failed: user not found for ID %s (IP: %s)", userID, ipAddress)
 		return nil, errors.New("user not found")
 	}
 
 	if !user.IsActive {
+		log.Printf("[AUTH] Token refresh failed: account disabled for user %q (ID: %s, IP: %s)", user.Email, user.ID, ipAddress)
 		return nil, errors.New("user account is disabled")
 	}
 
@@ -294,6 +307,8 @@ func (s *AuthService) RefreshTokens(ctx context.Context, refreshToken string, ip
 		expiresAt := time.Now().Add(s.cfg.JWT.RefreshTTL)
 		_ = s.sessionService.CreateSession(ctx, user.ID, newRefreshToken, "Web Browser", ipAddress, userAgent, expiresAt)
 	}
+
+	log.Printf("[AUTH] Token refresh successful: user %q (ID: %s, IP: %s)", user.Email, user.ID, ipAddress)
 
 	return &TokenResponse{
 		Access:  accessToken,
@@ -333,6 +348,8 @@ func (s *AuthService) Enable2FA(ctx context.Context, userID string) (string, str
 	// Generate provisioning URL (uses plaintext secret for QR code)
 	otpauthURL := utils.GenerateTOTPURL(secret, user.Email, s.cfg.App.Name)
 
+	log.Printf("[AUTH] 2FA enabled for user %q (ID: %s)", user.Email, user.ID)
+
 	return secret, otpauthURL, nil
 }
 
@@ -341,6 +358,7 @@ func (s *AuthService) Disable2FA(ctx context.Context, userID string) error {
 	if err := s.users.UpdateTOTPSecret(ctx, userID, ""); err != nil {
 		return fmt.Errorf("failed to disable 2FA: %w", err)
 	}
+	log.Printf("[AUTH] 2FA disabled for user ID %s", userID)
 	return nil
 }
 
@@ -438,6 +456,8 @@ func (s *AuthService) FinishPasskeyRegistration(ctx context.Context, userID stri
 	if err := s.passkeys.Create(ctx, userID, &passkeyCredential); err != nil {
 		return fmt.Errorf("failed to save credential: %w", err)
 	}
+
+	log.Printf("[AUTH] Passkey registered for user ID %s (name: %q)", userID, credentialName)
 
 	return nil
 }
@@ -604,6 +624,8 @@ func (s *AuthService) FinishPasskeyLogin(ctx context.Context, email string, resp
 		_ = s.sessionService.CreateSession(ctx, user.ID, refreshToken, "Passkey Login", ipAddress, userAgent, expiresAt)
 	}
 
+	log.Printf("[AUTH] Passkey login successful: user %q (ID: %s, IP: %s)", user.Email, user.ID, ipAddress)
+
 	return &TokenResponse{
 		Access:             accessToken,
 		Refresh:            refreshToken,
@@ -716,6 +738,8 @@ func (s *AuthService) FinishPasskeyDiscoverableLogin(ctx context.Context, respon
 		_ = s.sessionService.CreateSession(ctx, user.ID, refreshToken, "Passkey Login (Discoverable)", ipAddress, userAgent, expiresAt)
 	}
 
+	log.Printf("[AUTH] Discoverable passkey login successful: user %q (ID: %s, IP: %s)", user.Email, user.ID, ipAddress)
+
 	return &TokenResponse{
 		Access:             accessToken,
 		Refresh:            refreshToken,
@@ -730,13 +754,21 @@ func (s *AuthService) ListPasskeys(ctx context.Context, userID string) ([]models
 
 // DeletePasskey removes a passkey from a user
 func (s *AuthService) DeletePasskey(ctx context.Context, userID string, credentialID []byte) error {
-	return s.passkeys.Delete(ctx, userID, credentialID)
+	err := s.passkeys.Delete(ctx, userID, credentialID)
+	if err == nil {
+		log.Printf("[AUTH] Passkey deleted for user ID %s", userID)
+	}
+	return err
 }
 
 // Logout revokes the session associated with the refresh token
 func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 	if s.sessionService != nil {
-		return s.sessionService.RevokeSession(ctx, refreshToken)
+		err := s.sessionService.RevokeSession(ctx, refreshToken)
+		if err == nil {
+			log.Printf("[AUTH] User logged out (session revoked)")
+		}
+		return err
 	}
 	return nil
 }
@@ -782,6 +814,8 @@ func (s *AuthService) BootstrapAdmin(ctx context.Context) error {
 	if err := s.users.Create(ctx, &admin); err != nil {
 		return fmt.Errorf("failed to create admin user: %w", err)
 	}
+
+	log.Printf("[AUTH] Bootstrap admin user created: %q", adminEmail)
 
 	return nil
 }
