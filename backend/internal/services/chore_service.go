@@ -347,7 +347,7 @@ func (s *ChoreService) RotateChore(ctx context.Context, choreID string, dueDate 
 
 	var nextUserID string
 
-	if err != nil {
+	if err != nil || lastAssignment == nil {
 		// No previous assignment, assign to first user
 		nextUserID = users[0].ID
 	} else {
@@ -410,7 +410,7 @@ func (s *ChoreService) GetChoresWithAssignments(ctx context.Context) ([]ChoreWit
 		// If no pending, try to get latest assignment
 		if choreWithAssignment.Assignment == nil {
 			latest, err := s.choreAssignments.GetLatestByChoreID(ctx, chore.ID)
-			if err == nil && latest.Status == "pending" {
+			if err == nil && latest != nil && latest.Status == "pending" {
 				choreWithAssignment.Assignment = latest
 			}
 		}
