@@ -141,6 +141,9 @@ func (s *ChoreService) GetChore(ctx context.Context, choreID string) (*models.Ch
 	if err != nil {
 		return nil, errors.New("chore not found")
 	}
+	if chore == nil {
+		return nil, errors.New("chore not found")
+	}
 	return chore, nil
 }
 
@@ -256,6 +259,9 @@ func (s *ChoreService) GetChoreAssignments(ctx context.Context, userID *string, 
 func (s *ChoreService) GetChoreAssignment(ctx context.Context, assignmentID string) (*models.ChoreAssignment, error) {
 	assignment, err := s.choreAssignments.GetByID(ctx, assignmentID)
 	if err != nil {
+		return nil, errors.New("chore assignment not found")
+	}
+	if assignment == nil {
 		return nil, errors.New("chore assignment not found")
 	}
 	return assignment, nil

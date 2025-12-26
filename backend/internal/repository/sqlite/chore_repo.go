@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/sainaif/holy-home/internal/models"
 )
@@ -38,7 +37,6 @@ func NewChoreRepository(db *sqlx.DB) *ChoreRepository {
 
 // Create creates a new chore
 func (r *ChoreRepository) Create(ctx context.Context, chore *models.Chore) error {
-	id := uuid.New().String()
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	query := `
@@ -48,7 +46,7 @@ func (r *ChoreRepository) Create(ctx context.Context, chore *models.Chore) error
 	`
 
 	_, err := r.db.ExecContext(ctx, query,
-		id,
+		chore.ID,
 		chore.Name,
 		chore.Description,
 		chore.Frequency,
@@ -178,8 +176,6 @@ func NewChoreAssignmentRepository(db *sqlx.DB) *ChoreAssignmentRepository {
 
 // Create creates a new chore assignment
 func (r *ChoreAssignmentRepository) Create(ctx context.Context, assignment *models.ChoreAssignment) error {
-	id := uuid.New().String()
-
 	var completedAt *string
 	if assignment.CompletedAt != nil {
 		ca := assignment.CompletedAt.UTC().Format(time.RFC3339)
@@ -192,7 +188,7 @@ func (r *ChoreAssignmentRepository) Create(ctx context.Context, assignment *mode
 	`
 
 	_, err := r.db.ExecContext(ctx, query,
-		id,
+		assignment.ID,
 		assignment.ChoreID,
 		assignment.AssigneeUserID,
 		assignment.DueDate.UTC().Format(time.RFC3339),
