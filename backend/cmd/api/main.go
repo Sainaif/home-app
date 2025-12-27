@@ -525,6 +525,27 @@ func main() {
 		}
 	}()
 
+	// Start recurring bill generation scheduler (runs every hour)
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+
+		// Run initial check after 2 minutes to let the system stabilize
+		time.Sleep(2 * time.Minute)
+		log.Println("Running initial recurring bill generation check...")
+		if err := recurringBillService.GenerateBillsFromTemplates(context.Background()); err != nil {
+			log.Printf("Error during initial recurring bill generation: %v", err)
+		}
+
+		// Run generation check every hour
+		for range ticker.C {
+			log.Println("Running scheduled recurring bill generation check...")
+			if err := recurringBillService.GenerateBillsFromTemplates(context.Background()); err != nil {
+				log.Printf("Error during scheduled recurring bill generation: %v", err)
+			}
+		}
+	}()
+
 	// Start server
 	addr := fmt.Sprintf("%s:%s", cfg.App.Host, cfg.App.Port)
 	go func() {
