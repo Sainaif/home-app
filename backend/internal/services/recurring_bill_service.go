@@ -422,6 +422,13 @@ func (s *RecurringBillService) CheckAndGenerateNextBill(ctx context.Context, bil
 		return nil
 	}
 
+	// Load allocations for the template (required for generating the next bill)
+	allocations, err := s.templateAllocations.GetByTemplateID(ctx, template.ID)
+	if err != nil {
+		return fmt.Errorf("failed to load template allocations: %w", err)
+	}
+	template.Allocations = allocations
+
 	// Only generate next bill if the current bill is posted (not draft)
 	if bill.Status != "posted" {
 		return nil
