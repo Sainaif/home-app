@@ -655,6 +655,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
+import { useEventStream } from '../composables/useEventStream'
+import { useDataEvents, DATA_EVENTS } from '../composables/useDataEvents'
 import api from '../api/client'
 import {
   Plus, FileX, Zap, Flame, Wifi, Calendar, Receipt, Gauge,
@@ -664,6 +666,8 @@ import {
 const router = useRouter()
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
+const { on: onEvent } = useEventStream()
+const { on: onDataEvent } = useDataEvents()
 const activeTab = ref('bills')
 
 // Bills state
@@ -866,6 +870,37 @@ onMounted(async () => {
   await loadReadingsData()
   await loadRecurringTemplates()
   await loadGroups()
+
+  // Listen for bill-related events from WebSocket
+  onEvent('bill.created', () => {
+    console.log('[Bills] Bill created event received, refreshing...')
+    loadBills()
+    loadReadingsData()
+    loadRecurringTemplates()
+  })
+
+  onEvent('bill.posted', () => {
+    console.log('[Bills] Bill posted event received, refreshing...')
+    loadBills()
+    loadReadingsData()
+  })
+
+  onEvent('consumption.created', () => {
+    console.log('[Bills] Consumption created event received, refreshing...')
+    loadReadingsData()
+  })
+
+  onEvent('payment.created', () => {
+    console.log('[Bills] Payment created event received, refreshing...')
+    loadBills()
+  })
+
+  // Listen for local data events (from same tab actions in other components)
+  onDataEvent(DATA_EVENTS.BILL_CREATED, () => loadBills())
+  onDataEvent(DATA_EVENTS.BILL_UPDATED, () => loadBills())
+  onDataEvent(DATA_EVENTS.BILL_DELETED, () => loadBills())
+  onDataEvent(DATA_EVENTS.CONSUMPTION_CREATED, () => loadReadingsData())
+  onDataEvent(DATA_EVENTS.CONSUMPTION_DELETED, () => loadReadingsData())
 })
 
 async function loadBills() {

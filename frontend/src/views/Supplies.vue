@@ -503,13 +503,15 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
+import { useEventStream } from '../composables/useEventStream'
 import { useDataEvents, DATA_EVENTS } from '../composables/useDataEvents'
 import api from '../api/client'
 import { Package, DollarSign, TrendingUp, Plus, Minus, Trash, Settings, X, Edit, AlertCircle } from 'lucide-vue-next'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
-const { on, emit } = useDataEvents()
+const { on: onEvent } = useEventStream()
+const { on: onDataEvent, emit } = useDataEvents()
 
 const activeTab = ref('inventory')
 const items = ref([])
@@ -588,6 +590,12 @@ const totalPendingRefunds = computed(() => {
   }, 0).toFixed(2)
 })
 
+// Helper function for event handlers
+function refreshItemsAndStats() {
+  loadItems()
+  loadStats()
+}
+
 onMounted(async () => {
   await Promise.all([
     loadSettings(),
@@ -595,11 +603,33 @@ onMounted(async () => {
     loadUsers()
   ])
 
-  // Listen for data events
-  on(DATA_EVENTS.SUPPLY_ITEM_CREATED, loadItems)
-  on(DATA_EVENTS.SUPPLY_ITEM_UPDATED, loadItems)
-  on(DATA_EVENTS.SUPPLY_ITEM_DELETED, loadItems)
-  on(DATA_EVENTS.USER_UPDATED, loadUsers)
+  // Listen for supply-related WebSocket events
+  onEvent('supply.item.added', () => {
+    console.log('[Supplies] Item added event received, refreshing...')
+    loadItems()
+  })
+
+  onEvent('supply.item.bought', () => {
+    console.log('[Supplies] Item bought event received, refreshing...')
+    refreshItemsAndStats()
+  })
+
+  onEvent('supply.budget.contributed', () => {
+    console.log('[Supplies] Budget contributed event received, refreshing...')
+    loadStats()
+  })
+
+  onEvent('supply.budget.low', () => {
+    console.log('[Supplies] Budget low event received, refreshing...')
+    loadStats()
+  })
+
+  // Listen for local data events
+  onDataEvent(DATA_EVENTS.SUPPLY_ITEM_CREATED, loadItems)
+  onDataEvent(DATA_EVENTS.SUPPLY_ITEM_UPDATED, loadItems)
+  onDataEvent(DATA_EVENTS.SUPPLY_ITEM_DELETED, loadItems)
+  onDataEvent(DATA_EVENTS.SUPPLY_CONTRIBUTION_CREATED, loadStats)
+  onDataEvent(DATA_EVENTS.USER_UPDATED, loadUsers)
 })
 
 async function loadSettings() {

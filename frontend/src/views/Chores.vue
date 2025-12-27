@@ -280,12 +280,14 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
+import { useEventStream } from '../composables/useEventStream'
 import { useDataEvents, DATA_EVENTS } from '../composables/useDataEvents'
 import api from '../api/client'
 
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
-const { emit } = useDataEvents()
+const { on: onEvent } = useEventStream()
+const { on: onDataEvent, emit } = useDataEvents()
 const assignments = ref([])
 const chores = ref([])
 const users = ref([])
@@ -342,6 +344,17 @@ const sortedAssignments = computed(() => {
   return result
 })
 
+// Helper functions for event handlers to reduce duplication
+function refreshChoresAndAssignments() {
+  loadChores()
+  loadAssignments()
+}
+
+function refreshAssignmentsAndLeaderboard() {
+  loadAssignments()
+  loadLeaderboard()
+}
+
 onMounted(async () => {
   // Load chores and users first (needed for enrichment)
   await Promise.all([
@@ -355,6 +368,25 @@ onMounted(async () => {
 
   // Find user stats from leaderboard
   userStats.value = leaderboard.value.find(u => u.userId === authStore.user?.id)
+
+  // Listen for chore-related WebSocket events
+  onEvent('chore.updated', () => {
+    console.log('[Chores] Chore updated event received, refreshing...')
+    refreshChoresAndAssignments()
+  })
+
+  onEvent('chore.assigned', () => {
+    console.log('[Chores] Chore assigned event received, refreshing...')
+    refreshAssignmentsAndLeaderboard()
+  })
+
+  // Listen for local data events
+  onDataEvent(DATA_EVENTS.CHORE_CREATED, refreshChoresAndAssignments)
+  onDataEvent(DATA_EVENTS.CHORE_UPDATED, refreshChoresAndAssignments)
+  onDataEvent(DATA_EVENTS.CHORE_DELETED, refreshChoresAndAssignments)
+  onDataEvent(DATA_EVENTS.CHORE_ASSIGNED, refreshAssignmentsAndLeaderboard)
+  onDataEvent(DATA_EVENTS.CHORE_ASSIGNMENT_UPDATED, refreshAssignmentsAndLeaderboard)
+  onDataEvent(DATA_EVENTS.USER_UPDATED, loadUsers)
 })
 
 async function loadAssignments() {

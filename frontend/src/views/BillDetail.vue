@@ -201,6 +201,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useEventStream } from '../composables/useEventStream'
 import { useDataEvents, DATA_EVENTS } from '../composables/useDataEvents'
 import { RotateCcw, X, AlertCircle } from 'lucide-vue-next'
 import api from '../api/client'
@@ -209,7 +210,8 @@ const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
-const { on } = useDataEvents()
+const { on: onEvent } = useEventStream()
+const { on: onDataEvent } = useDataEvents()
 const billId = route.params.id
 
 const bill = ref(null)
@@ -231,6 +233,49 @@ const reopenData = ref({
   reason: ''
 })
 
+// Helper functions for reloading data
+async function loadBillData() {
+  try {
+    const billRes = await api.get(`/bills/${billId}`)
+    bill.value = billRes.data
+  } catch (err) {
+    console.error('Failed to load bill:', err)
+  }
+}
+
+async function loadReadings() {
+  loadingReadings.value = true
+  try {
+    const readingsRes = await api.get(`/consumptions?billId=${billId}`)
+    readings.value = readingsRes.data || []
+  } catch (err) {
+    console.error('Failed to load readings:', err)
+  } finally {
+    loadingReadings.value = false
+  }
+}
+
+async function loadAllocationsAndPayments() {
+  if (!bill.value || (bill.value.status !== 'posted' && bill.value.status !== 'closed')) {
+    return
+  }
+  loadingAllocations.value = true
+  try {
+    const [allocRes, paymentsRes] = await Promise.all([
+      api.get(`/bills/${billId}/allocation`),
+      api.get(`/payments/bill/${billId}`)
+    ])
+    allocations.value = allocRes.data || []
+    allPayments.value = paymentsRes.data || []
+  } catch (err) {
+    console.error('Failed to load allocations:', err)
+    allocations.value = []
+    allPayments.value = []
+  } finally {
+    loadingAllocations.value = false
+  }
+}
+
 onMounted(async () => {
   loading.value = true
   try {
@@ -243,29 +288,8 @@ onMounted(async () => {
     users.value = usersRes.data || []
     groups.value = groupsRes.data || []
 
-    // Load readings
-    loadingReadings.value = true
-    const readingsRes = await api.get(`/consumptions?billId=${billId}`)
-    readings.value = readingsRes.data || []
-    loadingReadings.value = false
-
-    // Load allocations if bill is posted or closed
-    if (bill.value && (bill.value.status === 'posted' || bill.value.status === 'closed')) {
-      loadingAllocations.value = true
-      try {
-        const [allocRes, paymentsRes] = await Promise.all([
-          api.get(`/bills/${billId}/allocation`),
-          api.get(`/payments/bill/${billId}`)
-        ])
-        allocations.value = allocRes.data || []
-        allPayments.value = paymentsRes.data || []
-      } catch (err) {
-        console.error('Failed to load allocations:', err)
-        allocations.value = []
-      } finally {
-        loadingAllocations.value = false
-      }
-    }
+    await loadReadings()
+    await loadAllocationsAndPayments()
   } catch (err) {
     console.error('Failed to load bill details:', err)
     bill.value = null
@@ -273,10 +297,52 @@ onMounted(async () => {
     loading.value = false
   }
 
-  // Listen for user updates
-  on(DATA_EVENTS.USER_UPDATED, async () => {
+  // Listen for bill-related WebSocket events
+  onEvent('bill.posted', async (data) => {
+    if (data.data?.billId === billId) {
+      console.log('[BillDetail] Bill posted event received, refreshing...')
+      await loadBillData()
+      await loadAllocationsAndPayments()
+    }
+  })
+
+  onEvent('consumption.created', (data) => {
+    if (data.data?.billId === billId) {
+      console.log('[BillDetail] Consumption created event received, refreshing...')
+      loadReadings()
+    }
+  })
+
+  onEvent('payment.created', (data) => {
+    if (data.data?.billId === billId) {
+      console.log('[BillDetail] Payment created event received, refreshing...')
+      loadAllocationsAndPayments()
+    }
+  })
+
+  // Listen for local data events
+  onDataEvent(DATA_EVENTS.USER_UPDATED, async () => {
     const usersRes = await api.get('/users')
     users.value = usersRes.data || []
+  })
+
+  onDataEvent(DATA_EVENTS.BILL_UPDATED, async (data) => {
+    if (!data?.billId || data.billId === billId) {
+      await loadBillData()
+      await loadAllocationsAndPayments()
+    }
+  })
+
+  onDataEvent(DATA_EVENTS.CONSUMPTION_CREATED, (data) => {
+    if (!data?.billId || data.billId === billId) {
+      loadReadings()
+    }
+  })
+
+  onDataEvent(DATA_EVENTS.CONSUMPTION_DELETED, (data) => {
+    if (!data?.billId || data.billId === billId) {
+      loadReadings()
+    }
   })
 })
 
