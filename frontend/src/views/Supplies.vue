@@ -503,12 +503,14 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
+import { useEventStream } from '../composables/useEventStream'
 import { useDataEvents, DATA_EVENTS } from '../composables/useDataEvents'
 import api from '../api/client'
 import { Package, DollarSign, TrendingUp, Plus, Minus, Trash, Settings, X, Edit, AlertCircle } from 'lucide-vue-next'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
+const { connect, on: onEvent } = useEventStream()
 const { on, emit } = useDataEvents()
 
 const activeTab = ref('inventory')
@@ -595,10 +597,36 @@ onMounted(async () => {
     loadUsers()
   ])
 
-  // Listen for data events
+  // Connect to WebSocket for real-time updates
+  connect()
+
+  // Listen for supply-related WebSocket events
+  onEvent('supply.item.added', () => {
+    console.log('[Supplies] Item added event received, refreshing...')
+    loadItems()
+  })
+
+  onEvent('supply.item.bought', () => {
+    console.log('[Supplies] Item bought event received, refreshing...')
+    loadItems()
+    loadStats()
+  })
+
+  onEvent('supply.budget.contributed', () => {
+    console.log('[Supplies] Budget contributed event received, refreshing...')
+    loadStats()
+  })
+
+  onEvent('supply.budget.low', () => {
+    console.log('[Supplies] Budget low event received, refreshing...')
+    loadStats()
+  })
+
+  // Listen for local data events
   on(DATA_EVENTS.SUPPLY_ITEM_CREATED, loadItems)
   on(DATA_EVENTS.SUPPLY_ITEM_UPDATED, loadItems)
   on(DATA_EVENTS.SUPPLY_ITEM_DELETED, loadItems)
+  on(DATA_EVENTS.SUPPLY_CONTRIBUTION_CREATED, loadStats)
   on(DATA_EVENTS.USER_UPDATED, loadUsers)
 })
 

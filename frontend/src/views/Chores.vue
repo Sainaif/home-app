@@ -280,12 +280,14 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
+import { useEventStream } from '../composables/useEventStream'
 import { useDataEvents, DATA_EVENTS } from '../composables/useDataEvents'
 import api from '../api/client'
 
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
-const { emit } = useDataEvents()
+const { connect, on: onEvent } = useEventStream()
+const { on: onDataEvent, emit } = useDataEvents()
 const assignments = ref([])
 const chores = ref([])
 const users = ref([])
@@ -355,6 +357,50 @@ onMounted(async () => {
 
   // Find user stats from leaderboard
   userStats.value = leaderboard.value.find(u => u.userId === authStore.user?.id)
+
+  // Connect to WebSocket for real-time updates
+  connect()
+
+  // Listen for chore-related WebSocket events
+  onEvent('chore.updated', () => {
+    console.log('[Chores] Chore updated event received, refreshing...')
+    loadChores()
+    loadAssignments()
+  })
+
+  onEvent('chore.assigned', () => {
+    console.log('[Chores] Chore assigned event received, refreshing...')
+    loadAssignments()
+    loadLeaderboard()
+  })
+
+  // Listen for local data events
+  onDataEvent(DATA_EVENTS.CHORE_CREATED, () => {
+    loadChores()
+    loadAssignments()
+  })
+
+  onDataEvent(DATA_EVENTS.CHORE_UPDATED, () => {
+    loadChores()
+    loadAssignments()
+  })
+
+  onDataEvent(DATA_EVENTS.CHORE_DELETED, () => {
+    loadChores()
+    loadAssignments()
+  })
+
+  onDataEvent(DATA_EVENTS.CHORE_ASSIGNED, () => {
+    loadAssignments()
+    loadLeaderboard()
+  })
+
+  onDataEvent(DATA_EVENTS.CHORE_ASSIGNMENT_UPDATED, () => {
+    loadAssignments()
+    loadLeaderboard()
+  })
+
+  onDataEvent(DATA_EVENTS.USER_UPDATED, loadUsers)
 })
 
 async function loadAssignments() {
