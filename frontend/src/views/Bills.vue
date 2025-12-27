@@ -727,6 +727,11 @@ const newRecurring = ref({
 const isAllocationValid = computed(() => {
   if (newRecurring.value.allocations.length === 0) return false
 
+  // Check that all allocations have a subject selected
+  for (const alloc of newRecurring.value.allocations) {
+    if (!alloc.subjectId) return false
+  }
+
   let total = 0
   let hasNonFixed = false
 
@@ -751,6 +756,11 @@ const isAllocationValid = computed(() => {
 
 const allocationValidationMessage = computed(() => {
   if (newRecurring.value.allocations.length === 0) return t('bills.addAllocationRequired')
+
+  // Check for missing subject selection
+  for (const alloc of newRecurring.value.allocations) {
+    if (!alloc.subjectId) return t('bills.selectSubjectRequired')
+  }
 
   let total = 0
   let hasNonFixed = false

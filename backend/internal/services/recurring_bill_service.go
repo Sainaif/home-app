@@ -144,8 +144,13 @@ func (s *RecurringBillService) UpdateTemplate(ctx context.Context, id string, up
 		return errors.New("template not found")
 	}
 
-	// Validate allocations if being updated
-	if allocations, ok := updates["allocations"].([]models.RecurringBillAllocation); ok {
+	// Handle allocations if present in updates
+	// JSON unmarshaling into map[string]interface{} results in []interface{}, not []models.RecurringBillAllocation
+	if rawAllocations, ok := updates["allocations"]; ok {
+		allocations, err := s.parseAllocations(rawAllocations)
+		if err != nil {
+			return fmt.Errorf("invalid allocations: %w", err)
+		}
 		if err := s.validateAllocations(allocations); err != nil {
 			return err
 		}
@@ -153,7 +158,7 @@ func (s *RecurringBillService) UpdateTemplate(ctx context.Context, id string, up
 	}
 
 	// Apply updates
-	if customType, ok := updates["custom_type"].(string); ok {
+	if customType, ok := updates["customType"].(string); ok {
 		template.CustomType = customType
 	}
 	if frequency, ok := updates["frequency"].(string); ok {
@@ -162,16 +167,83 @@ func (s *RecurringBillService) UpdateTemplate(ctx context.Context, id string, up
 	if amount, ok := updates["amount"].(string); ok {
 		template.Amount = amount
 	}
-	if dayOfMonth, ok := updates["day_of_month"].(int); ok {
-		template.DayOfMonth = dayOfMonth
+	if dayOfMonth, ok := updates["dayOfMonth"]; ok {
+		switch v := dayOfMonth.(type) {
+		case float64:
+			template.DayOfMonth = int(v)
+		case int:
+			template.DayOfMonth = v
+		}
 	}
-	if notes, ok := updates["notes"].(*string); ok {
-		template.Notes = notes
+	if notes, ok := updates["notes"]; ok {
+		if notes == nil {
+			template.Notes = nil
+		} else if notesStr, ok := notes.(string); ok {
+			template.Notes = &notesStr
+		}
 	}
 
 	template.UpdatedAt = time.Now()
 
-	return s.templates.Update(ctx, template)
+	// Update template in database
+	if err := s.templates.Update(ctx, template); err != nil {
+		return err
+	}
+
+	// If allocations were provided, replace them in the database
+	if _, ok := updates["allocations"]; ok && len(template.Allocations) > 0 {
+		if err := s.templateAllocations.ReplaceForTemplate(ctx, id, template.Allocations); err != nil {
+			return fmt.Errorf("failed to update allocations: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// parseAllocations converts []interface{} (from JSON) to []models.RecurringBillAllocation
+func (s *RecurringBillService) parseAllocations(raw interface{}) ([]models.RecurringBillAllocation, error) {
+	rawSlice, ok := raw.([]interface{})
+	if !ok {
+		return nil, errors.New("allocations must be an array")
+	}
+
+	allocations := make([]models.RecurringBillAllocation, 0, len(rawSlice))
+	for i, item := range rawSlice {
+		allocMap, ok := item.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("allocation %d is not an object", i+1)
+		}
+
+		alloc := models.RecurringBillAllocation{}
+
+		if subjectType, ok := allocMap["subjectType"].(string); ok {
+			alloc.SubjectType = subjectType
+		}
+		if subjectId, ok := allocMap["subjectId"].(string); ok {
+			alloc.SubjectID = subjectId
+		}
+		if allocationType, ok := allocMap["allocationType"].(string); ok {
+			alloc.AllocationType = allocationType
+		}
+		if percentage, ok := allocMap["percentage"].(float64); ok {
+			alloc.Percentage = &percentage
+		}
+		if fractionNum, ok := allocMap["fractionNumerator"].(float64); ok {
+			num := int(fractionNum)
+			alloc.FractionNum = &num
+		}
+		if fractionDenom, ok := allocMap["fractionDenominator"].(float64); ok {
+			denom := int(fractionDenom)
+			alloc.FractionDenom = &denom
+		}
+		if fixedAmount, ok := allocMap["fixedAmount"].(string); ok {
+			alloc.FixedAmount = &fixedAmount
+		}
+
+		allocations = append(allocations, alloc)
+	}
+
+	return allocations, nil
 }
 
 // DeleteTemplate deletes a template (soft delete by setting IsActive to false)
@@ -446,6 +518,14 @@ func (s *RecurringBillService) validateAllocations(allocations []models.Recurrin
 	}
 
 	for i, alloc := range allocations {
+		// Validate subject type and ID
+		if alloc.SubjectType != "user" && alloc.SubjectType != "group" {
+			return fmt.Errorf("allocation %d: subject type must be 'user' or 'group'", i+1)
+		}
+		if alloc.SubjectID == "" {
+			return fmt.Errorf("allocation %d: subject ID is required", i+1)
+		}
+
 		switch alloc.AllocationType {
 		case "percentage":
 			if alloc.Percentage == nil {
