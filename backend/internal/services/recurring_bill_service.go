@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -191,7 +192,8 @@ func (s *RecurringBillService) UpdateTemplate(ctx context.Context, id string, up
 	}
 
 	// If allocations were provided, replace them in the database
-	if _, ok := updates["allocations"]; ok && len(template.Allocations) > 0 {
+	// Note: validation already ensures allocations are non-empty, so no length check needed
+	if _, ok := updates["allocations"]; ok {
 		if err := s.templateAllocations.ReplaceForTemplate(ctx, id, template.Allocations); err != nil {
 			return fmt.Errorf("failed to update allocations: %w", err)
 		}
@@ -201,46 +203,18 @@ func (s *RecurringBillService) UpdateTemplate(ctx context.Context, id string, up
 }
 
 // parseAllocations converts []interface{} (from JSON) to []models.RecurringBillAllocation
+// Uses json.Marshal/Unmarshal to leverage struct tags for cleaner parsing
 func (s *RecurringBillService) parseAllocations(raw interface{}) ([]models.RecurringBillAllocation, error) {
-	rawSlice, ok := raw.([]interface{})
-	if !ok {
-		return nil, errors.New("allocations must be an array")
+	// Marshal the raw interface back to JSON bytes
+	jsonBytes, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal allocations: %w", err)
 	}
 
-	allocations := make([]models.RecurringBillAllocation, 0, len(rawSlice))
-	for i, item := range rawSlice {
-		allocMap, ok := item.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("allocation %d is not an object", i+1)
-		}
-
-		alloc := models.RecurringBillAllocation{}
-
-		if subjectType, ok := allocMap["subjectType"].(string); ok {
-			alloc.SubjectType = subjectType
-		}
-		if subjectId, ok := allocMap["subjectId"].(string); ok {
-			alloc.SubjectID = subjectId
-		}
-		if allocationType, ok := allocMap["allocationType"].(string); ok {
-			alloc.AllocationType = allocationType
-		}
-		if percentage, ok := allocMap["percentage"].(float64); ok {
-			alloc.Percentage = &percentage
-		}
-		if fractionNum, ok := allocMap["fractionNumerator"].(float64); ok {
-			num := int(fractionNum)
-			alloc.FractionNum = &num
-		}
-		if fractionDenom, ok := allocMap["fractionDenominator"].(float64); ok {
-			denom := int(fractionDenom)
-			alloc.FractionDenom = &denom
-		}
-		if fixedAmount, ok := allocMap["fixedAmount"].(string); ok {
-			alloc.FixedAmount = &fixedAmount
-		}
-
-		allocations = append(allocations, alloc)
+	// Unmarshal into the typed slice using struct tags
+	var allocations []models.RecurringBillAllocation
+	if err := json.Unmarshal(jsonBytes, &allocations); err != nil {
+		return nil, fmt.Errorf("failed to parse allocations: %w", err)
 	}
 
 	return allocations, nil
