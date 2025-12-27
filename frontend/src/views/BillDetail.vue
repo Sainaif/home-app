@@ -210,7 +210,7 @@ const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
-const { connect, on: onEvent } = useEventStream()
+const { on: onEvent } = useEventStream()
 const { on: onDataEvent } = useDataEvents()
 const billId = route.params.id
 
@@ -270,6 +270,7 @@ async function loadAllocationsAndPayments() {
   } catch (err) {
     console.error('Failed to load allocations:', err)
     allocations.value = []
+    allPayments.value = []
   } finally {
     loadingAllocations.value = false
   }
@@ -296,15 +297,12 @@ onMounted(async () => {
     loading.value = false
   }
 
-  // Connect to WebSocket for real-time updates
-  connect()
-
   // Listen for bill-related WebSocket events
-  onEvent('bill.posted', (data) => {
+  onEvent('bill.posted', async (data) => {
     if (data.data?.billId === billId) {
       console.log('[BillDetail] Bill posted event received, refreshing...')
-      loadBillData()
-      loadAllocationsAndPayments()
+      await loadBillData()
+      await loadAllocationsAndPayments()
     }
   })
 
@@ -328,13 +326,24 @@ onMounted(async () => {
     users.value = usersRes.data || []
   })
 
-  onDataEvent(DATA_EVENTS.BILL_UPDATED, () => {
-    loadBillData()
-    loadAllocationsAndPayments()
+  onDataEvent(DATA_EVENTS.BILL_UPDATED, async (data) => {
+    if (!data?.billId || data.billId === billId) {
+      await loadBillData()
+      await loadAllocationsAndPayments()
+    }
   })
 
-  onDataEvent(DATA_EVENTS.CONSUMPTION_CREATED, () => loadReadings())
-  onDataEvent(DATA_EVENTS.CONSUMPTION_DELETED, () => loadReadings())
+  onDataEvent(DATA_EVENTS.CONSUMPTION_CREATED, (data) => {
+    if (!data?.billId || data.billId === billId) {
+      loadReadings()
+    }
+  })
+
+  onDataEvent(DATA_EVENTS.CONSUMPTION_DELETED, (data) => {
+    if (!data?.billId || data.billId === billId) {
+      loadReadings()
+    }
+  })
 })
 
 function getBillType(b) {

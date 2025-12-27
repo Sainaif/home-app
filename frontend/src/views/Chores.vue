@@ -286,7 +286,7 @@ import api from '../api/client'
 
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
-const { connect, on: onEvent } = useEventStream()
+const { on: onEvent } = useEventStream()
 const { on: onDataEvent, emit } = useDataEvents()
 const assignments = ref([])
 const chores = ref([])
@@ -344,6 +344,17 @@ const sortedAssignments = computed(() => {
   return result
 })
 
+// Helper functions for event handlers to reduce duplication
+function refreshChoresAndAssignments() {
+  loadChores()
+  loadAssignments()
+}
+
+function refreshAssignmentsAndLeaderboard() {
+  loadAssignments()
+  loadLeaderboard()
+}
+
 onMounted(async () => {
   // Load chores and users first (needed for enrichment)
   await Promise.all([
@@ -358,48 +369,23 @@ onMounted(async () => {
   // Find user stats from leaderboard
   userStats.value = leaderboard.value.find(u => u.userId === authStore.user?.id)
 
-  // Connect to WebSocket for real-time updates
-  connect()
-
   // Listen for chore-related WebSocket events
   onEvent('chore.updated', () => {
     console.log('[Chores] Chore updated event received, refreshing...')
-    loadChores()
-    loadAssignments()
+    refreshChoresAndAssignments()
   })
 
   onEvent('chore.assigned', () => {
     console.log('[Chores] Chore assigned event received, refreshing...')
-    loadAssignments()
-    loadLeaderboard()
+    refreshAssignmentsAndLeaderboard()
   })
 
   // Listen for local data events
-  onDataEvent(DATA_EVENTS.CHORE_CREATED, () => {
-    loadChores()
-    loadAssignments()
-  })
-
-  onDataEvent(DATA_EVENTS.CHORE_UPDATED, () => {
-    loadChores()
-    loadAssignments()
-  })
-
-  onDataEvent(DATA_EVENTS.CHORE_DELETED, () => {
-    loadChores()
-    loadAssignments()
-  })
-
-  onDataEvent(DATA_EVENTS.CHORE_ASSIGNED, () => {
-    loadAssignments()
-    loadLeaderboard()
-  })
-
-  onDataEvent(DATA_EVENTS.CHORE_ASSIGNMENT_UPDATED, () => {
-    loadAssignments()
-    loadLeaderboard()
-  })
-
+  onDataEvent(DATA_EVENTS.CHORE_CREATED, refreshChoresAndAssignments)
+  onDataEvent(DATA_EVENTS.CHORE_UPDATED, refreshChoresAndAssignments)
+  onDataEvent(DATA_EVENTS.CHORE_DELETED, refreshChoresAndAssignments)
+  onDataEvent(DATA_EVENTS.CHORE_ASSIGNED, refreshAssignmentsAndLeaderboard)
+  onDataEvent(DATA_EVENTS.CHORE_ASSIGNMENT_UPDATED, refreshAssignmentsAndLeaderboard)
   onDataEvent(DATA_EVENTS.USER_UPDATED, loadUsers)
 })
 

@@ -510,8 +510,8 @@ import { Package, DollarSign, TrendingUp, Plus, Minus, Trash, Settings, X, Edit,
 
 const { t } = useI18n()
 const authStore = useAuthStore()
-const { connect, on: onEvent } = useEventStream()
-const { on, emit } = useDataEvents()
+const { on: onEvent } = useEventStream()
+const { on: onDataEvent, emit } = useDataEvents()
 
 const activeTab = ref('inventory')
 const items = ref([])
@@ -590,15 +590,18 @@ const totalPendingRefunds = computed(() => {
   }, 0).toFixed(2)
 })
 
+// Helper function for event handlers
+function refreshItemsAndStats() {
+  loadItems()
+  loadStats()
+}
+
 onMounted(async () => {
   await Promise.all([
     loadSettings(),
     loadItems(),
     loadUsers()
   ])
-
-  // Connect to WebSocket for real-time updates
-  connect()
 
   // Listen for supply-related WebSocket events
   onEvent('supply.item.added', () => {
@@ -608,8 +611,7 @@ onMounted(async () => {
 
   onEvent('supply.item.bought', () => {
     console.log('[Supplies] Item bought event received, refreshing...')
-    loadItems()
-    loadStats()
+    refreshItemsAndStats()
   })
 
   onEvent('supply.budget.contributed', () => {
@@ -623,11 +625,11 @@ onMounted(async () => {
   })
 
   // Listen for local data events
-  on(DATA_EVENTS.SUPPLY_ITEM_CREATED, loadItems)
-  on(DATA_EVENTS.SUPPLY_ITEM_UPDATED, loadItems)
-  on(DATA_EVENTS.SUPPLY_ITEM_DELETED, loadItems)
-  on(DATA_EVENTS.SUPPLY_CONTRIBUTION_CREATED, loadStats)
-  on(DATA_EVENTS.USER_UPDATED, loadUsers)
+  onDataEvent(DATA_EVENTS.SUPPLY_ITEM_CREATED, loadItems)
+  onDataEvent(DATA_EVENTS.SUPPLY_ITEM_UPDATED, loadItems)
+  onDataEvent(DATA_EVENTS.SUPPLY_ITEM_DELETED, loadItems)
+  onDataEvent(DATA_EVENTS.SUPPLY_CONTRIBUTION_CREATED, loadStats)
+  onDataEvent(DATA_EVENTS.USER_UPDATED, loadUsers)
 })
 
 async function loadSettings() {

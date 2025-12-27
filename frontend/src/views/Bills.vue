@@ -666,7 +666,7 @@ import {
 const router = useRouter()
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
-const { connect, on } = useEventStream()
+const { on: onEvent } = useEventStream()
 const { on: onDataEvent } = useDataEvents()
 const activeTab = ref('bills')
 
@@ -871,29 +871,26 @@ onMounted(async () => {
   await loadRecurringTemplates()
   await loadGroups()
 
-  // Connect to WebSocket for real-time updates
-  connect()
-
   // Listen for bill-related events from WebSocket
-  on('bill.created', () => {
+  onEvent('bill.created', () => {
     console.log('[Bills] Bill created event received, refreshing...')
     loadBills()
     loadReadingsData()
     loadRecurringTemplates()
   })
 
-  on('bill.posted', () => {
+  onEvent('bill.posted', () => {
     console.log('[Bills] Bill posted event received, refreshing...')
     loadBills()
     loadReadingsData()
   })
 
-  on('consumption.created', () => {
+  onEvent('consumption.created', () => {
     console.log('[Bills] Consumption created event received, refreshing...')
     loadReadingsData()
   })
 
-  on('payment.created', () => {
+  onEvent('payment.created', () => {
     console.log('[Bills] Payment created event received, refreshing...')
     loadBills()
   })
