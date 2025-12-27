@@ -10,8 +10,6 @@ import (
 	"github.com/sainaif/holy-home/internal/utils"
 )
 
-var ErrNoPreviousReading = errors.New("no previous meter reading found")
-
 type AllocationService struct {
 	users        repository.UserRepository
 	groups       repository.GroupRepository
