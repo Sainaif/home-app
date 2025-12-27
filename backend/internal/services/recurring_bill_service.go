@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -144,8 +145,13 @@ func (s *RecurringBillService) UpdateTemplate(ctx context.Context, id string, up
 		return errors.New("template not found")
 	}
 
-	// Validate allocations if being updated
-	if allocations, ok := updates["allocations"].([]models.RecurringBillAllocation); ok {
+	// Handle allocations if present in updates
+	// JSON unmarshaling into map[string]interface{} results in []interface{}, not []models.RecurringBillAllocation
+	if rawAllocations, ok := updates["allocations"]; ok {
+		allocations, err := s.parseAllocations(rawAllocations)
+		if err != nil {
+			return fmt.Errorf("invalid allocations: %w", err)
+		}
 		if err := s.validateAllocations(allocations); err != nil {
 			return err
 		}
@@ -153,7 +159,7 @@ func (s *RecurringBillService) UpdateTemplate(ctx context.Context, id string, up
 	}
 
 	// Apply updates
-	if customType, ok := updates["custom_type"].(string); ok {
+	if customType, ok := updates["customType"].(string); ok {
 		template.CustomType = customType
 	}
 	if frequency, ok := updates["frequency"].(string); ok {
@@ -162,16 +168,56 @@ func (s *RecurringBillService) UpdateTemplate(ctx context.Context, id string, up
 	if amount, ok := updates["amount"].(string); ok {
 		template.Amount = amount
 	}
-	if dayOfMonth, ok := updates["day_of_month"].(int); ok {
-		template.DayOfMonth = dayOfMonth
+	if dayOfMonth, ok := updates["dayOfMonth"]; ok {
+		switch v := dayOfMonth.(type) {
+		case float64:
+			template.DayOfMonth = int(v)
+		case int:
+			template.DayOfMonth = v
+		}
 	}
-	if notes, ok := updates["notes"].(*string); ok {
-		template.Notes = notes
+	if notes, ok := updates["notes"]; ok {
+		if notes == nil {
+			template.Notes = nil
+		} else if notesStr, ok := notes.(string); ok {
+			template.Notes = &notesStr
+		}
 	}
 
 	template.UpdatedAt = time.Now()
 
-	return s.templates.Update(ctx, template)
+	// Update template in database
+	if err := s.templates.Update(ctx, template); err != nil {
+		return err
+	}
+
+	// If allocations were provided, replace them in the database
+	// Note: validation already ensures allocations are non-empty, so no length check needed
+	if _, ok := updates["allocations"]; ok {
+		if err := s.templateAllocations.ReplaceForTemplate(ctx, id, template.Allocations); err != nil {
+			return fmt.Errorf("failed to update allocations: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// parseAllocations converts []interface{} (from JSON) to []models.RecurringBillAllocation
+// Uses json.Marshal/Unmarshal to leverage struct tags for cleaner parsing
+func (s *RecurringBillService) parseAllocations(raw interface{}) ([]models.RecurringBillAllocation, error) {
+	// Marshal the raw interface back to JSON bytes
+	jsonBytes, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal allocations: %w", err)
+	}
+
+	// Unmarshal into the typed slice using struct tags
+	var allocations []models.RecurringBillAllocation
+	if err := json.Unmarshal(jsonBytes, &allocations); err != nil {
+		return nil, fmt.Errorf("failed to parse allocations: %w", err)
+	}
+
+	return allocations, nil
 }
 
 // DeleteTemplate deletes a template (soft delete by setting IsActive to false)
@@ -446,6 +492,14 @@ func (s *RecurringBillService) validateAllocations(allocations []models.Recurrin
 	}
 
 	for i, alloc := range allocations {
+		// Validate subject type and ID
+		if alloc.SubjectType != "user" && alloc.SubjectType != "group" {
+			return fmt.Errorf("allocation %d: subject type must be 'user' or 'group'", i+1)
+		}
+		if alloc.SubjectID == "" {
+			return fmt.Errorf("allocation %d: subject ID is required", i+1)
+		}
+
 		switch alloc.AllocationType {
 		case "percentage":
 			if alloc.Percentage == nil {

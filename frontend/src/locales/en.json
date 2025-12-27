@@ -162,6 +162,7 @@
     "fixedAmount": "Fixed amount",
     "allocationTotal": "Total: {total}% (should be 100%)",
     "addAllocationRequired": "Add at least one allocation",
+    "selectSubjectRequired": "Select a person or group for each allocation",
     "addAllocation": "Add allocation",
     "recurringNotes": "Notes (optional)",
     "saveChanges": "Save changes",

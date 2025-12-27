@@ -162,6 +162,7 @@
     "fixedAmount": "Stała kwota",
     "allocationTotal": "Suma: {total}% (powinno być 100%)",
     "addAllocationRequired": "Dodaj przynajmniej jeden podział",
+    "selectSubjectRequired": "Wybierz osobę lub grupę dla każdego podziału",
     "addAllocation": "Dodaj podział",
     "recurringNotes": "Notatki (opcjonalne)",
     "saveChanges": "Zapisz zmiany",

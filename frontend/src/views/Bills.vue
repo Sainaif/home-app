@@ -727,20 +727,21 @@ const newRecurring = ref({
 const isAllocationValid = computed(() => {
   if (newRecurring.value.allocations.length === 0) return false
 
-  let total = 0
-  let hasNonFixed = false
+  // Check that all allocations have a subject selected
+  if (newRecurring.value.allocations.some(alloc => !alloc.subjectId)) return false
 
-  for (const alloc of newRecurring.value.allocations) {
+  const { total, hasNonFixed } = newRecurring.value.allocations.reduce((acc, alloc) => {
     if (alloc.allocationType === 'percentage') {
-      total += (parseFloat(alloc.percentage) || 0) / 100
-      hasNonFixed = true
+      acc.total += (parseFloat(alloc.percentage) || 0) / 100
+      acc.hasNonFixed = true
     } else if (alloc.allocationType === 'fraction') {
       const num = parseInt(alloc.fractionNum) || 0
       const denom = parseInt(alloc.fractionDenom) || 1
-      total += num / denom
-      hasNonFixed = true
+      acc.total += num / denom
+      acc.hasNonFixed = true
     }
-  }
+    return acc
+  }, { total: 0, hasNonFixed: false })
 
   if (hasNonFixed) {
     return total >= 0.999 && total <= 1.001
@@ -752,20 +753,23 @@ const isAllocationValid = computed(() => {
 const allocationValidationMessage = computed(() => {
   if (newRecurring.value.allocations.length === 0) return t('bills.addAllocationRequired')
 
-  let total = 0
-  let hasNonFixed = false
+  // Check for missing subject selection
+  if (newRecurring.value.allocations.some(alloc => !alloc.subjectId)) {
+    return t('bills.selectSubjectRequired')
+  }
 
-  for (const alloc of newRecurring.value.allocations) {
+  const { total, hasNonFixed } = newRecurring.value.allocations.reduce((acc, alloc) => {
     if (alloc.allocationType === 'percentage') {
-      total += (parseFloat(alloc.percentage) || 0) / 100
-      hasNonFixed = true
+      acc.total += (parseFloat(alloc.percentage) || 0) / 100
+      acc.hasNonFixed = true
     } else if (alloc.allocationType === 'fraction') {
       const num = parseInt(alloc.fractionNum) || 0
       const denom = parseInt(alloc.fractionDenom) || 1
-      total += num / denom
-      hasNonFixed = true
+      acc.total += num / denom
+      acc.hasNonFixed = true
     }
-  }
+    return acc
+  }, { total: 0, hasNonFixed: false })
 
   if (hasNonFixed) {
     return t('bills.allocationTotal', { total: (total * 100).toFixed(2) })
