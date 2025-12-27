@@ -246,14 +246,6 @@ func TestGenerateBillFromTemplateRequiresAllocations(t *testing.T) {
 	}
 }
 
-func stringPtr(s string) *string {
-	return &s
-}
-
-func floatPtr(f float64) *float64 {
-	return &f
-}
-
 func intPtr(i int) *int {
 	return &i
 }
