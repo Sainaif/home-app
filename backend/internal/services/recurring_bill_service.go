@@ -254,23 +254,35 @@ func (s *RecurringBillService) GenerateBillsFromTemplates(ctx context.Context) e
 
 	// Generate bills for each template
 	for i := range templates {
+		// Race condition guard: re-fetch template to ensure it hasn't been processed
+		// by another concurrent scheduler instance since we fetched the list
+		freshTemplate, err := s.templates.GetByID(ctx, templates[i].ID)
+		if err != nil || freshTemplate == nil {
+			log.Printf("[RECURRING BILL] Template %s no longer exists, skipping", templates[i].ID)
+			continue
+		}
+		if !freshTemplate.IsActive || freshTemplate.NextDueDate.After(now) {
+			log.Printf("[RECURRING BILL] Template %s already processed by another instance, skipping", templates[i].ID)
+			continue
+		}
+
 		// Load allocations for this template
-		allocations, err := s.templateAllocations.GetByTemplateID(ctx, templates[i].ID)
+		allocations, err := s.templateAllocations.GetByTemplateID(ctx, freshTemplate.ID)
 		if err != nil {
-			log.Printf("[RECURRING BILL] Error loading allocations for template %s: %v", templates[i].ID, err)
+			log.Printf("[RECURRING BILL] Error loading allocations for template %s: %v", freshTemplate.ID, err)
 			continue
 		}
 		// Ensure allocations exist before generating bill - without allocations,
 		// the bill would be created but GetAllocationBreakdown would fall back to
 		// weight-based calculation instead of using the template's fixed amounts
 		if len(allocations) == 0 {
-			log.Printf("[RECURRING BILL] Template %s has no allocations configured, skipping bill generation", templates[i].ID)
+			log.Printf("[RECURRING BILL] Template %s has no allocations configured, skipping bill generation", freshTemplate.ID)
 			continue
 		}
-		templates[i].Allocations = allocations
+		freshTemplate.Allocations = allocations
 
-		if err := s.generateBillFromTemplate(ctx, &templates[i]); err != nil {
-			log.Printf("[RECURRING BILL] Error generating bill from template %s: %v", templates[i].ID, err)
+		if err := s.generateBillFromTemplate(ctx, freshTemplate); err != nil {
+			log.Printf("[RECURRING BILL] Error generating bill from template %s: %v", freshTemplate.ID, err)
 			continue
 		}
 	}
@@ -283,7 +295,7 @@ func (s *RecurringBillService) generateBillFromTemplate(ctx context.Context, tem
 	// Defensive check: ensure allocations exist before creating bill
 	// Without allocations, GetAllocationBreakdown falls back to weight-based calculation
 	if len(template.Allocations) == 0 {
-		return fmt.Errorf("cannot generate bill: template %s has no allocations", template.ID)
+		return fmt.Errorf("template %s has no allocations configured", template.ID)
 	}
 
 	now := time.Now()
